@@ -1,0 +1,19 @@
+[gd_scene format=3 uid="uid://dqbsdk5e0xlcg"]
+
+[ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/chunk_manager.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2"]
+
+[node name="World" type="Node2D" unique_id=1158263506]
+script = ExtResource("1")
+target_path = NodePath("CameraRig")
+
+[node name="Chunks" type="Node2D" parent="."]
+
+[node name="Overlay" type="Node2D" parent="."]
+
+[node name="CameraRig" type="Node2D" parent="."]
+script = ExtResource("2")
+
+[node name="Camera2D" type="Camera2D" parent="CameraRig"]
+zoom = Vector2(4, 4)
+current = true
