@@ -37,7 +37,10 @@ jobs:
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: build/web
+          # godot-export copies the preset's build dir (named after the
+          # preset, "Web") into build/web, so index.html ends up nested one
+          # level deeper than you'd expect: build/web/Web/index.html.
+          path: build/web/Web
 
   deploy:
     needs: export-web
