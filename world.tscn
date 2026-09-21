@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/chunk_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/reload_button.gd" id="3"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -17,3 +18,15 @@ script = ExtResource("2")
 [node name="Camera2D" type="Camera2D" parent="CameraRig"]
 zoom = Vector2(4, 4)
 current = true
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="ReloadButton" type="Button" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 46.0
+text = "Reload"
+script = ExtResource("3")
