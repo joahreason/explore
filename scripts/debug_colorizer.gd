@@ -7,8 +7,14 @@ extends RefCounted
 ## Colors are blended continuously from field weights, not switched by
 ## hard biome lookup, so regions transition smoothly.
 
-const WATER_SHALLOW := Color(0.2, 0.45, 0.8)
-const WATER_DEEP := Color(0.05, 0.12, 0.45)
+const OCEAN_SHALLOW := Color(0.2, 0.45, 0.8)
+const OCEAN_DEEP := Color(0.05, 0.12, 0.45)
+const SEA_SHALLOW := Color(0.22, 0.5, 0.72)
+const SEA_DEEP := Color(0.1, 0.32, 0.55)
+const LAKE_SHALLOW := Color(0.3, 0.66, 0.72)
+const LAKE_DEEP := Color(0.16, 0.46, 0.56)
+const SWAMP_WATER := Color(0.32, 0.36, 0.22)
+const RIVER_WATER := Color(0.32, 0.62, 0.8)
 const ICE := Color(0.75, 0.85, 0.95)
 const SNOW := Color(0.95, 0.95, 1.0)
 const ROCK := Color(0.5, 0.5, 0.55)
@@ -30,14 +36,21 @@ static func color_for(s: Dictionary) -> Color:
 	var erosion: float = s["erosion"]
 	var disturbance: float = s["disturbance"]
 	var resource: float = s["resource"]
+	var water_body: String = s["water_body"]
 
 	var sea_level := -0.1
 
-	if elevation < sea_level:
-		var depth_t := clampf(inverse_lerp(sea_level, sea_level - 0.6, elevation), 0.0, 1.0)
-		var water_color := WATER_SHALLOW.lerp(WATER_DEEP, depth_t)
-		var frozen_t := clampf(smoothstep(-0.15, -0.55, temperature), 0.0, 1.0)
-		return water_color.lerp(ICE, frozen_t)
+	match water_body:
+		"ocean":
+			return _water_color(elevation, temperature, sea_level, 0.6, OCEAN_SHALLOW, OCEAN_DEEP, true)
+		"sea":
+			return _water_color(elevation, temperature, sea_level, 0.3, SEA_SHALLOW, SEA_DEEP, true)
+		"lake":
+			return _water_color(elevation, temperature, sea_level, 0.15, LAKE_SHALLOW, LAKE_DEEP, true)
+		"swamp":
+			return SWAMP_WATER
+		"river":
+			return RIVER_WATER
 
 	var elev01 := clampf((elevation + 1.0) * 0.5, 0.0, 1.0)
 	var warm_trigger := smoothstep(-0.2, 0.3, temperature)
@@ -67,4 +80,16 @@ static func color_for(s: Dictionary) -> Color:
 	if resource > 0.65:
 		color = color.lerp(RESOURCE, clampf((resource - 0.65) / 0.35, 0.0, 1.0) * 0.85)
 
+	return color
+
+
+static func _water_color(
+	elevation: float, temperature: float, sea_level: float, depth_range: float,
+	shallow: Color, deep: Color, can_freeze: bool
+) -> Color:
+	var depth_t := clampf(inverse_lerp(sea_level, sea_level - depth_range, elevation), 0.0, 1.0)
+	var color := shallow.lerp(deep, depth_t)
+	if can_freeze:
+		var frozen_t := clampf(smoothstep(-0.15, -0.55, temperature), 0.0, 1.0)
+		color = color.lerp(ICE, frozen_t)
 	return color

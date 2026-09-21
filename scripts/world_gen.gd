@@ -44,6 +44,23 @@ extends Resource
 @export var sea_level: float = -0.1
 @export var shore_band: float = 0.22
 @export var arid_wind_factor: float = 0.35
+# Water-body typing: elevation alone still decides what's wet: this just
+# labels the wet/waterlogged tiles as ocean/sea/lake/swamp for color+overlay.
+@export var ocean_depth_threshold: float = 0.25   # how far below sea_level on the CONTINENT-scale noise alone counts as ocean rather than a shallower sea
+@export var swamp_band: float = 0.05              # elevation band just above sea_level that can turn into swamp
+@export var swamp_moisture_threshold: float = 0.55
+
+# --- Rivers ---
+# Approximated, not flow-simulated: a domain-warped noise field whose
+# near-zero band traces a winding line, gated to a plausible elevation range
+# and widened as it nears sea level (like a river mouth). Not physically
+# guaranteed to reach an actual lake/ocean, but reads as a river visually.
+@export_group("Rivers")
+@export var river_frequency: float = 0.01         # regional scale - stretched by world_scale
+@export var river_width: float = 0.05
+@export var river_max_elevation: float = 0.55     # fades out above this - approximates a headwaters cutoff
+@export var river_threshold: float = 0.5          # river field above this = tile renders/classifies as river
+@export var riparian_moisture_boost: float = 0.35 # rivers locally raise moisture, feeding vegetation nearby
 
 # --- Wind / exposure ---
 @export_group("Wind")
@@ -106,6 +123,8 @@ var _disturbance_cell := FastNoiseLite.new()
 var _disturbance_warp := FastNoiseLite.new()
 var _resource_vein := FastNoiseLite.new()
 var _micro := FastNoiseLite.new()
+var _river_line := FastNoiseLite.new()
+var _river_warp := FastNoiseLite.new()
 
 var _configured_seed: int = -1
 
@@ -124,6 +143,8 @@ func configure(world_seed: int) -> void:
 	_setup(_wind_dir, world_seed + 6, FastNoiseLite.TYPE_SIMPLEX, wind_dir_frequency / world_scale, 2)
 	_setup(_geology, world_seed + 7, FastNoiseLite.TYPE_CELLULAR, geology_frequency / world_scale, 1)
 	_geology.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+	_setup(_river_line, world_seed + 12, FastNoiseLite.TYPE_SIMPLEX, river_frequency / world_scale, 2)
+	_setup(_river_warp, world_seed + 13, FastNoiseLite.TYPE_SIMPLEX, river_frequency * 3.0 / world_scale, 2)
 
 	# Local features - intentionally NOT scaled by world_scale.
 	_setup(_disturbance, world_seed + 8, FastNoiseLite.TYPE_CELLULAR, disturbance_frequency, 1)
@@ -189,6 +210,22 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var shore_bonus := clampf(1.0 - smoothstep(sea_level, sea_level + shore_band, e), 0.0, 1.0) * 0.4
 	var moisture01 := clampf(rainfall01 + orographic + shore_bonus - exposure01 * arid_wind_factor, 0.0, 1.0)
 
+	# --- rivers (approximated, not flow-simulated - see class doc) ---
+	var rwarp_x := _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
+	var rwarp_y := _river_warp.get_noise_2d(fx - 500.0, fy + 500.0) * (20.0 * world_scale)
+	var river_line := absf(_river_line.get_noise_2d(fx + rwarp_x, fy + rwarp_y))
+	var river_shape := 1.0 - smoothstep(0.0, river_width, river_line)
+	# Only between the coast and a plausible headwaters elevation, widening
+	# toward the coast like a river mouth and tapering out upstream.
+	var river_lowland_gate := smoothstep(sea_level, sea_level + shore_band, e)
+	var river_highland_gate := 1.0 - smoothstep(river_max_elevation - 0.15, river_max_elevation, e)
+	var river01 := clampf(river_shape * river_lowland_gate * river_highland_gate, 0.0, 1.0)
+
+	# Riparian effect: rivers locally raise moisture, which then feeds
+	# vegetation/erosion below through the existing formulas - no separate
+	# "greener near rivers" rule needed.
+	moisture01 = clampf(moisture01 + river01 * riparian_moisture_boost, 0.0, 1.0)
+
 	# --- geology (independent rock domains) ---
 	var geo_raw := _geology.get_noise_2d(fx, fy)
 	var geology: int = _geology_from_raw(geo_raw)
@@ -202,6 +239,27 @@ func sample(wx: int, wy: int) -> Dictionary:
 
 	# --- soil fertility (geology parent material + moisture + deposition) ---
 	var soil_fertility := clampf((1.0 - hardness) * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
+
+	# --- water body typing (ocean/sea/lake/swamp/river) ---
+	# Ocean vs. sea vs. lake is read off the CONTINENT-scale noise alone
+	# (no ridge/detail): a true ocean basin is a large-scale feature, while a
+	# "lake" is a spot that's only underwater once the fine detail is added -
+	# i.e. a local dip in what is otherwise land at the continental scale.
+	# This needs no flood-fill/connectivity analysis, which an infinite
+	# streamed world can't cheaply do anyway.
+	var water_body := "none"
+	if e < sea_level:
+		var base_only := _elev_base.get_noise_2d(fx, fy)
+		if base_only < sea_level - ocean_depth_threshold:
+			water_body = "ocean"
+		elif base_only < sea_level:
+			water_body = "sea"
+		else:
+			water_body = "lake"
+	elif river01 > river_threshold:
+		water_body = "river"
+	elif e < sea_level + swamp_band and moisture01 > swamp_moisture_threshold:
+		water_body = "swamp"
 
 	# --- disturbance (fire/flood/clearing scars with outward recovery) ---
 	# Domain-warp the sampling position first so blobs aren't perfect circles -
@@ -253,6 +311,8 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"vegetation": vegetation01,
 		"exposure": exposure01,
 		"resource": resource01,
+		"water_body": water_body,
+		"river": river01,
 	}
 
 
