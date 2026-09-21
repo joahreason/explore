@@ -67,8 +67,10 @@ extends Resource
 
 # --- Disturbance / history ---
 @export_group("Disturbance")
-@export var disturbance_frequency: float = 0.012
+@export var disturbance_frequency: float = 0.004        # lower = fewer, more spread out
 @export var disturbance_radius: float = 0.35
+@export var disturbance_size_variation: float = 0.6      # 0 = every blob the same size
+@export var disturbance_warp_strength: float = 20.0      # tiles; breaks up the perfect-circle look
 
 # --- Resources ---
 @export_group("Resources")
@@ -100,6 +102,8 @@ var _wind_strength := FastNoiseLite.new()
 var _wind_dir := FastNoiseLite.new()
 var _geology := FastNoiseLite.new()
 var _disturbance := FastNoiseLite.new()
+var _disturbance_cell := FastNoiseLite.new()
+var _disturbance_warp := FastNoiseLite.new()
 var _resource_vein := FastNoiseLite.new()
 var _micro := FastNoiseLite.new()
 
@@ -124,6 +128,11 @@ func configure(world_seed: int) -> void:
 	# Local features - intentionally NOT scaled by world_scale.
 	_setup(_disturbance, world_seed + 8, FastNoiseLite.TYPE_CELLULAR, disturbance_frequency, 1)
 	_disturbance.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	# Same seed+frequency as _disturbance so this shares the exact same Voronoi
+	# cells - only the return type differs, giving a per-blob random value.
+	_setup(_disturbance_cell, world_seed + 8, FastNoiseLite.TYPE_CELLULAR, disturbance_frequency, 1)
+	_disturbance_cell.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+	_setup(_disturbance_warp, world_seed + 11, FastNoiseLite.TYPE_SIMPLEX, disturbance_frequency * 2.5, 2)
 	_setup(_resource_vein, world_seed + 9, FastNoiseLite.TYPE_SIMPLEX, resource_frequency, 2)
 	_setup(_micro, world_seed + 10, FastNoiseLite.TYPE_SIMPLEX, 0.05, 1)
 
@@ -195,11 +204,24 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var soil_fertility := clampf((1.0 - hardness) * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
 
 	# --- disturbance (fire/flood/clearing scars with outward recovery) ---
+	# Domain-warp the sampling position first so blobs aren't perfect circles -
+	# straight cellular distance is radially symmetric around each feature point.
+	var warp_x := _disturbance_warp.get_noise_2d(fx, fy) * disturbance_warp_strength
+	var warp_y := _disturbance_warp.get_noise_2d(fx + 1000.0, fy - 1000.0) * disturbance_warp_strength
+	var dfx := fx + warp_x
+	var dfy := fy + warp_y
+
 	# Cellular RETURN_DISTANCE is empirically ~[-1, 0.1] (near -1 = at a feature
 	# point/epicenter, rising outward), not 0..1 - normalize before use.
-	var dist_raw := _disturbance.get_noise_2d(fx, fy)
+	var dist_raw := _disturbance.get_noise_2d(dfx, dfy)
 	var dist_norm := clampf(inverse_lerp(-1.0, 0.1, dist_raw), 0.0, 1.0)
-	var disturbance01 := clampf(1.0 - smoothstep(0.0, disturbance_radius, dist_norm), 0.0, 1.0)
+
+	# Per-blob radius so scars vary in size instead of all being identical.
+	var cell_value := _disturbance_cell.get_noise_2d(dfx, dfy)
+	var size_mult: float = lerp(1.0 - disturbance_size_variation, 1.0 + disturbance_size_variation, (cell_value + 1.0) * 0.5)
+	var effective_radius := disturbance_radius * size_mult
+
+	var disturbance01 := clampf(1.0 - smoothstep(0.0, effective_radius, dist_norm), 0.0, 1.0)
 
 	# --- vegetation (derived, not biome-assigned) ---
 	var temp_suit := 1.0 - clampf(absf(temperature), 0.0, 1.0)
