@@ -29,6 +29,12 @@ const TYPE_STORM := Color(0.6, 0.6, 0.75)
 const TYPE_LANDSLIDE := Color(0.55, 0.4, 0.25)
 const TYPE_UNKNOWN := Color(0.8, 0.2, 0.8)
 
+const NO_FUEL := Color(0.12, 0.14, 0.1)
+const HIGH_FUEL := Color(0.75, 0.7, 0.2)
+
+const NO_RISK := Color(0.1, 0.15, 0.2)
+const HIGH_RISK := Color(0.95, 0.15, 0.05)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -71,3 +77,17 @@ static func disturbance_type(s: Dictionary) -> Color:
 		"landslide":
 			return TYPE_LANDSLIDE
 	return TYPE_UNKNOWN
+
+
+static func fuel_load(s: Dictionary) -> Color:
+	return NO_FUEL.lerp(HIGH_FUEL, clampf(float(s["fuel_load"]), 0.0, 1.0))
+
+
+## fire_risk's real range rarely exceeds ~0.1 (dryness and fuel accumulation
+## are in natural tension - you can't have max dryness AND max fuel at once,
+## confirmed via diagnostic + per-biome breakdown, not a bug). Display-only
+## gain+gamma so the view is legible; the underlying data stays unscaled for
+## anything that thresholds against it later (e.g. a future FireProne tag).
+static func fire_risk(s: Dictionary) -> Color:
+	var v := clampf(pow(float(s["fire_risk"]) * 8.0, 0.6), 0.0, 1.0)
+	return NO_RISK.lerp(HIGH_RISK, v)

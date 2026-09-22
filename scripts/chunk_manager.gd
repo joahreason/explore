@@ -30,6 +30,8 @@ enum ViewMode {
 	DRAINAGE,
 	DISTURBANCE_AGE,
 	DISTURBANCE_TYPE,
+	FUEL_LOAD,
+	FIRE_RISK,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -178,6 +180,10 @@ func _color_for(sample: Dictionary) -> Color:
 			return HeatmapColorizerScript.disturbance_age(sample)
 		ViewMode.DISTURBANCE_TYPE:
 			return HeatmapColorizerScript.disturbance_type(sample)
+		ViewMode.FUEL_LOAD:
+			return HeatmapColorizerScript.fuel_load(sample)
+		ViewMode.FIRE_RISK:
+			return HeatmapColorizerScript.fire_risk(sample)
 		_:
 			return DebugColorizerScript.color_for(sample)
 

@@ -442,6 +442,22 @@ func sample(wx: int, wy: int) -> Dictionary:
 	vegetation01 *= 1.0 - erosion01 * vegetation_erosion_penalty
 	vegetation01 *= 1.0 - disturbance01
 
+	# --- fire propensity (dryness + heat + wind + accumulated fuel) ---
+	# fuel_load: how much burnable material has built up - vegetation that
+	# hasn't been recently disturbed (disturbance01 already fades with both
+	# distance from an epicenter AND age, so "not disturbed" already means
+	# "had time to accumulate fuel," no separate age term needed here).
+	var fuel_load := vegetation01 * (1.0 - disturbance01)
+	var fire_dryness := 1.0 - moisture01
+	var fire_heat := smoothstep(-0.1, 0.5, temperature)
+	# A pronounced dry season raises fire risk even where annual-average
+	# moisture looks fine (Mediterranean/monsoon-adjacent climates).
+	var fire_seasonal_bonus := 1.0 + precip_seasonality01 * 0.5
+	var fire_risk := clampf(
+		fire_dryness * fire_heat * (0.5 + 0.5 * wind_strength01) * fuel_load * fire_seasonal_bonus,
+		0.0, 1.0
+	)
+
 	# --- resources (geology-driven veins, need erosion to be exposed) ---
 	# Sharpen the ridge so veins are rare, narrow seams rather than a scratchy
 	# lattice covering the whole map.
@@ -474,6 +490,8 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"temp_variation": temp_variation01,
 		"precip_seasonality": precip_seasonality01,
 		"drainage": drainage,
+		"fuel_load": fuel_load,
+		"fire_risk": fire_risk,
 	}
 
 
