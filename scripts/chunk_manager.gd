@@ -63,9 +63,11 @@ enum ViewMode {
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
 @onready var _inspector_panel := $UI/TileInspector
+@onready var _seed_input: LineEdit = $UI/SeedInput
 
 var _target: Node2D
 var _world_gen: WorldGen
+var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
 var _view_mode: ViewMode = ViewMode.MATERIAL
@@ -79,6 +81,9 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 
+	if _seed_text != "":
+		_seed_input.text = _seed_text
+
 	if target_path != NodePath():
 		_target = get_node(target_path)
 		_target.connect("clicked", _on_tile_clicked)
@@ -87,11 +92,15 @@ func _ready() -> void:
 
 
 ## Web only: a "?seed=" query param overrides the exported world_seed - set
-## by ReloadButton from whatever was typed into the seed field. A purely
-## numeric seed is used directly (matches the exported int seed behavior
-## everywhere else in this project); anything else (letters/spaces) is
-## hashed to a deterministic int, so the same text always regenerates the
-## same world.
+## by ReloadButton/RandomizeButton/SeedInput's Enter from whatever's in the
+## seed field. A purely numeric seed is used directly (matches the exported
+## int seed behavior everywhere else in this project); anything else
+## (letters/spaces) is hashed to a deterministic int, so the same text
+## always regenerates the same world. If no param was given at all, a fresh
+## random seed is generated instead of falling back to the fixed exported
+## default, so every plain visit gets a different world. Either way,
+## _seed_text is left holding whatever seed ended up in effect, so _ready()
+## can show it in the seed field.
 func _resolve_world_seed() -> int:
 	if not OS.has_feature("web"):
 		return world_seed
@@ -101,7 +110,8 @@ func _resolve_world_seed() -> int:
 	)
 	var raw_str := str(raw) if raw != null else ""
 	if raw_str == "":
-		return world_seed
+		raw_str = str(randi())
+	_seed_text = raw_str
 	if raw_str.is_valid_int():
 		return int(raw_str)
 	return raw_str.hash()

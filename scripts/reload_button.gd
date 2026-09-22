@@ -8,6 +8,8 @@ extends Button
 ## Also carries whatever is in the seed field (sibling "SeedInput") through
 ## as a ?seed= query param, which ChunkManager reads on the next load.
 
+const SeedReloadScript := preload("res://scripts/seed_reload.gd")
+
 
 func _ready() -> void:
 	if not OS.has_feature("web"):
@@ -18,13 +20,4 @@ func _ready() -> void:
 
 func _on_pressed() -> void:
 	var seed_input := get_node("../SeedInput") as LineEdit
-	var seed_text := seed_input.text.strip_edges() if seed_input else ""
-
-	# Cache-busting query string forces the browser to treat this as a new
-	# URL rather than reusing GitHub Pages' cached response.
-	var query := "?v=" + str(Time.get_ticks_msec())
-	if seed_text != "":
-		query += "&seed=" + seed_text.uri_encode()
-
-	var js := "location.href = location.pathname + '%s';" % query
-	JavaScriptBridge.eval(js, true)
+	SeedReloadScript.reload_with_seed(seed_input.text if seed_input else "")
