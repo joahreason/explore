@@ -61,6 +61,17 @@ extends Resource
 @export var swamp_min_temperature: float = -0.15  # colder than this and it won't support marsh/wetland ecology
 @export var swamp_threshold: float = 0.32         # combined moisture*lowland*warmth*flatness must clear this
 
+# --- Water Topology ---
+# Real bounded/cached flood-fill (see water_topology.gd) - the only piece of
+# this generator that isn't a stateless per-tile function. Enclosed bodies
+# (fit within the budget) become Lake or Sea (if a strait to open water is
+# found nearby); bodies that exceed the budget fall back to the
+# water_region noise above for Ocean-vs-Sea flavor, since a capped fill's
+# shape isn't reliable for that.
+@export_group("Water Topology")
+@export var flood_fill_budget: int = 3500      # tiles; first-touch cost into a large body scales with this
+@export var strait_probe_distance: int = 60    # tiles; how far past an enclosed shore to look for open water
+
 # --- Rivers ---
 # Approximated, not flow-simulated: a domain-warped noise field whose
 # near-zero band traces a winding line, gated to a plausible elevation range
@@ -198,6 +209,9 @@ var _water_region := FastNoiseLite.new()
 var _temp_variation := FastNoiseLite.new()
 var _precip_seasonality := FastNoiseLite.new()
 
+const WaterTopologyScript := preload("res://scripts/water_topology.gd")
+var _water_topology = WaterTopologyScript.new()
+
 var _configured_seed: int = -1
 
 # Seed offsets in use, so new fields don't collide: +1 elev_base, +2
@@ -212,6 +226,10 @@ func configure(world_seed: int) -> void:
 	if _configured_seed == world_seed:
 		return
 	_configured_seed = world_seed
+	# A cached lake result from a previous seed would be silently wrong data
+	# for this one - not currently reachable in practice (chunk_manager.gd
+	# always creates a fresh WorldGen per page load) but cheap to guard.
+	_water_topology = WaterTopologyScript.new()
 
 	# Regional fields - stretched by world_scale.
 	_setup(_elev_base, world_seed + 1, FastNoiseLite.TYPE_SIMPLEX_SMOOTH, elevation_frequency / world_scale, elevation_octaves)
@@ -399,25 +417,32 @@ func sample(wx: int, wy: int) -> Dictionary:
 	drainage = clampf(drainage, 0.0, 1.0)
 
 	# --- water body typing (ocean/sea/lake/swamp/river) ---
-	# Ocean vs. sea vs. lake identity comes from its OWN dedicated, much
-	# lower-frequency noise - not the terrain-shape elevation noise. Reusing
-	# elevation meant the classification threshold crossed back and forth at
-	# the same small scale as the coastline itself, so a single connected
-	# body of water could get patchily mislabeled ocean/sea/lake in places
-	# instead of reading as one consistent type. This still needs no
-	# flood-fill/connectivity analysis (which an infinite streamed world
-	# can't cheaply do): a low-frequency field just changes slowly enough
-	# that neighboring wet tiles almost always land on the same side of a
-	# threshold, so type only changes at genuine large-scale transitions.
+	# Real bounded/cached flood-fill (water_topology.gd) decides enclosure
+	# and, for enclosed bodies, whether a nearby strait reaches open water -
+	# genuine topology, not a size threshold. A body that exceeds the fill
+	# budget is "open/unbounded" by definition, and for THAT case only we
+	# fall back to the existing dedicated low-frequency noise field to pick
+	# an Ocean-vs-Sea flavor, since a capped fill's shape depends on which
+	# tile triggered it and isn't trustworthy for anything position-specific
+	# (see water_topology.gd's doc comment).
 	var water_body := "none"
+	var water_enclosed := false
+	var water_area := -1
+	var water_compactness := 0.0
+	var water_connected_to_ocean := false
 	if e < sea_level:
-		var region := _water_region.get_noise_2d(fx, fy)
-		if region < sea_level - ocean_depth_threshold:
-			water_body = "ocean"
-		elif region < sea_level:
-			water_body = "sea"
+		var topo: Dictionary = _water_topology.classify(
+			wx, wy, elevation, sea_level, flood_fill_budget, strait_probe_distance
+		)
+		water_enclosed = topo["enclosed"]
+		water_area = topo["area"]
+		water_compactness = topo["compactness"]
+		water_connected_to_ocean = topo["connected_to_ocean"]
+		if water_enclosed:
+			water_body = "sea" if water_connected_to_ocean else "lake"
 		else:
-			water_body = "lake"
+			var region := _water_region.get_noise_2d(fx, fy)
+			water_body = "ocean" if region < sea_level - ocean_depth_threshold else "sea"
 	elif river01 > river_threshold:
 		water_body = "river"
 	else:
@@ -516,6 +541,10 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"exposure": exposure01,
 		"resource": resource01,
 		"water_body": water_body,
+		"water_enclosed": water_enclosed,
+		"water_area": water_area,
+		"water_compactness": water_compactness,
+		"water_connected_to_ocean": water_connected_to_ocean,
 		"river": river01,
 		"shore_proximity": shore_proximity,
 		"wind_strength": wind_strength01,
