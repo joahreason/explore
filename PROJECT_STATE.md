@@ -9,20 +9,21 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 2 — Resource Definition system (about to start; see `docs/resource-generation-plan.md`).
+Phase 3 — Habitat Suitability (about to start; see `docs/resource-generation-plan.md`).
 
 ## Completed
 
 - Phase 0: verified and documented the existing generator pipeline in `docs/architecture.md` (WorldGen.sample() field table, water topology, 3-stage biome classifier, chunk rendering/LOD, seed model), flagged the no-per-tile-object-rendering gap for Phase 7+, identified `scripts/resource_manager.gd` (empty stub) as the ResourceManager integration point.
 - Phase 1: added `scripts/environmental_state.gd`, an `EnvironmentalState` typed wrapper with `from_sample(dict)`, built as an *additional* representation alongside the existing Dictionary (decision: `WorldGen.sample()` keeps returning a Dictionary unchanged; all 7 existing callers - biome_classifier, biome_subtype, biome_modifiers, debug_colorizer, heatmap_colorizer, chunk_manager, tile_inspector_panel - are untouched, per the plan's own "introduce a clean representation without breaking existing callers"). Verified via a headless script: same-seed/same-coordinate determinism across multiple WorldGen instances, and field-for-field match between the wrapper and the source Dictionary. PASS.
+- Phase 2: added `scripts/resource_definition.gd` (`ResourceDefinition`, `class_name ... extends Resource` with `@export` fields), following WorldGen's own Resource+@export pattern - the project's one existing precedent for a large tunable/inspector-editable data object. Suitability curves use Godot's built-in `Curve` resource (matches the plan's own `temperature_curve.sample(temperature)` language exactly; a fresh Curve defaults to a 0..1 domain/range). Categorical weights (biome/subtype/geology) are plain `Dictionary` exports; an unset curve or missing weight-map entry is defined as neutral (1.0), not 0.0 - see the file's doc comment, this convention matters for Phase 3. Verified via a headless script: instantiation, Curve.sample() behavior, Dictionary round-trip, and a real ResourceSaver.save()/load() round-trip (confirms it behaves as a genuine Godot Resource, not just a plain object). PASS.
 
 ## In Progress
 
-- (none - Phase 1 complete, Phase 2 not yet started)
+- (none - Phase 2 complete, Phase 3 not yet started)
 
 ## Next
 
-- Phase 2: `ResourceDefinition` data-driven system (`scripts/resource_definition.gd`).
+- Phase 3: `ResourceManager.get_suitability(state, resource) -> float` (fill in `scripts/resource_manager.gd`, currently an empty stub), combining ResourceDefinition's curves/weights against an EnvironmentalState per the plan's tuned-combination guidance (not blind multiplication of every factor).
 
 ## Important Architecture
 
@@ -67,6 +68,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ### Checks Run
 
 - Phase 1: same-seed/same-coordinate determinism check across multiple `WorldGen` instances and multiple `sample()` calls; field-for-field match between `EnvironmentalState` and the source Dictionary.
+- Phase 2: `ResourceDefinition` instantiation, `Curve.sample()` output, `Dictionary` weight round-trip, and `ResourceSaver.save()`/`load()` round-trip, all headless.
 
 ### Known Unverified Areas
 
@@ -76,11 +78,11 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 0 committed on branch `resource-generation` (commit `8a50906`). Phase 1 (`EnvironmentalState`) written, verified (PASS), about to be committed.
+- Phase 0 committed on branch `resource-generation` (commit `8a50906`). Phase 1 (`EnvironmentalState`, commit `83646be`) and Phase 2 (`ResourceDefinition`) both written and verified (PASS).
 
 ### Next Action
 
-- Begin Phase 2 (`ResourceDefinition` system) per `docs/resource-generation-plan.md`.
+- Begin Phase 3 (`ResourceManager.get_suitability()`) per `docs/resource-generation-plan.md`.
 
 ### Things To Watch Out For
 

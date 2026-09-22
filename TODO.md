@@ -4,11 +4,10 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 2: `ResourceDefinition` data-driven system (`scripts/resource_definition.gd`) - id, category, base_density, per-field suitability curves, biome/subtype/geology weights, cluster/spacing params (see `docs/resource-generation-plan.md`)
+- [ ] Phase 3: `ResourceManager.get_suitability(state, resource) -> float` (fill in `scripts/resource_manager.gd`, currently an empty stub)
 
 ## Next
 
-- [ ] Phase 3: `ResourceManager.get_suitability(state, resource) -> float` (fill in `scripts/resource_manager.gd`, currently an empty stub)
 - [ ] Phase 4: resource-suitability heatmap debug views in `chunk_manager.gd`'s view-mode dropdown
 
 ## Later
