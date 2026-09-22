@@ -14,12 +14,15 @@ const OUTLINE := Color(0.02, 0.06, 0.02)
 var _positions: PackedVector2Array = PackedVector2Array()
 var _fills: PackedColorArray = PackedColorArray()
 var _radius: float = 3.0
+var _triangles: bool = false
 
 
 ## instances: ResourcePlacement's Dictionaries. origin_tile: this chunk's
 ## top-left tile, so positions can be drawn chunk-local. colors: instance
-## "id" -> fill Color (ResourceDefinition.debug_color).
-func setup(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}) -> void:
+## "id" -> fill Color (ResourceDefinition.debug_color). triangles: draw
+## upward triangles (tree-like, for the Vegetation view) instead of circles.
+func setup(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, triangles: bool = false) -> void:
+	_triangles = triangles
 	_positions.clear()
 	_fills.clear()
 	for inst in instances:
@@ -32,5 +35,14 @@ func setup(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_ti
 
 func _draw() -> void:
 	for i in _positions.size():
-		draw_circle(_positions[i], _radius + 1.0, OUTLINE)
-		draw_circle(_positions[i], _radius, _fills[i])
+		if _triangles:
+			draw_colored_polygon(_triangle(_positions[i], _radius + 1.5), OUTLINE)
+			draw_colored_polygon(_triangle(_positions[i], _radius), _fills[i])
+		else:
+			draw_circle(_positions[i], _radius + 1.0, OUTLINE)
+			draw_circle(_positions[i], _radius, _fills[i])
+
+
+## Upward-pointing triangle centered on p, fitting a circle of radius r.
+static func _triangle(p: Vector2, r: float) -> PackedVector2Array:
+	return PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.87, r * 0.5), p + Vector2(-r * 0.87, r * 0.5)])

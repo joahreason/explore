@@ -11,6 +11,7 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 ## info without needing a dedicated full-map overlay view.
 const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
+	{"label": "Vegetation", "mode": ChunkManagerScript.ViewMode.VEGETATION},
 	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
 	{"label": "Modifiers", "mode": ChunkManagerScript.ViewMode.MODIFIERS},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},

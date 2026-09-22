@@ -73,7 +73,27 @@ func _init() -> void:
 			fills[c] = fills.get(c, 0) + 1
 	var oak_c: Color = world.OAK_RESOURCE.debug_color
 	var pine_c: Color = load("res://resources/pine.tres").debug_color
-	check(fills.get(oak_c, 0) > 0 and fills.get(pine_c, 0) > 0 and fills.size() == 2, "tree view: oak (%d) and pine (%d) markers, species colors only" % [fills.get(oak_c, 0), fills.get(pine_c, 0)])
+	var member_colors := {}
+	for member in world.CANOPY_TREES.members:
+		member_colors[member.debug_color] = true
+	var only_members := true
+	for c in fills:
+		only_members = only_members and member_colors.has(c)
+	check(fills.get(oak_c, 0) > 0 and fills.get(pine_c, 0) > 0 and only_members, "tree view: oak (%d) and pine (%d) markers, species colors only (%d colors)" % [fills.get(oak_c, 0), fills.get(pine_c, 0), fills.size()])
+
+	# Vegetation view: Material base image, same trees drawn as triangles.
+	var tree_count := 0
+	for m in world._loaded_placements.values():
+		tree_count += m._positions.size()
+	world.set_view_mode(CM.ViewMode.VEGETATION)
+	var veg_count := 0
+	var all_triangles := true
+	for m in world._loaded_placements.values():
+		veg_count += m._positions.size()
+		all_triangles = all_triangles and m._triangles
+	check(veg_count == tree_count and veg_count > 0 and all_triangles, "vegetation view: same %d trees as Tree Placement, drawn as triangles" % veg_count)
+	var probe: Dictionary = world._world_gen.sample(3, 5)
+	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "vegetation view: base image is the Material color")
 
 	var out := OS.get_environment("OUT_PNG")
 	if out != "":
@@ -83,9 +103,10 @@ func _init() -> void:
 	quit(1 if _fails > 0 else 0)
 
 
-## Real _color_for() in the Tree Placement view + instances, chunk grid drawn.
+## Real _color_for() in the Vegetation view (Material) + species-colored
+## tree triangles, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
-	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
+	world.set_view_mode(CM.ViewMode.VEGETATION)
 	var guild: ResourceGuild = world.CANOPY_TREES
 	var colors := {}
 	for member in guild.members:
@@ -109,14 +130,11 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 	for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
 		for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
 			instances.append_array(ResourcePlacement.place_guild_in_rect(guild, 4242, Rect2i(cx * 16, cy * 16, 16, 16), density_fn, shares_fn))
+	var outline := Color(0.02, 0.06, 0.02)
 	for inst in instances:
 		var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
-		for dy in range(-3, 4):
-			for dx in range(-3, 4):
-				if dx * dx + dy * dy <= 9:
-					var q := Vector2i(p) + Vector2i(dx, dy)
-					if q.x >= 0 and q.y >= 0 and q.x < img.get_width() and q.y < img.get_height():
-						img.set_pixelv(q, Color(0.02, 0.06, 0.02) if dx * dx + dy * dy > 4 else colors[inst["id"]])
+		_fill_triangle(img, p, 5.0, outline)
+		_fill_triangle(img, p, 3.5, colors[inst["id"]])
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:
@@ -125,3 +143,12 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			img.set_pixel(j, k, Color(1, 1, 1, 1).darkened(0.6))
 	img.save_png(out)
 	print("INFO rendered %d instances to %s" % [instances.size(), out])
+
+
+## Same upward triangle as resource_marker_chunk.gd, rasterized.
+func _fill_triangle(img: Image, p: Vector2, r: float, c: Color) -> void:
+	var tri := PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.87, r * 0.5), p + Vector2(-r * 0.87, r * 0.5)])
+	for y in range(floori(p.y - r), ceili(p.y + r) + 1):
+		for x in range(floori(p.x - r), ceili(p.x + r) + 1):
+			if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height() and Geometry2D.is_point_in_polygon(Vector2(x, y), tri):
+				img.set_pixel(x, y, c)

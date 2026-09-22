@@ -1,0 +1,58 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_palm"]
+
+[sub_resource type="Curve" id="Curve_palmtemp"]
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.12, 0.5), 0.0, 0.0, 0, 0, Vector2(0.25, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_palmelev"]
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.05, 0.8), 0.0, 0.0, 0, 0, Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(0.45, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 7
+
+[sub_resource type="Curve" id="Curve_palmmois"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.3, 0), 0.0, 0.0, 0, 0, Vector2(0.4, 0.5), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_palmfert"]
+_data = [Vector2(0, 0.3), 0.0, 0.0, 0, 0, Vector2(0.5, 0.7), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="Curve_palmero"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.12, 1), 0.0, 0.0, 0, 0, Vector2(0.22, 0.35), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_palm")
+id = "palm"
+category = "vegetation"
+temperature_curve = SubResource("Curve_palmtemp")
+moisture_curve = SubResource("Curve_palmmois")
+fertility_curve = SubResource("Curve_palmfert")
+elevation_curve = SubResource("Curve_palmelev")
+erosion_curve = SubResource("Curve_palmero")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve")
+biome_weights = {
+"Beach": 0.3,
+"Desert": 0.1,
+"Rainforest": 1.0,
+"Savanna": 0.4,
+"Swamp": 0.3,
+"Wetland": 0.4
+}
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.3
+}
+river_affinity = 0.1
+cluster_scale = 48.0
+cluster_strength = 0.85
+minimum_spacing = 2.0
+placement_type = "scatter"
+debug_color = Color(1, 0.6, 0.15, 1)

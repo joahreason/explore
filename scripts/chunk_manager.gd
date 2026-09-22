@@ -68,6 +68,7 @@ enum ViewMode {
 	RESOURCE_PLACEMENT_OAK,
 	TREE_COVER,
 	TREE_PLACEMENT,
+	VEGETATION,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -456,7 +457,7 @@ func _placement_source() -> Resource:
 	match _view_mode:
 		ViewMode.RESOURCE_PLACEMENT_OAK:
 			return OAK_RESOURCE
-		ViewMode.TREE_PLACEMENT:
+		ViewMode.TREE_PLACEMENT, ViewMode.VEGETATION:
 			return CANOPY_TREES
 		_:
 			return null
@@ -502,7 +503,7 @@ func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 		instances = ResourcePlacementScript.place_in_rect(definition, world_seed, rect, density_fn)
 		colors[definition.id] = definition.debug_color
 	var markers := ResourceMarkerChunkScript.new()
-	markers.setup(instances, base, TILE_SIZE, source.minimum_spacing, colors)
+	markers.setup(instances, base, TILE_SIZE, source.minimum_spacing, colors, _view_mode == ViewMode.VEGETATION)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
