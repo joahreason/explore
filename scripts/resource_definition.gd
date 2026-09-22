@@ -40,6 +40,11 @@ extends Resource
 @export var slope_curve: Curve
 @export var drainage_curve: Curve
 @export var erosion_curve: Curve
+## Names of the curves above (e.g. "temperature_curve") that form this
+## resource's tolerance envelope: ResourceManager multiplies by the lowest of
+## them instead of averaging them in with the rest, so falling outside any
+## one means absent. Unlisted curves are preferences that shape abundance.
+@export var required_curves: PackedStringArray = []
 
 ## Keyed by base_biome/subtype String, WorldGen.Geology int, or WorldGen's
 ## water_body String ("none"/"ocean"/"sea"/"lake"/"river"/"swamp") - a
@@ -90,7 +95,9 @@ const CURVE_FIELD_RANGES := {
 }
 
 
-## One message per curve whose domain doesn't cover its field's real range.
+## One message per curve whose domain doesn't cover its field's real range,
+## plus any required_curves entry that isn't a real curve name (a typo there
+## would otherwise silently leave that curve as a mere preference).
 ## Curve.sample() clamps out-of-domain input to the edge point's value, so a
 ## temperature curve left at the default 0..1 domain silently gives every
 ## sub-zero tile the same score - exactly how oak ended up densest in Tundra.
@@ -107,4 +114,7 @@ func get_curve_domain_warnings() -> PackedStringArray:
 			warnings.append("ResourceDefinition '%s': %s domain [%s, %s] doesn't cover the field's range [%s, %s]" % [
 				id, curve_name, curve.min_domain, curve.max_domain, field_range.x, field_range.y
 			])
+	for curve_name in required_curves:
+		if not CURVE_FIELD_RANGES.has(curve_name):
+			warnings.append("ResourceDefinition '%s': required_curves names unknown curve '%s'" % [id, curve_name])
 	return warnings

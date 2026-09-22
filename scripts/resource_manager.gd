@@ -10,9 +10,9 @@ extends RefCounted
 ##
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
-## "requirement" factors (temperature/moisture/fertility/elevation/slope/
-## drainage/erosion), plus geology/water_body weights, are combined via
-## GEOMETRIC MEAN: still
+## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion)
+## not listed in required_curves, plus geology/water_body weights, are
+## combined via GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
 ## multiplicatively compounding the penalty the way straight multiplication
@@ -20,6 +20,16 @@ extends RefCounted
 ## the core mean. River/shore/disturbance affinities are ADDITIVE bonuses.
 ## This mixes multiplicative/weighted/additive per the plan's own guidance,
 ## while staying fully generic - no per-resource-type branching here.
+##
+## Plan Phase 3 amendment (2026-09-22): curves named in
+## definition.required_curves are the resource's TOLERANCE ENVELOPE and are
+## taken out of the mean - the lowest of them multiplies the result (the
+## scarcest requirement limits growth), so being outside any one of them
+## means absent instead of merely ~20% less, as a mean of ~6 factors gives.
+## Biome weights are applied against the tile's normalized biome SCORES
+## (membership), not its argmax label, so a strong biome preference still
+## changes smoothly across a boundary instead of speckling where the label
+## flickers tile to tile.
 ##
 ## An unset curve, or a weight map with no entry for the tile's actual
 ## biome/subtype/geology/water_body, means neutral (1.0) - "this resource has
@@ -31,6 +41,12 @@ extends RefCounted
 ## clamping) gives real empty/full patches; tuned visually in Phase 5.
 const PATCH_CONTRAST := 1.8
 
+## Biome membership = score^sharpness, normalized. Raw classifier scores are
+## soft (Plains keeps a constant 0.2 floor on every land tile), so a plain
+## linear share would blur every biome by its neighbors; the exponent keeps
+## the leading biome dominant while staying continuous.
+const BIOME_MEMBERSHIP_SHARPNESS := 4.0
+
 static var _patch_noise_cache: Dictionary = {}
 
 
@@ -38,13 +54,25 @@ static func get_suitability(
 	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
 ) -> float:
 	var core_factors: Array[float] = []
-	_add_curve_factor(core_factors, definition.temperature_curve, state.temperature)
-	_add_curve_factor(core_factors, definition.moisture_curve, state.moisture)
-	_add_curve_factor(core_factors, definition.fertility_curve, state.soil_fertility)
-	_add_curve_factor(core_factors, definition.elevation_curve, state.elevation)
-	_add_curve_factor(core_factors, definition.slope_curve, state.slope)
-	_add_curve_factor(core_factors, definition.drainage_curve, state.drainage)
-	_add_curve_factor(core_factors, definition.erosion_curve, state.erosion)
+	var requirement := 1.0
+	var curve_inputs := {
+		"temperature_curve": state.temperature,
+		"moisture_curve": state.moisture,
+		"fertility_curve": state.soil_fertility,
+		"elevation_curve": state.elevation,
+		"slope_curve": state.slope,
+		"drainage_curve": state.drainage,
+		"erosion_curve": state.erosion,
+	}
+	for curve_name in curve_inputs:
+		var curve: Curve = definition.get(curve_name)
+		if curve == null:
+			continue
+		var factor := clampf(curve.sample(curve_inputs[curve_name]), 0.0, 1.0)
+		if definition.required_curves.has(curve_name):
+			requirement = minf(requirement, factor)
+		else:
+			core_factors.append(factor)
 	if not definition.geology_weights.is_empty():
 		var geology_factor: float = definition.geology_weights.get(state.geology, 1.0)
 		core_factors.append(clampf(geology_factor, 0.0, 1.0))
@@ -52,12 +80,11 @@ static func get_suitability(
 		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
 		core_factors.append(clampf(water_body_factor, 0.0, 1.0))
 
-	var suitability := _geometric_mean(core_factors)
+	var suitability := requirement * _geometric_mean(core_factors)
 
 	if not classified.is_empty():
 		if not definition.biome_weights.is_empty():
-			var biome_modifier: float = definition.biome_weights.get(classified.get("base_biome", ""), 1.0)
-			suitability *= biome_modifier
+			suitability *= _biome_modifier(definition.biome_weights, classified)
 		if not definition.subtype_weights.is_empty():
 			var subtype_modifier: float = definition.subtype_weights.get(classified.get("subtype", ""), 1.0)
 			suitability *= subtype_modifier
@@ -76,12 +103,23 @@ static func get_suitability(
 	return clampf(suitability, 0.0, 1.0)
 
 
-static func _add_curve_factor(factors: Array[float], curve: Curve, value: float) -> void:
-	if curve != null:
-		factors.append(clampf(curve.sample(value), 0.0, 1.0))
+## Membership-weighted biome modifier (see BIOME_MEMBERSHIP_SHARPNESS).
+## Water/Beach tiles carry no scores - they are categorical facts decided
+## upstream - so they fall back to the label's weight.
+static func _biome_modifier(weights: Dictionary, classified: Dictionary) -> float:
+	var scores: Dictionary = classified.get("scores", {})
+	if scores.is_empty():
+		return weights.get(classified.get("base_biome", ""), 1.0)
+	var total := 0.0
+	var weighted := 0.0
+	for biome in scores:
+		var membership := pow(maxf(scores[biome], 0.0), BIOME_MEMBERSHIP_SHARPNESS)
+		total += membership
+		weighted += membership * float(weights.get(biome, 1.0))
+	return weighted / total if total > 0.0 else 1.0
 
 
-## Geometric mean of the "true requirement" factors - see class doc for why
+## Geometric mean of the preference factors - see class doc for why
 ## this instead of a straight product. Empty input (a resource with no
 ## curves/geology preference at all) means "no requirements defined",
 ## neutral 1.0, consistent with the null-curve convention.

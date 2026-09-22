@@ -39,6 +39,7 @@ fertility_curve = SubResource("Curve_apdl1")
 elevation_curve = SubResource("Curve_n2fvo")
 slope_curve = SubResource("Curve_unadh")
 erosion_curve = SubResource("Curve_oakero")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve")
 biome_weights = {
 "Forest": 1.0,
 "Grassland": 0.3,

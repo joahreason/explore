@@ -4,15 +4,14 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Suitability refinements (plan Phase 3 amendment): requirement vs. preference curves; biome weights by normalized classifier scores instead of label - verify with the by-biome breakdown
 - [ ] Phase 8: first playable resources (trees, rocks, berries) - built around guilds (plan Phase 8 amendment), first test oak + pine; includes cross-guild collision and sprites instead of debug circles
 
 ## Next
 
-- [ ] Density contrast: geometric-mean softening + concave placement count keep marginal habitat (Badlands/Desert/Alpine) too close to Plains - consider the plan's optional `density_curve` (see PROJECT_STATE Known Unverified Areas)
+- [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 
 - [ ] Look at Oak Suitability / Density / Placement in the real editor/running game - so far only headless renders
-- [ ] Merge `claude/phase-6-continuation-k99sqh` (Phase 7) into `resource-generation`
+- [ ] Subtype weights are still label-based - expose BiomeSubtype scores when a resource leans on subtypes (plan Phase 3 amendment)
 
 ## Later
 
