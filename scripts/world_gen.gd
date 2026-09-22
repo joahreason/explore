@@ -39,7 +39,7 @@ extends Resource
 ## Regional climate noise is FBM simplex, which clusters near 0 and rarely
 ## nears +/-1 - without a stretch the world has few truly hot or cold
 ## regions. climate_contrast scales it (the sum is clamped to -1..1 anyway).
-@export var climate_contrast: float = 1.6
+@export var climate_contrast: float = 1.35
 ## Added to every tile's temperature. Land always sits above sea_level, so
 ## elevation_lapse alone pulls typical land (elevation ~0..0.3) colder than
 ## the climate noise says; this offsets that bias so cold regions don't
@@ -138,8 +138,8 @@ extends Resource
 @export var vegetation_erosion_penalty: float = 0.7
 ## Cold limits growth outright: none at/below vegetation_cold_limit, no
 ## penalty from vegetation_cold_full up.
-@export var vegetation_cold_limit: float = -0.8
-@export var vegetation_cold_full: float = -0.1
+@export var vegetation_cold_limit: float = -0.9
+@export var vegetation_cold_full: float = -0.35
 ## Heat only limits growth where water is short: heat stress ramps from
 ## vegetation_heat_start to temperature 1.0 and is scaled by dryness
 ## (1 - moisture), so hot+wet can reach forest levels while hot+dry thins

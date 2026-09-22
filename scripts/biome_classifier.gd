@@ -19,9 +19,16 @@ const BiomeModifiersScript := preload("res://scripts/biome_modifiers.gd")
 
 ## Tundra's score ramps from 0 at temperature -TUNDRA_COLD_START to 1 at
 ## -TUNDRA_COLD_FULL. It used to start at -0.1, so merely cool land beat the
-## Plains floor (0.2) by -0.16 and Tundra covered ~a third of the world.
-const TUNDRA_COLD_START := 0.3
-const TUNDRA_COLD_FULL := 0.55
+## Plains floor (0.2) by -0.16 and Tundra covered ~a third of the world;
+## -0.5 leaves the cool band to boreal forest/grassland.
+const TUNDRA_COLD_START := 0.5
+const TUNDRA_COLD_FULL := 0.75
+## Vegetation ramps (start, full) for the wooded (Forest/Rainforest) and
+## grassy (Grassland/Savanna) scores. Tuned together with WorldGen's
+## vegetation formula for a roughly even land-biome spread (wide sample,
+## 4 seeds: no land biome above ~22%).
+const FOREST_VEG := Vector2(0.27, 0.37)
+const GRASS_VEG := Vector2(0.2, 0.3)
 
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
@@ -109,27 +116,36 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 	var erosion: float = s["erosion"]
 	var slope: float = s["slope"]
 	var elev01 := clampf((elevation + 1.0) * 0.5, 0.0, 1.0)
-	var wooded := smoothstep(0.3, 0.4, vegetation)
-	var grassy := smoothstep(0.15, 0.25, vegetation)
+	var drainage: float = s["drainage"]
+	var wooded := smoothstep(FOREST_VEG.x, FOREST_VEG.y, vegetation)
+	var grassy := smoothstep(GRASS_VEG.x, GRASS_VEG.y, vegetation)
 	var hot_wet := smoothstep(0.05, 0.2, temperature) * smoothstep(0.4, 0.55, moisture)
 	var hot_dry := smoothstep(0.1, 0.25, temperature) * (1.0 - smoothstep(0.35, 0.5, moisture))
+	# Wetland = wet AND poorly drained ground, not "wet but sparse": under
+	# the current vegetation formula wet ground is always lush, so a
+	# vegetation cap left Wetland at <1%. Waterlogging also halves the
+	# wooded/grassy biomes so Wetland wins where it's full.
+	var waterlogged := smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.42, 0.55, drainage))
+	var not_wet := 1.0 - 0.5 * waterlogged
 
 	return {
-		"Alpine Snow": smoothstep(0.55, 0.85, elev01),
+		# Needs cold as well as height - by elevation alone, hot highlands
+		# (median temperature +0.22) were labeled snow.
+		"Alpine Snow": smoothstep(0.55, 0.85, elev01) * (1.0 - smoothstep(0.0, 0.3, temperature)),
 		"Tundra": smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature),
 		"Badlands": maxf(smoothstep(0.15, 0.45, erosion), smoothstep(0.004, 0.009, slope)),
 		"Desert": (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation)),
-		"Wetland": smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.25, 0.35, vegetation)),
+		"Wetland": waterlogged,
 		# The hot variants split their generic biome by climate instead of
 		# multiplying it down - as a bare product (forest * hot * wet) they
 		# could never outscore the generic biome, so Rainforest/Savanna
 		# never won anywhere.
-		"Rainforest": wooded * hot_wet,
-		"Forest": wooded * (1.0 - hot_wet),
+		"Rainforest": wooded * hot_wet * not_wet,
+		"Forest": wooded * (1.0 - hot_wet) * not_wet,
 		"Savanna": grassy * hot_dry,
 		# Halved under woodland so Forest wins where both are full (before,
 		# it only won that tie by dictionary order).
-		"Grassland": grassy * (1.0 - hot_dry) * (1.0 - 0.5 * wooded),
+		"Grassland": grassy * (1.0 - hot_dry) * (1.0 - 0.5 * wooded) * not_wet,
 		# Constant floor so something always wins in "boring middle ground"
 		# tiles where nothing else clears its threshold - matches the old
 		# code's final "else: return Plains" fallback.
