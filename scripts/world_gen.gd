@@ -157,6 +157,8 @@ const GEOLOGY_DRAINAGE_BIAS := {
 	Geology.VOLCANIC: 0.55,
 }
 
+const DISTURBANCE_TYPES := ["fire", "flood", "storm", "landslide"]
+
 var _elev_base := FastNoiseLite.new()
 var _elev_ridge := FastNoiseLite.new()
 var _climate := FastNoiseLite.new()
@@ -414,7 +416,24 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var size_mult: float = lerp(1.0 - disturbance_size_variation, 1.0 + disturbance_size_variation, (cell_value + 1.0) * 0.5)
 	var effective_radius := disturbance_radius * size_mult
 
+	# Type and age are pseudo-independent remaps of the SAME cell_value (no
+	# extra noise sample) - different multipliers before taking the
+	# fractional part decorrelate them from each other and from size_mult
+	# above, even though all three ultimately come from one number per blob.
+	# Both are constant across a whole blob, unlike disturbance01 below which
+	# also falls off with distance from the epicenter.
+	var type_raw := cell_value * 5.17
+	var type01 := type_raw - floorf(type_raw)
+	var disturbance_type: String = DISTURBANCE_TYPES[int(type01 * DISTURBANCE_TYPES.size()) % DISTURBANCE_TYPES.size()]
+
+	var age_raw := cell_value * 7.3
+	var disturbance_age := age_raw - floorf(age_raw)
+
 	var disturbance01 := clampf(1.0 - smoothstep(0.0, effective_radius, dist_norm), 0.0, 1.0)
+	# Ecological succession: an old scar fades even at its own epicenter, not
+	# just with distance - a young disturbance stays stark/bare, an old one
+	# has mostly recovered.
+	disturbance01 *= 1.0 - disturbance_age * 0.6
 
 	# --- vegetation (derived, not biome-assigned) ---
 	var temp_suit := 1.0 - clampf(absf(temperature), 0.0, 1.0)
@@ -443,6 +462,8 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"deposition": deposition01,
 		"soil_fertility": soil_fertility,
 		"disturbance": disturbance01,
+		"disturbance_type": disturbance_type,
+		"disturbance_age": disturbance_age,
 		"vegetation": vegetation01,
 		"exposure": exposure01,
 		"resource": resource01,

@@ -13,6 +13,8 @@ const ITEMS := [
 	{"label": "Temp Variation", "mode": ChunkManagerScript.ViewMode.TEMP_VARIATION},
 	{"label": "Precip Seasonality", "mode": ChunkManagerScript.ViewMode.PRECIP_SEASONALITY},
 	{"label": "Drainage", "mode": ChunkManagerScript.ViewMode.DRAINAGE},
+	{"label": "Disturbance Age", "mode": ChunkManagerScript.ViewMode.DISTURBANCE_AGE},
+	{"label": "Disturbance Type", "mode": ChunkManagerScript.ViewMode.DISTURBANCE_TYPE},
 ]
 
 

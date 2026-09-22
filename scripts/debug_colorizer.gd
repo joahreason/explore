@@ -25,6 +25,7 @@ const GRASS := Color(0.35, 0.65, 0.25)
 const FOREST := Color(0.1, 0.35, 0.15)
 const RESOURCE := Color(1.0, 0.1, 0.8)
 const DISTURBED := Color(0.35, 0.32, 0.28)
+const RECOVERING := Color(0.45, 0.55, 0.3)
 
 
 static func color_for(s: Dictionary) -> Color:
@@ -35,6 +36,7 @@ static func color_for(s: Dictionary) -> Color:
 	var vegetation: float = s["vegetation"]
 	var erosion: float = s["erosion"]
 	var disturbance: float = s["disturbance"]
+	var disturbance_age: float = s["disturbance_age"]
 	var resource: float = s["resource"]
 	var water_body: String = s["water_body"]
 	var shore_proximity: float = s["shore_proximity"]
@@ -78,7 +80,12 @@ static func color_for(s: Dictionary) -> Color:
 		+ FOREST * w_forest
 	) / total
 
-	color = color.lerp(DISTURBED, disturbance * 0.5)
+	# Ecological succession: young scars tint stark/ashen, old ones tint
+	# toward regrowth instead - the intensity itself already fades with age
+	# too (see WorldGen), this makes the "recovering" look visible, not just
+	# fainter.
+	var disturbance_tint := DISTURBED.lerp(RECOVERING, disturbance_age)
+	color = color.lerp(disturbance_tint, disturbance * 0.5)
 
 	# Resource veins are still generated (see WorldGen.sample()["resource"])
 	# but not shown visually right now - re-enable by uncommenting below.

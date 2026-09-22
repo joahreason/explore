@@ -20,6 +20,15 @@ const HIGH := Color(0.95, 0.9, 0.4)
 const POOR_DRAINAGE := Color(0.25, 0.2, 0.35)
 const GOOD_DRAINAGE := Color(0.85, 0.7, 0.35)
 
+const YOUNG_SCAR := Color(0.15, 0.1, 0.08)
+const OLD_SCAR := Color(0.6, 0.75, 0.4)
+
+const TYPE_FIRE := Color(0.9, 0.3, 0.1)
+const TYPE_FLOOD := Color(0.2, 0.4, 0.9)
+const TYPE_STORM := Color(0.6, 0.6, 0.75)
+const TYPE_LANDSLIDE := Color(0.55, 0.4, 0.25)
+const TYPE_UNKNOWN := Color(0.8, 0.2, 0.8)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -42,3 +51,23 @@ static func precip_seasonality(s: Dictionary) -> Color:
 
 static func drainage(s: Dictionary) -> Color:
 	return POOR_DRAINAGE.lerp(GOOD_DRAINAGE, clampf(float(s["drainage"]), 0.0, 1.0))
+
+
+## Raw per-blob age across the whole Voronoi cell (not gated by disturbance
+## intensity) - deliberately shows full region extent, useful for verifying
+## neighboring blobs get decorrelated ages.
+static func disturbance_age(s: Dictionary) -> Color:
+	return YOUNG_SCAR.lerp(OLD_SCAR, clampf(float(s["disturbance_age"]), 0.0, 1.0))
+
+
+static func disturbance_type(s: Dictionary) -> Color:
+	match String(s["disturbance_type"]):
+		"fire":
+			return TYPE_FIRE
+		"flood":
+			return TYPE_FLOOD
+		"storm":
+			return TYPE_STORM
+		"landslide":
+			return TYPE_LANDSLIDE
+	return TYPE_UNKNOWN
