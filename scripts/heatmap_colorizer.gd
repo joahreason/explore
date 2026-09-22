@@ -43,6 +43,9 @@ const HIGH_CAVE := Color(0.55, 0.4, 0.75)
 const NO_CLIFF := Color(0.15, 0.15, 0.18)
 const HIGH_CLIFF := Color(0.9, 0.85, 0.8)
 
+const NOT_SUITABLE := Color(0.12, 0.1, 0.14)
+const HIGHLY_SUITABLE := Color(0.25, 0.85, 0.35)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -110,3 +113,10 @@ static func cave_potential(s: Dictionary) -> Color:
 static func cliff_tendency(s: Dictionary) -> Color:
 	var v := clampf(pow(float(s["cliff_tendency"]) * 4.0, 0.5), 0.0, 1.0)
 	return NO_CLIFF.lerp(HIGH_CLIFF, v)
+
+
+## Takes a raw 0..1 value directly (not a sample Dictionary) since
+## suitability isn't a WorldGen field - it's computed externally by
+## ResourceManager.get_suitability(), which already clamps to [0,1].
+static func resource_suitability(value: float) -> Color:
+	return NOT_SUITABLE.lerp(HIGHLY_SUITABLE, clampf(value, 0.0, 1.0))

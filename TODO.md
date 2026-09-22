@@ -4,15 +4,14 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 4: resource-suitability heatmap debug views in `chunk_manager.gd`'s view-mode dropdown (needs at least one real `ResourceDefinition` .tres instance to visualize, e.g. Oak)
+- [ ] Phase 5: deterministic per-resource distribution/patch noise (new reserved WorldGen seed offset, next free is +17) so a fully-suitable area doesn't render/place as uniform density
 
 ## Next
 
-- [ ] Phase 5: deterministic per-resource distribution/patch noise
+- [ ] Phase 6: density formula (`suitability * base_density * patch_modifier`) + debug view
 
 ## Later
 
-- [ ] Phase 6: density formula + debug view
 - [ ] Phase 7: spatial placement (Poisson-disc/blue-noise) - note this needs a new per-chunk object-instancing render path (`docs/architecture.md` §7 flags there is currently none)
 - [ ] Phase 8: first playable resources (trees, rocks, berries)
 

@@ -24,6 +24,7 @@ const ITEMS := [
 	{"label": "Fire Risk", "mode": ChunkManagerScript.ViewMode.FIRE_RISK},
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
+	{"label": "Oak Suitability", "mode": ChunkManagerScript.ViewMode.RESOURCE_SUITABILITY_OAK},
 ]
 
 

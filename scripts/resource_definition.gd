@@ -37,14 +37,24 @@ extends Resource
 @export var drainage_curve: Curve
 @export var erosion_curve: Curve
 
-## Keyed by base_biome/subtype String, or WorldGen.Geology int - a resource
-## with no entry for the tile's biome/subtype/geology is neither penalized
-## nor favored by that factor (see the same null-is-neutral rule as curves
-## above, applies identically here).
+## Keyed by base_biome/subtype String, WorldGen.Geology int, or WorldGen's
+## water_body String ("none"/"ocean"/"sea"/"lake"/"river"/"swamp") - a
+## resource with no entry for the tile's biome/subtype/geology/water_body is
+## neither penalized nor favored by that factor (see the same null-is-neutral
+## rule as curves above, applies identically here).
+##
+## water_body_weights exists specifically so "is this tile actually water"
+## is a per-resource DATA choice, not a hardcoded rule in ResourceManager -
+## a land plant sets {"none": 1.0, "ocean": 0.0, "sea": 0.0, "lake": 0.0,
+## "river": 0.0} so it can't score high while literally submerged (a real
+## bug found via Phase 4's visual validation - elevation/moisture curves
+## alone don't reliably exclude water, since e.g. a river can sit well above
+## sea_level), while a Phase 10 river/shore plant sets the opposite weights.
 @export_group("Categorical Weights")
 @export var biome_weights: Dictionary = {}
 @export var subtype_weights: Dictionary = {}
 @export var geology_weights: Dictionary = {}
+@export var water_body_weights: Dictionary = {}
 
 @export_group("Special Affinities")
 @export var river_affinity: float = 0.0

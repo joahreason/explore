@@ -10,6 +10,9 @@ const DebugColorizerScript := preload("res://scripts/debug_colorizer.gd")
 const HeatmapColorizerScript := preload("res://scripts/heatmap_colorizer.gd")
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
+const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
+const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
+const OAK_RESOURCE := preload("res://resources/oak.tres")
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -52,6 +55,7 @@ enum ViewMode {
 	FIRE_RISK,
 	CAVE_POTENTIAL,
 	CLIFF_TENDENCY,
+	RESOURCE_SUITABILITY_OAK,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -277,8 +281,19 @@ func _heatmap_color_for(sample: Dictionary):
 			return HeatmapColorizerScript.cave_potential(sample)
 		ViewMode.CLIFF_TENDENCY:
 			return HeatmapColorizerScript.cliff_tendency(sample)
+		ViewMode.RESOURCE_SUITABILITY_OAK:
+			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
 		_:
 			return null
+
+
+## Phase 4 of docs/resource-generation-plan.md: full sample -> EnvironmentalState
+## -> classify_full() -> ResourceManager.get_suitability(), so the debug view
+## reflects biome/subtype weighting too, not just the raw curve factors.
+func _resource_suitability(sample: Dictionary, definition: ResourceDefinition) -> float:
+	var state = EnvironmentalStateScript.from_sample(sample)
+	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
+	return ResourceManagerScript.get_suitability(state, definition, classified)
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);

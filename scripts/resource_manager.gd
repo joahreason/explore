@@ -11,7 +11,8 @@ extends RefCounted
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
 ## "requirement" factors (temperature/moisture/fertility/elevation/slope/
-## drainage/erosion/geology) are combined via GEOMETRIC MEAN: still
+## drainage/erosion), plus geology/water_body weights, are combined via
+## GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
 ## multiplicatively compounding the penalty the way straight multiplication
@@ -21,8 +22,8 @@ extends RefCounted
 ## while staying fully generic - no per-resource-type branching here.
 ##
 ## An unset curve, or a weight map with no entry for the tile's actual
-## biome/subtype/geology, means neutral (1.0) - "this resource has no
-## opinion about this factor" - never 0.0 (see ResourceDefinition's doc
+## biome/subtype/geology/water_body, means neutral (1.0) - "this resource has
+## no opinion about this factor" - never 0.0 (see ResourceDefinition's doc
 ## comment for the same convention).
 
 static func get_suitability(
@@ -39,6 +40,9 @@ static func get_suitability(
 	if not definition.geology_weights.is_empty():
 		var geology_factor: float = definition.geology_weights.get(state.geology, 1.0)
 		core_factors.append(clampf(geology_factor, 0.0, 1.0))
+	if not definition.water_body_weights.is_empty():
+		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
+		core_factors.append(clampf(water_body_factor, 0.0, 1.0))
 
 	var suitability := _geometric_mean(core_factors)
 

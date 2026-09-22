@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 4 — Resource Suitability Debug Views (about to start; see `docs/resource-generation-plan.md`).
+Phase 5 — Deterministic Resource Distribution Noise (about to start; see `docs/resource-generation-plan.md`).
 
 ## Completed
 
@@ -20,13 +20,18 @@ Phase 4 — Resource Suitability Debug Views (about to start; see `docs/resource
 - Phase 3: implemented `ResourceManager.get_suitability(state, definition, classified={}) -> float`. Curve-based physical factors (temperature/moisture/fertility/elevation/slope/drainage/erosion) plus geology weight combine via GEOMETRIC MEAN (not a blind product - the plan warns that craters every score); biome/subtype weights are separate multiplicative modifiers applied after; river/shore/disturbance affinities are additive bonuses; final result clamped to [0,1]. Unset curve or missing weight-map entry = neutral 1.0, per the established convention. Verified headless against the plan's own Oak/Iron examples: neutral-when-empty, good vs. hostile temperature, unlisted-biome-is-neutral vs. listed-lower-weight-biome-reduces-score, geology as a hard requirement for Iron, and output clamping. PASS.
 - Fixed a real gap in the headless dev workflow: this project's `.godot/global_script_class_cache.cfg` (gitignored, local-only) only gets rebuilt by opening the editor, so any `class_name` added since the last rebuild fails to resolve in ad hoc `--script` test runs. One-time fix documented in "Things To Watch Out For" below; applied this session so `EnvironmentalState`/`ResourceDefinition`/`ResourceManager` all resolve normally now.
 
+- Phase 4: added `resources/oak.tres` (first real `ResourceDefinition` instance) and wired a "Oak Suitability" heatmap view into `chunk_manager.gd`/`view_mode_dropdown.gd`, following the existing heatmap-view pattern exactly (`HeatmapColorizerScript.resource_suitability()`, blended 65% onto Material). Visual validation (headless PNG render, per the plan's own Phase 4 gate: "do not proceed until these maps look believable") caught two real correctness bugs before they shipped:
+  1. `elevation_curve` interpolated *up* toward its peak from -1, so deep water still scored 0.3-1.0 - a lake read as highly suitable. Fixed by flattening the curve to 0 at/below sea_level.
+  2. Rivers can sit well above sea_level, so the elevation fix alone didn't exclude them - a river tile still read moderately suitable. Fixed generically (not just for oak) by adding `water_body_weights: Dictionary` to `ResourceDefinition` (mirrors `geology_weights` exactly, keyed by WorldGen's `water_body` string) and wiring it into `ResourceManager.get_suitability()`'s geometric-mean core. This stays fully data-driven per Rule 6/Rule 3 - a land plant sets water bodies to 0.0, a future river/shore plant (Phase 10) sets the opposite, with no hardcoded water logic in ResourceManager itself.
+  Re-rendered after both fixes: lake, river, and small pond all correctly read as low suitability; land transitions (forest/desert/disturbance-scar boundaries) are smooth with no hard edges. Also verified the real `chunk_manager.gd._color_for()` code path directly (not just the standalone render script), headless.
+
 ## In Progress
 
-- (none - Phase 3 complete, Phase 4 not yet started)
+- (none - Phase 4 complete, Phase 5 not yet started)
 
 ## Next
 
-- Phase 4: resource-suitability heatmap debug views wired into `chunk_manager.gd`'s view-mode dropdown (one per registered resource, e.g. "Oak Suitability"), following the existing heatmap-view pattern (`HeatmapColorizerScript`, blended 65% onto Material).
+- Phase 5: deterministic per-resource distribution/patch noise (new reserved WorldGen seed offset, next free is +17) so a suitable area doesn't render as uniform density.
 
 ## Important Architecture
 
@@ -45,7 +50,9 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ### Important Dependencies
 
 - `EnvironmentalState` (`scripts/environmental_state.gd`) is a typed, transient wrapper the new resource system should consume instead of raw Dictionary string keys. It does NOT replace `WorldGen.sample()`'s Dictionary return - both exist in parallel.
-- `ResourceManager` (`scripts/resource_manager.gd`) is currently an empty stub - the identified integration point for Phase 2+ (suitability/density functions), to be consumed by `chunk_manager.gd` the same way `BiomeClassifier`/`HeatmapColorizer` are today.
+- `ResourceDefinition` (`scripts/resource_definition.gd`, Resource + `@export`) is the per-resource-type data asset (curves + categorical weights + affinities + spatial params). `resources/oak.tres` is the first real instance.
+- `ResourceManager` (`scripts/resource_manager.gd`) implements `get_suitability(state, definition, classified={}) -> float` - consumed by `chunk_manager.gd`'s `RESOURCE_SUITABILITY_OAK` view mode the same way `BiomeClassifier`/`HeatmapColorizer` are.
+- Any land-vegetation `ResourceDefinition` MUST set `water_body_weights` to exclude actual water (`{"none": 1.0, "ocean": 0.0, "sea": 0.0, "lake": 0.0, "river": 0.0}`, swamp optional) - `elevation_curve` alone is not sufficient, since rivers can sit well above `sea_level`. See `resources/oak.tres` for a worked example.
 
 ### Determinism / Data Flow
 
@@ -73,6 +80,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Phase 1: same-seed/same-coordinate determinism check across multiple `WorldGen` instances and multiple `sample()` calls; field-for-field match between `EnvironmentalState` and the source Dictionary.
 - Phase 2: `ResourceDefinition` instantiation, `Curve.sample()` output, `Dictionary` weight round-trip, and `ResourceSaver.save()`/`load()` round-trip, all headless.
 - Phase 3: `ResourceManager.get_suitability()` against the plan's own Oak/Iron worked examples (see Completed above), headless.
+- Phase 4: headless PNG render of Oak Suitability (blended onto Material, 512x512, seed 4242) inspected visually twice (before/after the water-body fix); direct exercise of `chunk_manager.gd`'s real `_color_for()` for the new view mode via an off-tree instance, headless.
 
 ### Known Unverified Areas
 
@@ -82,11 +90,11 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`) committed on branch `resource-generation`. Phase 3 (`ResourceManager.get_suitability()`) written and verified (PASS), about to be committed.
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`) committed on branch `resource-generation`. Phase 4 (Oak Suitability debug view + `water_body_weights` fix) written and verified (PASS), about to be committed.
 
 ### Next Action
 
-- Begin Phase 4 (resource-suitability heatmap debug views in `chunk_manager.gd`) per `docs/resource-generation-plan.md`.
+- Begin Phase 5 (deterministic per-resource distribution/patch noise) per `docs/resource-generation-plan.md`.
 
 ### Things To Watch Out For
 
