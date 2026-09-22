@@ -15,6 +15,7 @@ extends RefCounted
 ## behind the other in a fixed check order.
 
 const BiomeSubtypeScript := preload("res://scripts/biome_subtype.gd")
+const BiomeModifiersScript := preload("res://scripts/biome_modifiers.gd")
 
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
@@ -44,11 +45,11 @@ static func classify(s: Dictionary) -> String:
 
 
 ## {base_biome, subtype, modifiers, confidence, scores} - the real
-## "DerivedBiome" result. modifiers is filled in by Phase 9; empty for now.
+## "DerivedBiome" result.
 static func classify_full(s: Dictionary) -> Dictionary:
 	var d := classify_detailed(s)
 	d["subtype"] = BiomeSubtypeScript.classify(s, d["base_biome"])
-	d["modifiers"] = []
+	d["modifiers"] = BiomeModifiersScript.compute(s)
 	return d
 
 

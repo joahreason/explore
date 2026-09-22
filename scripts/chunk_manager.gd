@@ -25,6 +25,7 @@ enum ViewMode {
 	MATERIAL,
 	BASE_BIOME,
 	SUBTYPE,
+	MODIFIERS,
 	TEMPERATURE,
 	MOISTURE,
 	TEMP_VARIATION,
@@ -100,7 +101,7 @@ func toggle_biome_overlay() -> void:
 
 
 func _is_label_view(mode: ViewMode) -> bool:
-	return mode == ViewMode.BASE_BIOME or mode == ViewMode.SUBTYPE
+	return mode == ViewMode.BASE_BIOME or mode == ViewMode.SUBTYPE or mode == ViewMode.MODIFIERS
 
 
 ## Public entry point for the view-mode dropdown. Regenerates every currently
@@ -240,12 +241,14 @@ func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
 ## Biome labels are derived from the same WorldGen fields but sampled on a
 ## (chunk_size+1)^2 grid so boundary outlines line up with tiles one step
 ## into the neighboring chunk, without that chunk needing to be loaded.
-## Fill/outlines always key on base biome; SUBTYPE view only changes the
-## drawn label text ("Forest (Montane)" etc.), not the region shapes.
+## Fill/outlines always key on base biome; SUBTYPE/MODIFIERS views only
+## change the drawn label text ("Forest (Montane)", "Cold, Windy" etc.), not
+## the region shapes.
 func _generate_overlay_chunk(chunk_coord: Vector2i) -> void:
 	var base := chunk_coord * CHUNK_SIZE
 	var stride := CHUNK_SIZE + 1
 	var show_subtype := _view_mode == ViewMode.SUBTYPE
+	var show_modifiers := _view_mode == ViewMode.MODIFIERS
 	var biome_grid := []
 	var label_grid := []
 	biome_grid.resize(stride * stride)
@@ -261,6 +264,12 @@ func _generate_overlay_chunk(chunk_coord: Vector2i) -> void:
 				var subtype: String = full["subtype"]
 				biome_grid[i] = base_biome
 				label_grid[i] = "%s (%s)" % [base_biome, subtype] if subtype != "" else base_biome
+			elif show_modifiers:
+				var full: Dictionary = BiomeClassifierScript.classify_full(sample)
+				var base_biome: String = full["base_biome"]
+				var tags: Array = full["modifiers"]
+				biome_grid[i] = base_biome
+				label_grid[i] = "%s: %s" % [base_biome, ", ".join(tags)] if not tags.is_empty() else base_biome
 			else:
 				var base_biome: String = BiomeClassifierScript.classify(sample)
 				biome_grid[i] = base_biome
