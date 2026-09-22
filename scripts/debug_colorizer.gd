@@ -80,8 +80,10 @@ static func color_for(s: Dictionary) -> Color:
 
 	color = color.lerp(DISTURBED, disturbance * 0.5)
 
-	if resource > 0.65:
-		color = color.lerp(RESOURCE, clampf((resource - 0.65) / 0.35, 0.0, 1.0) * 0.85)
+	# Resource veins are still generated (see WorldGen.sample()["resource"])
+	# but not shown visually right now - re-enable by uncommenting below.
+	# if resource > 0.65:
+	# 	color = color.lerp(RESOURCE, clampf((resource - 0.65) / 0.35, 0.0, 1.0) * 0.85)
 
 	return color
 
