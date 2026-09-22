@@ -26,7 +26,11 @@ extends Resource
 
 @export var id: String
 @export var category: String
-@export var base_density: float = 1.0
+## Peak density (0..1) this resource reaches on a perfectly suitable tile at
+## full patch value - ResourceManager.get_density() (Phase 6) scales it by
+## suitability and get_patch_modifier(). Lets a naturally sparse resource
+## (e.g. a rare ore) stay sparse even where conditions are ideal.
+@export_range(0.0, 1.0) var base_density: float = 1.0
 
 @export_group("Suitability Curves")
 @export var temperature_curve: Curve

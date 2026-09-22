@@ -46,6 +46,11 @@ const HIGH_CLIFF := Color(0.9, 0.85, 0.8)
 const NOT_SUITABLE := Color(0.12, 0.1, 0.14)
 const HIGHLY_SUITABLE := Color(0.25, 0.85, 0.35)
 
+# Deliberately a different hue from suitability's green, so the two views
+# can't be mistaken for each other when flipping between them.
+const NO_DENSITY := Color(0.1, 0.1, 0.12)
+const HIGH_DENSITY := Color(0.95, 0.7, 0.15)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -120,3 +125,9 @@ static func cliff_tendency(s: Dictionary) -> Color:
 ## ResourceManager.get_suitability(), which already clamps to [0,1].
 static func resource_suitability(value: float) -> Color:
 	return NOT_SUITABLE.lerp(HIGHLY_SUITABLE, clampf(value, 0.0, 1.0))
+
+
+## Same raw-0..1 contract as resource_suitability(), for
+## ResourceManager.get_density() (Phase 6).
+static func resource_density(value: float) -> Color:
+	return NO_DENSITY.lerp(HIGH_DENSITY, clampf(value, 0.0, 1.0))

@@ -25,6 +25,7 @@ const ITEMS := [
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
 	{"label": "Oak Suitability", "mode": ChunkManagerScript.ViewMode.RESOURCE_SUITABILITY_OAK},
+	{"label": "Oak Density", "mode": ChunkManagerScript.ViewMode.RESOURCE_DENSITY_OAK},
 ]
 
 

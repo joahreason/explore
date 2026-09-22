@@ -56,6 +56,7 @@ enum ViewMode {
 	CAVE_POTENTIAL,
 	CLIFF_TENDENCY,
 	RESOURCE_SUITABILITY_OAK,
+	RESOURCE_DENSITY_OAK,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -246,8 +247,8 @@ const HEATMAP_OVERLAY_STRENGTH := 0.65
 ## Picks the color function for the current view mode. BASE_BIOME has no
 ## dedicated per-tile color of its own - it keeps the Material look as its
 ## base image and relies entirely on the drawn label overlay on top.
-func _color_for(sample: Dictionary) -> Color:
-	var heatmap_color: Variant = _heatmap_color_for(sample)
+func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
+	var heatmap_color: Variant = _heatmap_color_for(sample, wx, wy)
 	if heatmap_color == null:
 		return DebugColorizerScript.color_for(sample)
 	var material_color: Color = DebugColorizerScript.color_for(sample)
@@ -256,8 +257,10 @@ func _color_for(sample: Dictionary) -> Color:
 
 ## Returns null (not a heatmap view, or BASE_BIOME/SUBTYPE/MODIFIERS which
 ## use the plain Material look as their overlay base) so _color_for can
-## fall back to pure Material with no blending cost.
-func _heatmap_color_for(sample: Dictionary):
+## fall back to pure Material with no blending cost. wx/wy are only needed by
+## views that depend on position beyond the sample itself (resource density's
+## patch noise).
+func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 	match _view_mode:
 		ViewMode.TEMPERATURE:
 			return HeatmapColorizerScript.temperature(sample)
@@ -283,6 +286,8 @@ func _heatmap_color_for(sample: Dictionary):
 			return HeatmapColorizerScript.cliff_tendency(sample)
 		ViewMode.RESOURCE_SUITABILITY_OAK:
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
+		ViewMode.RESOURCE_DENSITY_OAK:
+			return HeatmapColorizerScript.resource_density(_resource_density(sample, OAK_RESOURCE, wx, wy))
 		_:
 			return null
 
@@ -294,6 +299,14 @@ func _resource_suitability(sample: Dictionary, definition: ResourceDefinition) -
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	return ResourceManagerScript.get_suitability(state, definition, classified)
+
+
+## Phase 6: same pipeline as _resource_suitability(), then patch noise +
+## base_density via ResourceManager.get_density().
+func _resource_density(sample: Dictionary, definition: ResourceDefinition, wx: int, wy: int) -> float:
+	var state = EnvironmentalStateScript.from_sample(sample)
+	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
+	return ResourceManagerScript.get_density(state, definition, world_seed, wx, wy, classified)
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);
@@ -309,7 +322,7 @@ func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
 			var wx := base.x + lx * lod_step + lod_step / 2
 			var wy := base.y + ly * lod_step + lod_step / 2
 			var sample := _world_gen.sample(wx, wy)
-			img.set_pixel(lx, ly, _color_for(sample))
+			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
 	return img
 
 

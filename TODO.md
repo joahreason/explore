@@ -4,15 +4,14 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 6: density formula (`suitability * base_density * ResourceManager.get_patch_modifier()`), normalize/clamp, + in-game density debug view
+- [ ] Phase 7: spatial placement (Poisson-disc/blue-noise) from `ResourceManager.get_density()` - needs a new per-chunk object-instancing render path (`docs/architecture.md` §7 flags there is currently none); design that first
 
 ## Next
 
-- [ ] Look at Oak Suitability (and Phase 6's density view) in the real editor/running game - so far only headless PNG renders
+- [ ] Look at Oak Suitability and Oak Density in the real editor/running game - so far only headless PNG renders
 
 ## Later
 
-- [ ] Phase 7: spatial placement (Poisson-disc/blue-noise) - note this needs a new per-chunk object-instancing render path (`docs/architecture.md` §7 flags there is currently none)
 - [ ] Phase 8: first playable resources (trees, rocks, berries)
 
 ## Bugs

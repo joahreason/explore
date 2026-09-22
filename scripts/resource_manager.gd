@@ -122,3 +122,26 @@ static func _patch_noise(definition: ResourceDefinition, world_seed: int) -> Fas
 	noise.fractal_octaves = 3
 	_patch_noise_cache[key] = noise
 	return noise
+
+
+## Phase 6 of docs/resource-generation-plan.md: "how much of this resource
+## should exist here?", as opposed to get_suitability()'s "would it like this
+## environment?". density = suitability * base_density * patch_modifier,
+## clamped to [0,1] - a 0..1 fraction of the resource's peak density, which
+## Phase 7 placement will interpret. Each term only ever scales the others
+## down, so density <= suitability always holds: patch noise can thin out a
+## good area but never make an unsuitable tile dense.
+static func get_density(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	classified: Dictionary = {}
+) -> float:
+	var suitability := get_suitability(state, definition, classified)
+	if suitability <= 0.0:
+		return 0.0
+	var base_density := clampf(definition.base_density, 0.0, 1.0)
+	var patch := get_patch_modifier(definition, world_seed, wx, wy)
+	return clampf(suitability * base_density * patch, 0.0, 1.0)

@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 6 — Resource Density (about to start; see `docs/resource-generation-plan.md`).
+Phase 7 — Spatial Object Placement (about to start; see `docs/resource-generation-plan.md`).
 
 ## Completed
 
@@ -25,14 +25,15 @@ Phase 6 — Resource Density (about to start; see `docs/resource-generation-plan
   2. Rivers can sit well above sea_level, so the elevation fix alone didn't exclude them - a river tile still read moderately suitable. Fixed generically (not just for oak) by adding `water_body_weights: Dictionary` to `ResourceDefinition` (mirrors `geology_weights` exactly, keyed by WorldGen's `water_body` string) and wiring it into `ResourceManager.get_suitability()`'s geometric-mean core. This stays fully data-driven per Rule 6/Rule 3 - a land plant sets water bodies to 0.0, a future river/shore plant (Phase 10) sets the opposite, with no hardcoded water logic in ResourceManager itself.
   Re-rendered after both fixes: lake, river, and small pond all correctly read as low suitability; land transitions (forest/desert/disturbance-scar boundaries) are smooth with no hard edges. Also verified the real `chunk_manager.gd._color_for()` code path directly (not just the standalone render script), headless.
 - Phase 5: added `ResourceManager.get_patch_modifier(definition, world_seed, wx, wy) -> float` (0..1 multiplier, applied on top of suitability in Phase 6, never replacing it). One `FastNoiseLite` per resource, seeded from `("<world_seed + 17>:<id>").hash()` - reserved `WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET = 17` in WorldGen's offset registry (next free now +18) but the noise itself lives in ResourceManager (Rule 4, layer separation), cached in a static Dictionary. Driven by the existing `ResourceDefinition.cluster_scale` (now defined as patch size in tiles, default changed 1.0 -> 32.0; nothing set it before) and `cluster_strength` (0 = uniform 1.0, 1 = full 0..1; modifier = lerp(1, patch, strength)). Simplex FBM output is contrast-stretched x1.8 then clamped so real clearings/dense groves appear (without it FBM rarely leaves ~0.3..0.7). Oak tuned to `cluster_scale = 48`, `cluster_strength = 0.85` after a visual check showed the old 0.5 only produced mottling with no clearings.
+- Phase 6: added `ResourceManager.get_density(state, definition, world_seed, wx, wy, classified={}) -> float` = `clamp(suitability * clamp(base_density, 0, 1) * get_patch_modifier(), 0, 1)` - "how much should exist here" vs. suitability's "would it like it here". `base_density` is now `@export_range(0, 1)` and documented as peak density; oak left at the default 1.0 (no tuning evidence to change it yet). The plan's `patch_scale`/`patch_strength` are the existing `cluster_scale`/`cluster_strength` (no duplicate fields); the optional `density_curve` was skipped as not needed. New "Oak Density" view (`RESOURCE_DENSITY_OAK`, amber palette, distinct from suitability's green); to feed patch noise, `chunk_manager.gd`'s `_color_for`/`_heatmap_color_for` now take `wx, wy` (single caller, `_build_chunk_image`). Tuning observation for Phase 7: with oak's suitability mostly 0.6-0.8 and patch strength 0.85, density rarely exceeds 0.6 (28 of 10,776 tiles with suitability > 0.6, seed 4242) - fine for a debug view, but Phase 7 should decide how density maps to placement probability rather than assume 1.0 is commonly reached.
 
 ## In Progress
 
-- (none - Phase 5 complete, Phase 6 not yet started)
+- (none - Phase 6 complete, Phase 7 not yet started)
 
 ## Next
 
-- Phase 6: `density = suitability * base_density * patch_modifier`, normalize/clamp, plus an in-game density debug view (there's no patch/density view mode yet - Phase 5 was validated with headless renders only).
+- Phase 7: spatial placement (Poisson-disc/blue-noise) consuming `ResourceManager.get_density()`. Needs a new per-chunk object-instancing render path (`docs/architecture.md` §7) - treat that as its own design decision before coding.
 
 ## Important Architecture
 
@@ -82,21 +83,22 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Phase 2: `ResourceDefinition` instantiation, `Curve.sample()` output, `Dictionary` weight round-trip, and `ResourceSaver.save()`/`load()` round-trip, all headless.
 - Phase 3: `ResourceManager.get_suitability()` against the plan's own Oak/Iron worked examples (see Completed above), headless.
 - Phase 5: headless script (temp, in the job scratch dir, not committed): same seed -> identical patch field even after dropping the noise cache; different seed -> different; output in [0,1]; different ids decorrelated (|r| ~0.02 for oak/berry/rock); strength 0 -> exactly 1.0; oak's floor = 1 - strength; larger cluster_scale -> smoother field (lag-8 autocorr 0.00 at scale 8 vs 0.87 at 96). PASS. Plus a 384x384 seed-4242 render (suitability | patch | suitability x patch) inspected visually: groves/sparse woodland/clearings, water still excluded. Headless game boot exits cleanly.
+- Phase 6: headless script (temp, deleted, not committed), seed 4242: 14/14 PASS - empty definition -> 1.0; base_density scales linearly and clamps (>1, <0); over 384x384 oak tiles density is in [0,1], <= suitability, equals the formula exactly, is 0 wherever suitability is 0, and is repeatable; identical across two fresh WorldGen instances; the real `chunk_manager._color_for()` for `RESOURCE_DENSITY_OAK` matches `get_density()`, and the Material view is unchanged by the signature change. Side-by-side suitability | density render inspected visually: the uniform suitable region breaks into groves/clearings, water and the unsuitable pocket stay dark. Headless game boot exits cleanly.
 - Phase 4: headless PNG render of Oak Suitability (blended onto Material, 512x512, seed 4242) inspected visually twice (before/after the water-body fix); direct exercise of `chunk_manager.gd`'s real `_color_for()` for the new view mode via an off-tree instance, headless.
 
 ### Known Unverified Areas
 
-- Oak Suitability view has not been checked inside the actual Godot editor/running game (only headless PNG renders + direct code-path exercise) - worth a quick look in-editor before Phase 5 changes distribution.
+- Oak Suitability and Oak Density views have not been checked inside the actual Godot editor/running game (only headless PNG renders + direct code-path exercise) - worth a quick look in-editor before Phase 7 builds placement on top of density.
 
 ## Session Handoff
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 (`48f8665`), Phase 6 committed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
 
 ### Next Action
 
-- Begin Phase 6 (resource density + debug view) per `docs/resource-generation-plan.md`, consuming `ResourceManager.get_suitability()` and `get_patch_modifier()`.
+- Begin Phase 7 (spatial object placement) per `docs/resource-generation-plan.md`, consuming `ResourceManager.get_density()`. Start by designing the per-chunk instancing render path (`docs/architecture.md` §7).
 
 ### Things To Watch Out For
 
