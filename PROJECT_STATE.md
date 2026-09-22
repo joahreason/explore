@@ -84,13 +84,13 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Known Unverified Areas
 
-- No in-editor/visual check performed yet for this phase (not applicable - no rendering changes).
+- Oak Suitability view has not been checked inside the actual Godot editor/running game (only headless PNG renders + direct code-path exercise) - worth a quick look in-editor before Phase 5 changes distribution.
 
 ## Session Handoff
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`) committed on branch `resource-generation`. Phase 4 (Oak Suitability debug view + `water_body_weights` fix) written and verified (PASS), about to be committed.
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`) committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
 
 ### Next Action
 
