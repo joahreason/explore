@@ -62,6 +62,7 @@ enum ViewMode {
 
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
+@onready var _inspector_panel := $UI/TileInspector
 
 var _target: Node2D
 var _world_gen: WorldGen
@@ -80,6 +81,7 @@ func _ready() -> void:
 
 	if target_path != NodePath():
 		_target = get_node(target_path)
+		_target.connect("clicked", _on_tile_clicked)
 
 	_update_chunks(_chunk_of(_target.global_position if _target else Vector2.ZERO), _current_load_radius())
 
@@ -195,6 +197,17 @@ func _current_lod_step() -> int:
 func _chunk_of(world_pos: Vector2) -> Vector2i:
 	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
 	return Vector2i(floori(float(tile.x) / CHUNK_SIZE), floori(float(tile.y) / CHUNK_SIZE))
+
+
+## Driven by CameraRig's "clicked" signal (a left click/tap that wasn't a
+## drag) - samples the single clicked tile fresh (bypassing the topology
+## cache is unnecessary here, it's one tile) and hands the full sample +
+## classification to the inspector panel.
+func _on_tile_clicked(world_pos: Vector2) -> void:
+	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
+	var sample := _world_gen.sample(tile.x, tile.y)
+	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
+	_inspector_panel.show_info(tile, sample, classified)
 
 
 func _update_chunks(center: Vector2i, load_radius: int) -> void:

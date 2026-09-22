@@ -6,6 +6,7 @@
 [ext_resource type="Script" path="res://scripts/view_mode_dropdown.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/seed_input.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/randomize_seed_button.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/tile_inspector_panel.gd" id="7"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -67,3 +68,36 @@ offset_right = -16.0
 offset_bottom = 264.0
 theme_override_font_sizes/font_size = 22
 script = ExtResource("4")
+
+[node name="TileInspector" type="PanelContainer" parent="UI"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 356.0
+offset_bottom = 536.0
+script = ExtResource("7")
+
+[node name="Margin" type="MarginContainer" parent="UI/TileInspector"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 12
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 12
+
+[node name="VBox" type="VBoxContainer" parent="UI/TileInspector/Margin"]
+layout_mode = 2
+
+[node name="CloseButton" type="Button" parent="UI/TileInspector/Margin/VBox"]
+layout_mode = 2
+size_flags_horizontal = 8
+text = "X"
+
+[node name="Scroll" type="ScrollContainer" parent="UI/TileInspector/Margin/VBox"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 460)
+
+[node name="Label" type="RichTextLabel" parent="UI/TileInspector/Margin/VBox/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+bbcode_enabled = true
+fit_content = true
+theme_override_font_sizes/normal_font_size = 15
