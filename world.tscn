@@ -3,7 +3,7 @@
 [ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/chunk_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/reload_button.gd" id="3"]
-[ext_resource type="Script" path="res://scripts/biome_toggle_button.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/view_mode_dropdown.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/seed_input.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/randomize_seed_button.gd" id="6"]
 
@@ -58,13 +58,12 @@ theme_override_font_sizes/font_size = 28
 text = "Reload"
 script = ExtResource("3")
 
-[node name="BiomeButton" type="Button" parent="UI"]
+[node name="ViewModeDropdown" type="OptionButton" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -220.0
 offset_top = 216.0
 offset_right = -16.0
-offset_bottom = 280.0
-theme_override_font_sizes/font_size = 28
-text = "Biomes"
+offset_bottom = 264.0
+theme_override_font_sizes/font_size = 22
 script = ExtResource("4")

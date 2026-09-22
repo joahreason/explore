@@ -7,6 +7,7 @@ extends Node2D
 ## generation/coloring logic. This file just handles chunk streaming.
 
 const DebugColorizerScript := preload("res://scripts/debug_colorizer.gd")
+const HeatmapColorizerScript := preload("res://scripts/heatmap_colorizer.gd")
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
 
@@ -14,6 +15,19 @@ const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
 const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
 const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
+
+## Render-method views swap what color a chunk's base image is built from
+## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer. Only
+## BASE_BIOME additionally draws the label overlay, since text can't be
+## baked into a flat pixel image. Keep in sync with view_mode_dropdown.gd.
+enum ViewMode {
+	MATERIAL,
+	BASE_BIOME,
+	TEMPERATURE,
+	MOISTURE,
+	TEMP_VARIATION,
+	PRECIP_SEASONALITY,
+}
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
 ## Inspector; if left empty a default-tuned WorldGen is created at runtime.
@@ -27,8 +41,8 @@ const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing 
 var _target: Node2D
 var _world_gen: WorldGen
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
-var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only while enabled
-var _overlay_enabled: bool = false
+var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in BASE_BIOME view
+var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
 
@@ -70,13 +84,30 @@ func _unhandled_input(event: InputEvent) -> void:
 		toggle_biome_overlay()
 
 
-## Public so both the "B" key and the on-screen button can trigger it.
+## Quick keyboard shortcut: hop between Material and Base Biome. The dropdown
+## (view_mode_dropdown.gd) covers the full view list via set_view_mode().
 func toggle_biome_overlay() -> void:
-	_overlay_enabled = not _overlay_enabled
-	if _overlay_enabled:
+	set_view_mode(ViewMode.MATERIAL if _view_mode == ViewMode.BASE_BIOME else ViewMode.BASE_BIOME)
+
+
+## Public entry point for the view-mode dropdown. Regenerates every currently
+## loaded chunk's image in place (swap Sprite2D.texture) rather than adding a
+## second layer - see plan doc §7 for why heatmap views are render methods,
+## not overlays.
+func set_view_mode(mode: ViewMode) -> void:
+	if mode == _view_mode:
+		return
+	var was_biome := _view_mode == ViewMode.BASE_BIOME
+	_view_mode = mode
+	var now_biome := _view_mode == ViewMode.BASE_BIOME
+
+	for chunk_coord in _loaded_chunks.keys():
+		_regenerate_chunk_image(chunk_coord)
+
+	if now_biome and not was_biome:
 		for chunk_coord in _loaded_chunks.keys():
 			_generate_overlay_chunk(chunk_coord)
-	else:
+	elif was_biome and not now_biome:
 		for overlay in _loaded_overlays.values():
 			overlay.queue_free()
 		_loaded_overlays.clear()
@@ -125,18 +156,36 @@ func _update_chunks(center: Vector2i, load_radius: int) -> void:
 			_unload_chunk(c)
 
 
-func _generate_chunk(chunk_coord: Vector2i) -> void:
+## Picks the color function for the current view mode. BASE_BIOME has no
+## dedicated per-tile color of its own - it keeps the Material look as its
+## base image and relies entirely on the drawn label overlay on top.
+func _color_for(sample: Dictionary) -> Color:
+	match _view_mode:
+		ViewMode.TEMPERATURE:
+			return HeatmapColorizerScript.temperature(sample)
+		ViewMode.MOISTURE:
+			return HeatmapColorizerScript.moisture(sample)
+		ViewMode.TEMP_VARIATION:
+			return HeatmapColorizerScript.temp_variation(sample)
+		ViewMode.PRECIP_SEASONALITY:
+			return HeatmapColorizerScript.precip_seasonality(sample)
+		_:
+			return DebugColorizerScript.color_for(sample)
+
+
+func _build_chunk_image(chunk_coord: Vector2i) -> Image:
 	var base := chunk_coord * CHUNK_SIZE
 	var img := Image.create(CHUNK_SIZE, CHUNK_SIZE, false, Image.FORMAT_RGB8)
-
 	for ly in range(CHUNK_SIZE):
 		for lx in range(CHUNK_SIZE):
-			var wx := base.x + lx
-			var wy := base.y + ly
-			var sample := _world_gen.sample(wx, wy)
-			img.set_pixel(lx, ly, DebugColorizerScript.color_for(sample))
+			var sample := _world_gen.sample(base.x + lx, base.y + ly)
+			img.set_pixel(lx, ly, _color_for(sample))
+	return img
 
-	var texture := ImageTexture.create_from_image(img)
+
+func _generate_chunk(chunk_coord: Vector2i) -> void:
+	var base := chunk_coord * CHUNK_SIZE
+	var texture := ImageTexture.create_from_image(_build_chunk_image(chunk_coord))
 	var sprite := Sprite2D.new()
 	sprite.texture = texture
 	sprite.centered = false
@@ -147,8 +196,13 @@ func _generate_chunk(chunk_coord: Vector2i) -> void:
 
 	_loaded_chunks[chunk_coord] = sprite
 
-	if _overlay_enabled:
+	if _view_mode == ViewMode.BASE_BIOME:
 		_generate_overlay_chunk(chunk_coord)
+
+
+func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
+	var sprite: Sprite2D = _loaded_chunks[chunk_coord]
+	sprite.texture = ImageTexture.create_from_image(_build_chunk_image(chunk_coord))
 
 
 ## Biome labels are derived from the same WorldGen fields but sampled on a

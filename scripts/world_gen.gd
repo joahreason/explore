@@ -92,6 +92,16 @@ extends Resource
 @export var wind_strength_frequency: float = 0.002
 @export var wind_dir_frequency: float = 0.0018
 
+# --- Seasonality ---
+# Static per-tile data only (annual amplitude, not a live day/season clock).
+# temp_variation: how much temperature swings across the year on top of the
+# annual-mean `temperature` field. precip_seasonality: how unevenly rainfall
+# is distributed through the year (low = steady, high = monsoon/dry-season
+# contrast) on top of the annual-mean `moisture` field.
+@export_group("Seasonality")
+@export var temp_variation_frequency: float = 0.0012      # regional - stretched by world_scale
+@export var precip_seasonality_frequency: float = 0.0018  # regional - stretched by world_scale
+
 # --- Geology ---
 @export_group("Geology")
 @export var geology_frequency: float = 0.006
@@ -151,8 +161,17 @@ var _micro := FastNoiseLite.new()
 var _river_line := FastNoiseLite.new()
 var _river_warp := FastNoiseLite.new()
 var _water_region := FastNoiseLite.new()
+var _temp_variation := FastNoiseLite.new()
+var _precip_seasonality := FastNoiseLite.new()
 
 var _configured_seed: int = -1
+
+# Seed offsets in use, so new fields don't collide: +1 elev_base, +2
+# elev_ridge, +3 climate, +4 rainfall, +5 wind_strength, +6 wind_dir,
+# +7 geology, +8 disturbance/disturbance_cell (shared), +9 resource_vein,
+# +10 micro, +11 disturbance_warp, +12 river_line, +13 river_warp,
+# +14 water_region, +15 temp_variation, +16 precip_seasonality.
+# Next free offset: +17.
 
 
 func configure(world_seed: int) -> void:
@@ -172,6 +191,8 @@ func configure(world_seed: int) -> void:
 	_setup(_river_line, world_seed + 12, FastNoiseLite.TYPE_SIMPLEX, river_frequency / world_scale, 2)
 	_setup(_river_warp, world_seed + 13, FastNoiseLite.TYPE_SIMPLEX, river_frequency * 3.0 / world_scale, 2)
 	_setup(_water_region, world_seed + 14, FastNoiseLite.TYPE_SIMPLEX, water_region_frequency / world_scale, 2)
+	_setup(_temp_variation, world_seed + 15, FastNoiseLite.TYPE_SIMPLEX, temp_variation_frequency / world_scale, 2)
+	_setup(_precip_seasonality, world_seed + 16, FastNoiseLite.TYPE_SIMPLEX, precip_seasonality_frequency / world_scale, 2)
 
 	# Local features - intentionally NOT scaled by world_scale.
 	_setup(_disturbance, world_seed + 8, FastNoiseLite.TYPE_CELLULAR, disturbance_frequency, 1)
@@ -230,6 +251,10 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var climate := _climate.get_noise_2d(fx, fy)
 	var micro := _micro.get_noise_2d(fx * 3.0, fy * 3.0) * micro_variation
 	var temperature := clampf(climate - e * elevation_lapse - dy * exposure_sun_strength + micro, -1.0, 1.0)
+
+	# --- seasonality (static data only - see @export_group("Seasonality") doc) ---
+	var temp_variation01 := (_temp_variation.get_noise_2d(fx, fy) + 1.0) * 0.5
+	var precip_seasonality01 := (_precip_seasonality.get_noise_2d(fx, fy) + 1.0) * 0.5
 
 	# --- moisture (rainfall + orographic lift/shadow + shoreline + wind aridity) ---
 	var rainfall01 := (_rainfall.get_noise_2d(fx, fy) + 1.0) * 0.5
@@ -397,6 +422,9 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"water_body": water_body,
 		"river": river01,
 		"shore_proximity": shore_proximity,
+		"wind_strength": wind_strength01,
+		"temp_variation": temp_variation01,
+		"precip_seasonality": precip_seasonality01,
 	}
 
 
