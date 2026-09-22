@@ -20,6 +20,13 @@ extends Node2D
 ## this node's _unhandled_input as an unclaimed touch, corrupting pan/pinch
 ## state and firing a spurious tile-click under the UI. See world.tscn
 ## (ui_root_path wired to "../UI").
+##
+## project.godot has emulate_mouse_from_touch=true (needed so Controls like
+## the dropdown/buttons/scrollbar respond to touch at all) - that means a
+## touch on the open map ALSO arrives here as a parallel synthetic mouse
+## press/motion/release. _handle_mouse_button ignores that mirror whenever a
+## raw touch gesture is already being tracked in _touches, so a one-finger
+## drag doesn't pan the camera twice (once per event stream).
 @export var ui_root_path: NodePath
 
 ## Below this much on-screen movement between press and release, a left
@@ -35,7 +42,6 @@ signal clicked(world_pos: Vector2)
 @onready var _ui_root: Node = get_node(ui_root_path) if ui_root_path != NodePath() else null
 
 var _dragging: bool = false
-var _press_over_ui: bool = false
 var _press_position: Vector2 = Vector2.ZERO
 var _touches: Dictionary = {}   # touch index -> last Vector2 position
 var _touch_press_positions: Dictionary = {}  # touch index -> Vector2 at press
@@ -54,16 +60,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		_handle_touch_drag(event)
 
 
-## True if a currently-hovered Control claims this point (catches the
-## dropdown's open popup list, which lives outside _ui_root's children), or
-## if it falls inside one of _ui_root's own Control children (catches
-## everything else, whether or not GUI hover happens to be tracking it).
+## True if a currently-hovered Control claims this point (best-effort - GUI
+## hover tracking from touch isn't guaranteed to have updated yet by the
+## time the parallel raw touch event reaches here), or if it falls inside
+## one of _ui_root's own Control children, or if any dropdown's popup list
+## is currently open (that popup lives outside _ui_root's children and can
+## render anywhere on screen, so its open/closed state - not screen_pos -
+## is what decides it: this makes the whole gesture that opened it, and any
+## gesture while it stays open, unconditionally "over UI").
 func _is_over_ui(screen_pos: Vector2) -> bool:
 	if get_viewport().gui_get_hovered_control() != null:
 		return true
 	if _ui_root == null:
 		return false
 	for child in _ui_root.get_children():
+		if child is OptionButton and child.get_popup().visible:
+			return true
 		if child is Control and child.visible and child.get_global_rect().has_point(screen_pos):
 			return true
 	return false
@@ -72,16 +84,14 @@ func _is_over_ui(screen_pos: Vector2) -> bool:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			_press_over_ui = _is_over_ui(event.position)
-			if _press_over_ui:
+			# Ignore both a press over UI (see _is_over_ui) and the
+			# touch-emulated mirror of a raw touch gesture _handle_touch is
+			# already tracking (see the emulate_mouse_from_touch note above).
+			if _is_over_ui(event.position) or not _touches.is_empty():
 				return
 			_dragging = true
 			_press_position = event.position
-		else:
-			var was_over_ui := _press_over_ui
-			_press_over_ui = false
-			if was_over_ui:
-				return
+		elif _dragging:
 			_dragging = false
 			if event.position.distance_to(_press_position) < CLICK_DRAG_THRESHOLD:
 				clicked.emit(get_global_mouse_position())
@@ -151,7 +161,6 @@ func _current_pinch_distance() -> float:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_dragging = false
-		_press_over_ui = false
 		_touches.clear()
 		_touch_press_positions.clear()
 		_touch_over_ui.clear()
