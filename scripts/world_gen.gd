@@ -218,8 +218,12 @@ var _configured_seed: int = -1
 # elev_ridge, +3 climate, +4 rainfall, +5 wind_strength, +6 wind_dir,
 # +7 geology, +8 disturbance/disturbance_cell (shared), +9 resource_vein,
 # +10 micro, +11 disturbance_warp, +12 river_line, +13 river_warp,
-# +14 water_region, +15 temp_variation, +16 precip_seasonality.
-# Next free offset: +17.
+# +14 water_region, +15 temp_variation, +16 precip_seasonality,
+# +17 per-resource distribution/patch noise (not owned here - see
+# ResourceManager.get_patch_modifier(), which derives one seed per
+# ResourceDefinition.id from world_seed + this offset).
+# Next free offset: +18.
+const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 
 
 func configure(world_seed: int) -> void:

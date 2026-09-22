@@ -4,11 +4,11 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 5: deterministic per-resource distribution/patch noise (new reserved WorldGen seed offset, next free is +17) so a fully-suitable area doesn't render/place as uniform density
+- [ ] Phase 6: density formula (`suitability * base_density * ResourceManager.get_patch_modifier()`), normalize/clamp, + in-game density debug view
 
 ## Next
 
-- [ ] Phase 6: density formula (`suitability * base_density * patch_modifier`) + debug view
+- [ ] Look at Oak Suitability (and Phase 6's density view) in the real editor/running game - so far only headless PNG renders
 
 ## Later
 

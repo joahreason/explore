@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 5 — Deterministic Resource Distribution Noise (about to start; see `docs/resource-generation-plan.md`).
+Phase 6 — Resource Density (about to start; see `docs/resource-generation-plan.md`).
 
 ## Completed
 
@@ -24,14 +24,15 @@ Phase 5 — Deterministic Resource Distribution Noise (about to start; see `docs
   1. `elevation_curve` interpolated *up* toward its peak from -1, so deep water still scored 0.3-1.0 - a lake read as highly suitable. Fixed by flattening the curve to 0 at/below sea_level.
   2. Rivers can sit well above sea_level, so the elevation fix alone didn't exclude them - a river tile still read moderately suitable. Fixed generically (not just for oak) by adding `water_body_weights: Dictionary` to `ResourceDefinition` (mirrors `geology_weights` exactly, keyed by WorldGen's `water_body` string) and wiring it into `ResourceManager.get_suitability()`'s geometric-mean core. This stays fully data-driven per Rule 6/Rule 3 - a land plant sets water bodies to 0.0, a future river/shore plant (Phase 10) sets the opposite, with no hardcoded water logic in ResourceManager itself.
   Re-rendered after both fixes: lake, river, and small pond all correctly read as low suitability; land transitions (forest/desert/disturbance-scar boundaries) are smooth with no hard edges. Also verified the real `chunk_manager.gd._color_for()` code path directly (not just the standalone render script), headless.
+- Phase 5: added `ResourceManager.get_patch_modifier(definition, world_seed, wx, wy) -> float` (0..1 multiplier, applied on top of suitability in Phase 6, never replacing it). One `FastNoiseLite` per resource, seeded from `("<world_seed + 17>:<id>").hash()` - reserved `WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET = 17` in WorldGen's offset registry (next free now +18) but the noise itself lives in ResourceManager (Rule 4, layer separation), cached in a static Dictionary. Driven by the existing `ResourceDefinition.cluster_scale` (now defined as patch size in tiles, default changed 1.0 -> 32.0; nothing set it before) and `cluster_strength` (0 = uniform 1.0, 1 = full 0..1; modifier = lerp(1, patch, strength)). Simplex FBM output is contrast-stretched x1.8 then clamped so real clearings/dense groves appear (without it FBM rarely leaves ~0.3..0.7). Oak tuned to `cluster_scale = 48`, `cluster_strength = 0.85` after a visual check showed the old 0.5 only produced mottling with no clearings.
 
 ## In Progress
 
-- (none - Phase 4 complete, Phase 5 not yet started)
+- (none - Phase 5 complete, Phase 6 not yet started)
 
 ## Next
 
-- Phase 5: deterministic per-resource distribution/patch noise (new reserved WorldGen seed offset, next free is +17) so a suitable area doesn't render as uniform density.
+- Phase 6: `density = suitability * base_density * patch_modifier`, normalize/clamp, plus an in-game density debug view (there's no patch/density view mode yet - Phase 5 was validated with headless renders only).
 
 ## Important Architecture
 
@@ -56,7 +57,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Determinism / Data Flow
 
-`WorldGen.configure(world_seed)` seeds 16 `FastNoiseLite` fields off `world_seed + <reserved offset>` (offsets +1..+16 in use, next free +17). Any new resource-distribution noise must reserve a new offset the same way. `WaterTopology` is the only non-pure/cached piece of the existing pipeline; its cache is runtime-only, rebuilt lazily, never serialized.
+`WorldGen.configure(world_seed)` seeds 16 `FastNoiseLite` fields off `world_seed + <reserved offset>` (offsets +1..+16 in use; +17 reserved for per-resource distribution noise, owned by `ResourceManager.get_patch_modifier()`; next free +18). Any new noise must reserve a new offset the same way. Resource patch noise derives one seed per `ResourceDefinition.id`, so ids must be unique. `WaterTopology` is the only non-pure/cached piece of the existing pipeline; its cache is runtime-only, rebuilt lazily, never serialized.
 
 ## Important Decisions
 
@@ -80,6 +81,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Phase 1: same-seed/same-coordinate determinism check across multiple `WorldGen` instances and multiple `sample()` calls; field-for-field match between `EnvironmentalState` and the source Dictionary.
 - Phase 2: `ResourceDefinition` instantiation, `Curve.sample()` output, `Dictionary` weight round-trip, and `ResourceSaver.save()`/`load()` round-trip, all headless.
 - Phase 3: `ResourceManager.get_suitability()` against the plan's own Oak/Iron worked examples (see Completed above), headless.
+- Phase 5: headless script (temp, in the job scratch dir, not committed): same seed -> identical patch field even after dropping the noise cache; different seed -> different; output in [0,1]; different ids decorrelated (|r| ~0.02 for oak/berry/rock); strength 0 -> exactly 1.0; oak's floor = 1 - strength; larger cluster_scale -> smoother field (lag-8 autocorr 0.00 at scale 8 vs 0.87 at 96). PASS. Plus a 384x384 seed-4242 render (suitability | patch | suitability x patch) inspected visually: groves/sparse woodland/clearings, water still excluded. Headless game boot exits cleanly.
 - Phase 4: headless PNG render of Oak Suitability (blended onto Material, 512x512, seed 4242) inspected visually twice (before/after the water-body fix); direct exercise of `chunk_manager.gd`'s real `_color_for()` for the new view mode via an off-tree instance, headless.
 
 ### Known Unverified Areas
@@ -90,11 +92,11 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`) committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
 
 ### Next Action
 
-- Begin Phase 5 (deterministic per-resource distribution/patch noise) per `docs/resource-generation-plan.md`.
+- Begin Phase 6 (resource density + debug view) per `docs/resource-generation-plan.md`, consuming `ResourceManager.get_suitability()` and `get_patch_modifier()`.
 
 ### Things To Watch Out For
 

@@ -61,8 +61,12 @@ extends Resource
 @export var shore_affinity: float = 0.0
 @export var disturbance_affinity: float = 0.0
 
+## cluster_scale/cluster_strength drive ResourceManager.get_patch_modifier()
+## (Phase 5): cluster_scale is the approximate patch (grove/clearing) size in
+## tiles, cluster_strength how strongly that patch noise modulates density -
+## 0.0 disables it (uniform), 1.0 lets patches range from empty to full.
 @export_group("Spatial")
-@export var cluster_scale: float = 1.0
-@export var cluster_strength: float = 0.0
+@export var cluster_scale: float = 32.0
+@export_range(0.0, 1.0) var cluster_strength: float = 0.0
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""

@@ -18,7 +18,7 @@ Both the sampling and classification stages are callable directly, independent o
 
 ## 2. `WorldGen.sample(wx, wy) -> Dictionary` (`scripts/world_gen.gd`)
 
-Deterministic per `world_seed` (16 independent `FastNoiseLite` fields, each seeded `world_seed + <reserved offset>`, offsets `+1` through `+16`, next free is `+17`). Pure per-tile arithmetic **except** the water-body block, which queries `WaterTopology` (§3) — a cached, non-O(1) component.
+Deterministic per `world_seed` (16 independent `FastNoiseLite` fields, each seeded `world_seed + <reserved offset>`, offsets `+1` through `+16`, next free is `+18` - `+17` is reserved as the base for per-resource distribution noise, see §6). Pure per-tile arithmetic **except** the water-body block, which queries `WaterTopology` (§3) — a cached, non-O(1) component.
 
 The returned Dictionary's exact keys, as currently returned (`world_gen.gd:526-558`):
 
@@ -85,7 +85,7 @@ A 3-stage layer purely for debug/inspector labeling — nothing in `WorldGen.sam
 
 ## 6. Determinism & seed model
 
-`world_seed` is resolved once in `chunk_manager.gd:_ready()` (`_resolve_world_seed()`): a fixed exported int in the editor, or on web, a `?seed=` URL param (numeric used directly, other text hashed via `String.hash()`), or a fresh `randi()` if no param — see `README.md` for the user-facing seed UI (Randomize/Reload/Enter-to-submit). `WorldGen.configure(world_seed)` seeds all 16 noise fields off of it once per session. Per Rule 1 of the resource-generation plan, any new resource-distribution noise must follow the same pattern: `world_seed + <a newly reserved offset>`, continuing from `+17`.
+`world_seed` is resolved once in `chunk_manager.gd:_ready()` (`_resolve_world_seed()`): a fixed exported int in the editor, or on web, a `?seed=` URL param (numeric used directly, other text hashed via `String.hash()`), or a fresh `randi()` if no param — see `README.md` for the user-facing seed UI (Randomize/Reload/Enter-to-submit). `WorldGen.configure(world_seed)` seeds all 16 noise fields off of it once per session. Per Rule 1 of the resource-generation plan, new noise follows the same pattern: `world_seed + <a newly reserved offset>`, next free `+18`. Per-resource distribution/patch noise (Phase 5) reserves `+17` (`WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET`) but lives in `ResourceManager.get_patch_modifier()`, not WorldGen: each `ResourceDefinition` gets its own `FastNoiseLite` seeded by `("<world_seed + 17>:<definition.id>").hash()`, so resources are decorrelated from each other and `definition.id` must be unique. These noise objects are cached in a static Dictionary keyed by seed/id/scale - pure derived data, never serialized.
 
 ## 7. Flagged gap: no per-tile object rendering exists yet
 

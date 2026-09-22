@@ -26,6 +26,14 @@ extends RefCounted
 ## no opinion about this factor" - never 0.0 (see ResourceDefinition's doc
 ## comment for the same convention).
 
+## FBM simplex output clusters around 0 and rarely reaches +/-1, which would
+## leave "clearings" and "dense groves" too mild to read. Stretching it (then
+## clamping) gives real empty/full patches; tuned visually in Phase 5.
+const PATCH_CONTRAST := 1.8
+
+static var _patch_noise_cache: Dictionary = {}
+
+
 static func get_suitability(
 	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
 ) -> float:
@@ -77,3 +85,40 @@ static func _geometric_mean(values: Array[float]) -> float:
 	for v in values:
 		product *= maxf(v, 0.0)
 	return pow(product, 1.0 / values.size())
+
+
+## Phase 5 of docs/resource-generation-plan.md: deterministic per-resource
+## distribution/patch noise, so a uniformly suitable area still reads as
+## groves/sparse woodland/clearings rather than flat density. Returns a 0..1
+## multiplier meant to be applied ON TOP of get_suitability() (Phase 6's
+## density = suitability * base_density * patch_modifier) - it never replaces
+## suitability, so an unsuitable tile stays unsuitable however high its patch
+## value is.
+##
+## Each resource gets its OWN noise field, seeded from world_seed +
+## WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET mixed with definition.id, so
+## different resources are decorrelated while the same seed/id/coordinate is
+## always identical. definition.id must therefore be unique per resource.
+## cluster_scale sets the patch size (tiles), cluster_strength how much the
+## patch noise modulates density (0 = uniform 1.0, 1 = full 0..1 range).
+static func get_patch_modifier(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
+	if definition.cluster_strength <= 0.0:
+		return 1.0
+	var noise := _patch_noise(definition, world_seed)
+	var patch := clampf(noise.get_noise_2d(wx, wy) * PATCH_CONTRAST * 0.5 + 0.5, 0.0, 1.0)
+	return lerpf(1.0, patch, clampf(definition.cluster_strength, 0.0, 1.0))
+
+
+static func _patch_noise(definition: ResourceDefinition, world_seed: int) -> FastNoiseLite:
+	var scale := maxf(definition.cluster_scale, 1.0)
+	var key := "%d|%s|%f" % [world_seed, definition.id, scale]
+	if _patch_noise_cache.has(key):
+		return _patch_noise_cache[key]
+	var noise := FastNoiseLite.new()
+	noise.seed = ("%d:%s" % [world_seed + WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET, definition.id]).hash()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 1.0 / scale
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3
+	_patch_noise_cache[key] = noise
+	return noise
