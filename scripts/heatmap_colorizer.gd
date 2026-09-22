@@ -35,6 +35,12 @@ const HIGH_FUEL := Color(0.75, 0.7, 0.2)
 const NO_RISK := Color(0.1, 0.15, 0.2)
 const HIGH_RISK := Color(0.95, 0.15, 0.05)
 
+const NO_CAVE := Color(0.15, 0.15, 0.18)
+const HIGH_CAVE := Color(0.55, 0.4, 0.75)
+
+const NO_CLIFF := Color(0.15, 0.15, 0.18)
+const HIGH_CLIFF := Color(0.9, 0.85, 0.8)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -91,3 +97,14 @@ static func fuel_load(s: Dictionary) -> Color:
 static func fire_risk(s: Dictionary) -> Color:
 	var v := clampf(pow(float(s["fire_risk"]) * 8.0, 0.6), 0.0, 1.0)
 	return NO_RISK.lerp(HIGH_RISK, v)
+
+
+static func cave_potential(s: Dictionary) -> Color:
+	return NO_CAVE.lerp(HIGH_CAVE, clampf(float(s["cave_potential"]), 0.0, 1.0))
+
+
+## cliff_tendency is sparse by nature (only steep+hard tiles, mean ~0.02) -
+## same display-only gain treatment as fire_risk, real data left unscaled.
+static func cliff_tendency(s: Dictionary) -> Color:
+	var v := clampf(pow(float(s["cliff_tendency"]) * 4.0, 0.5), 0.0, 1.0)
+	return NO_CLIFF.lerp(HIGH_CLIFF, v)

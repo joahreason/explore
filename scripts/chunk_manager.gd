@@ -32,6 +32,8 @@ enum ViewMode {
 	DISTURBANCE_TYPE,
 	FUEL_LOAD,
 	FIRE_RISK,
+	CAVE_POTENTIAL,
+	CLIFF_TENDENCY,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -184,6 +186,10 @@ func _color_for(sample: Dictionary) -> Color:
 			return HeatmapColorizerScript.fuel_load(sample)
 		ViewMode.FIRE_RISK:
 			return HeatmapColorizerScript.fire_risk(sample)
+		ViewMode.CAVE_POTENTIAL:
+			return HeatmapColorizerScript.cave_potential(sample)
+		ViewMode.CLIFF_TENDENCY:
+			return HeatmapColorizerScript.cliff_tendency(sample)
 		_:
 			return DebugColorizerScript.color_for(sample)
 

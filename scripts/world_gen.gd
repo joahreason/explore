@@ -156,6 +156,27 @@ const GEOLOGY_DRAINAGE_BIAS := {
 	Geology.IGNEOUS: 0.7,
 	Geology.VOLCANIC: 0.55,
 }
+# baseline soil fertility from parent rock, independent of hardness - a hard
+# rock isn't necessarily poor soil (volcanic ash/basalt weathers into some of
+# the most fertile soil on Earth) and a soft rock isn't necessarily rich
+# (many shales are nutrient-poor); granite-family igneous rock in particular
+# weathers slowly into comparatively poor soil despite eroding a bit faster
+# than metamorphic.
+const GEOLOGY_FERTILITY_BIAS := {
+	Geology.SEDIMENTARY: 0.55,
+	Geology.METAMORPHIC: 0.35,
+	Geology.IGNEOUS: 0.45,
+	Geology.VOLCANIC: 0.85,
+}
+# cave/sinkhole potential - classic karst dissolution (limestone-like
+# sedimentary rock) is the dominant real-world mechanism, with volcanic lava
+# tubes as a distinct minor contributor; granite/metamorphic rarely cave.
+const GEOLOGY_CAVE_BIAS := {
+	Geology.SEDIMENTARY: 0.8,
+	Geology.METAMORPHIC: 0.2,
+	Geology.IGNEOUS: 0.1,
+	Geology.VOLCANIC: 0.35,
+}
 
 const DISTURBANCE_TYPES := ["fire", "flood", "storm", "landslide"]
 
@@ -348,7 +369,18 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var deposition01 := clampf(laplacian * deposit_scale, 0.0, 1.0)
 
 	# --- soil fertility (geology parent material + moisture + deposition) ---
-	var soil_fertility := clampf((1.0 - hardness) * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
+	# Fertility now comes from its own geology bias, not (1-hardness) - hard
+	# volcanic rock weathers into some of the most fertile soil on Earth,
+	# while some soft rock is nutrient-poor, so hardness alone was a poor
+	# proxy.
+	var soil_fertility := clampf(GEOLOGY_FERTILITY_BIAS[geology] * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
+
+	# --- cave/sinkhole and cliff-formation potential ---
+	# Caves need both soluble/fractured rock AND water to have dissolved it
+	# over time. Cliffs are steep ground on hard rock that resists erosion
+	# differentially from what used to surround it.
+	var cave_potential := clampf(float(GEOLOGY_CAVE_BIAS[geology]) * (0.3 + 0.7 * moisture01), 0.0, 1.0)
+	var cliff_tendency := clampf(hardness * smoothstep(0.004, 0.01, slope) * 1.5, 0.0, 1.0)
 
 	# --- drainage (permeability - distinct from fertility) ---
 	# Steep/convex ground sheds water (good drainage); concave basins pool it
@@ -492,6 +524,8 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"drainage": drainage,
 		"fuel_load": fuel_load,
 		"fire_risk": fire_risk,
+		"cave_potential": cave_potential,
+		"cliff_tendency": cliff_tendency,
 	}
 
 
