@@ -94,7 +94,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 (`48f8665`), Phase 6 committed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 (`48f8665`), Phase 6 (`3fd943e`) committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
 
 ### Next Action
 
@@ -102,5 +102,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Things To Watch Out For
 
+- Background-job worktrees (`EnterWorktree`) branch from `origin/main` by default, NOT `resource-generation` - immediately run `git checkout -B <worktree-branch> origin/resource-generation` before doing anything else, or none of the resource-generation files will exist. Also `git fetch` first: the local `resource-generation` can lag the remote (it did at the start of the Phase 6 session).
+- In a fresh worktree, the headless game boot prints `invalid UID: uid://hx4p5eruo1tv ... chunk_manager.gd` - that's the worktree's partial `.godot` UID cache (the `--quit-after 3` editor scan is cut short), not a real problem; the tracked `scripts/chunk_manager.gd.uid` is correct and Godot falls back to the path.
 - GDScript `class_name`-based global class resolution fails in headless `--script` runs for any script added since `.godot/global_script_class_cache.cfg` was last built (that cache is gitignored, local-only, and is normally only rebuilt by opening the editor). Fix for a fresh session/checkout: run `Godot.exe --headless --path . --editor --quit-after 3` once to force a rebuild before running any other headless test scripts - confirm with `grep <new_file> .godot/global_script_class_cache.cfg`. Not needed for the real game (editor/export always rebuilds it), only for this project's headless-script verification workflow.
 - `WorldGen.sample()`'s Dictionary keys don't always match the plan doc's conceptual field names 1:1 (e.g. actual key is `laplacian`, not `curvature`; actual key is `exposure`, not `wind_exposure`) - `docs/architecture.md` §2 has the verified real key table; use that, not the plan doc's conceptual sketch, when writing code.
