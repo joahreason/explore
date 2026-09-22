@@ -3,9 +3,11 @@ extends RefCounted
 
 ## Debug render-method views: each function maps one WorldGen sample() field
 ## to a flat color via a simple ramp (same lerp technique as
-## DebugColorizer._water_color). These REPLACE a chunk's base image color
-## (see ChunkManager.ViewMode) rather than drawing as an overlay - swapping
-## Sprite2D.texture is enough, no extra node/layer needed.
+## DebugColorizer._water_color). ChunkManager blends this on top of the
+## Material look (see ChunkManager._color_for/HEATMAP_OVERLAY_STRENGTH)
+## rather than swapping it out entirely, so terrain stays visible as context
+## for how the field affects generation - still just one Sprite2D per chunk,
+## no extra node/layer needed.
 
 const COLD := Color(0.15, 0.35, 0.85)
 const NEUTRAL := Color(0.85, 0.85, 0.85)

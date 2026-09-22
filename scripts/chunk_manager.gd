@@ -223,10 +223,27 @@ func _update_chunks(center: Vector2i, load_radius: int) -> void:
 			_unload_chunk(c)
 
 
+## Heatmap views are blended on top of the Material look rather than
+## replacing it outright, so the terrain stays visible as context for how
+## each field actually affects generation (e.g. you can still see the
+## coastline/vegetation under a temperature heatmap instead of losing it).
+const HEATMAP_OVERLAY_STRENGTH := 0.65
+
 ## Picks the color function for the current view mode. BASE_BIOME has no
 ## dedicated per-tile color of its own - it keeps the Material look as its
 ## base image and relies entirely on the drawn label overlay on top.
 func _color_for(sample: Dictionary) -> Color:
+	var heatmap_color: Variant = _heatmap_color_for(sample)
+	if heatmap_color == null:
+		return DebugColorizerScript.color_for(sample)
+	var material_color: Color = DebugColorizerScript.color_for(sample)
+	return material_color.lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
+
+
+## Returns null (not a heatmap view, or BASE_BIOME/SUBTYPE/MODIFIERS which
+## use the plain Material look as their overlay base) so _color_for can
+## fall back to pure Material with no blending cost.
+func _heatmap_color_for(sample: Dictionary):
 	match _view_mode:
 		ViewMode.TEMPERATURE:
 			return HeatmapColorizerScript.temperature(sample)
@@ -251,7 +268,7 @@ func _color_for(sample: Dictionary) -> Color:
 		ViewMode.CLIFF_TENDENCY:
 			return HeatmapColorizerScript.cliff_tendency(sample)
 		_:
-			return DebugColorizerScript.color_for(sample)
+			return null
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);
