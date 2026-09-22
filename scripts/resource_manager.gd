@@ -150,11 +150,19 @@ static func get_patch_modifier(definition: ResourceDefinition, world_seed: int, 
 	return _patch_value(definition.id, definition.cluster_scale, definition.cluster_strength, world_seed, wx, wy)
 
 
-static func _patch_value(id: String, cluster_scale: float, cluster_strength: float, world_seed: int, wx: int, wy: int) -> float:
+## Guild counterpart of get_patch_modifier(): the guild's own patch noise,
+## reshaped by guild.cluster_curve when set.
+static func get_guild_patch_modifier(guild: ResourceGuild, world_seed: int, wx: int, wy: int) -> float:
+	return _patch_value(guild.id, guild.cluster_scale, guild.cluster_strength, world_seed, wx, wy, guild.cluster_curve)
+
+
+static func _patch_value(id: String, cluster_scale: float, cluster_strength: float, world_seed: int, wx: int, wy: int, cluster_curve: Curve = null) -> float:
 	if cluster_strength <= 0.0:
 		return 1.0
 	var noise := _patch_noise(id, cluster_scale, world_seed)
 	var patch := clampf(noise.get_noise_2d(wx, wy) * PATCH_CONTRAST * 0.5 + 0.5, 0.0, 1.0)
+	if cluster_curve != null:
+		patch = clampf(cluster_curve.sample(patch), 0.0, 1.0)
 	return lerpf(1.0, patch, clampf(cluster_strength, 0.0, 1.0))
 
 
@@ -237,5 +245,5 @@ static func get_guild_density(
 		return 0.0
 	var field := clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
 	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
-	var patch := _patch_value(guild.id, guild.cluster_scale, guild.cluster_strength, world_seed, wx, wy)
+	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
 	return clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)

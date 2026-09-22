@@ -27,6 +27,8 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 - **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the Material look (not a full replacement) so terrain stays visible as context for how the field affects generation
 - **Oak Suitability, Oak Density** - resource-generation debug heatmaps: how much oak would like each tile, and how much should actually grow there (suitability x patch noise)
 - **Oak Placement** - the Oak Density heatmap plus a marker for every individually placed oak (deterministic, minimum-spaced; hidden when zoomed far out)
+- **Vegetation** - the Material look with every placed natural object: trees (triangles; oak/pine/palm colors), rocks (squares; granite/sandstone/basalt by geology) and berry bushes (circles)
+- **Tree Cover, Tree Placement, Rock Placement, Berry Placement** - per-guild debug views: the guild's density heatmap, plus species-colored markers for the placement views
 
 (Base Biome - a region-outline overlay - is available via the `B` key but left out of the dropdown for now in favor of click-to-inspect.)
 

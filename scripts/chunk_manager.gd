@@ -16,6 +16,8 @@ const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
+const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
+const SHRUBS := preload("res://resources/shrubs.tres")
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -69,6 +71,8 @@ enum ViewMode {
 	TREE_COVER,
 	TREE_PLACEMENT,
 	VEGETATION,
+	ROCK_PLACEMENT,
+	BERRY_PLACEMENT,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -100,9 +104,10 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 
-	# The guild's warnings include its members' (oak among them).
-	for warning in CANOPY_TREES.get_curve_domain_warnings():
-		push_warning(warning)
+	# A guild's warnings include its members' (oak among them).
+	for guild in [CANOPY_TREES, SURFACE_ROCKS, SHRUBS]:
+		for warning in guild.get_curve_domain_warnings():
+			push_warning(warning)
 
 	if _seed_text != "":
 		_seed_input.text = _seed_text
@@ -311,6 +316,10 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_resource_density(sample, OAK_RESOURCE, wx, wy))
 		ViewMode.TREE_COVER, ViewMode.TREE_PLACEMENT:
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, CANOPY_TREES, wx, wy))
+		ViewMode.ROCK_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_guild_density(sample, SURFACE_ROCKS, wx, wy))
+		ViewMode.BERRY_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHRUBS, wx, wy))
 		_:
 			return null
 
@@ -449,22 +458,35 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 		_loaded_placements.erase(chunk_coord)
 
 
-## Phase 7: which ResourceDefinition or ResourceGuild the current view
-## places instances of (null = no placement markers in this view).
-## Placement views keep the matching density heatmap as their base image, so
-## each marker can be read against the field it was drawn from.
-func _placement_source() -> Resource:
+## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
+## instances of, as [source, marker shape] pairs in draw order (empty = no
+## placement markers in this view). Placement views keep the matching
+## density heatmap as their base image, so each marker can be read against
+## the field it was drawn from; the Vegetation view draws every guild over
+## the Material image, trees last so they sit on top.
+func _placement_layers() -> Array:
+	var circle := ResourceMarkerChunkScript.Shape.CIRCLE
 	match _view_mode:
 		ViewMode.RESOURCE_PLACEMENT_OAK:
-			return OAK_RESOURCE
-		ViewMode.TREE_PLACEMENT, ViewMode.VEGETATION:
-			return CANOPY_TREES
+			return [[OAK_RESOURCE, circle]]
+		ViewMode.TREE_PLACEMENT:
+			return [[CANOPY_TREES, circle]]
+		ViewMode.ROCK_PLACEMENT:
+			return [[SURFACE_ROCKS, circle]]
+		ViewMode.BERRY_PLACEMENT:
+			return [[SHRUBS, circle]]
+		ViewMode.VEGETATION:
+			return [
+				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
+				[SHRUBS, circle],
+				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.TRIANGLE],
+			]
 		_:
-			return null
+			return []
 
 
 func _placements_visible() -> bool:
-	return _placement_source() != null and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
+	return not _placement_layers().is_empty() and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
 
 
 ## Drops every marker node and rebuilds them for all loaded chunks if the
@@ -482,28 +504,32 @@ func _refresh_placements() -> void:
 ## ResourcePlacement decides instances purely from world coordinates, so
 ## each chunk is placed on its own and neighbors agree at shared edges.
 func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
-	var source := _placement_source()
 	var base := chunk_coord * CHUNK_SIZE
+	var markers := ResourceMarkerChunkScript.new()
+	for layer in _placement_layers():
+		var source: Resource = layer[0]
+		var colors := {}
+		markers.add_instances(_place_chunk(source, base, colors), base, TILE_SIZE, source.minimum_spacing, colors, layer[1])
+	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
+	resources_root.add_child(markers)
+	_loaded_placements[chunk_coord] = markers
+
+
+## One chunk's instances of a ResourceDefinition or ResourceGuild; fills
+## `colors` with each placed id's marker color.
+func _place_chunk(source: Resource, base: Vector2i, colors: Dictionary) -> Array:
 	var rect := Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
-	var instances: Array
-	var colors := {}
 	if source is ResourceGuild:
 		var guild: ResourceGuild = source
 		var density_fn := func(wx: int, wy: int) -> float:
 			return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
 		var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
 			return _species_shares(_world_gen.sample(wx, wy), guild)
-		instances = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, rect, density_fn, shares_fn)
 		for member in guild.members:
 			colors[member.id] = member.debug_color
-	else:
-		var definition: ResourceDefinition = source
-		var density_fn := func(wx: int, wy: int) -> float:
-			return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
-		instances = ResourcePlacementScript.place_in_rect(definition, world_seed, rect, density_fn)
-		colors[definition.id] = definition.debug_color
-	var markers := ResourceMarkerChunkScript.new()
-	markers.setup(instances, base, TILE_SIZE, source.minimum_spacing, colors, _view_mode == ViewMode.VEGETATION)
-	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	resources_root.add_child(markers)
-	_loaded_placements[chunk_coord] = markers
+		return ResourcePlacementScript.place_guild_in_rect(guild, world_seed, rect, density_fn, shares_fn)
+	var definition: ResourceDefinition = source
+	var density_fn := func(wx: int, wy: int) -> float:
+		return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
+	colors[definition.id] = definition.debug_color
+	return ResourcePlacementScript.place_in_rect(definition, world_seed, rect, density_fn)

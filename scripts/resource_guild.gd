@@ -43,6 +43,11 @@ extends Resource
 @export_group("Spatial")
 @export var cluster_scale: float = 32.0
 @export_range(0.0, 1.0) var cluster_strength: float = 0.0
+## Reshapes the raw 0..1 patch noise before cluster_strength applies. Unset =
+## as-is (patches fade smoothly into gaps). A steep curve, e.g. 0 below 0.55
+## rising to 1 by 0.7, turns patches into distinct thickets with bare ground
+## between - the plan's "stronger clustering" for berry bushes.
+@export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
 
 
@@ -52,6 +57,10 @@ func get_curve_domain_warnings() -> PackedStringArray:
 	if cover_curve != null and (cover_curve.min_domain > 0.0 or cover_curve.max_domain < 1.0):
 		warnings.append("ResourceGuild '%s': cover_curve domain [%s, %s] doesn't cover [0, 1]" % [
 			id, cover_curve.min_domain, cover_curve.max_domain
+		])
+	if cluster_curve != null and (cluster_curve.min_domain > 0.0 or cluster_curve.max_domain < 1.0):
+		warnings.append("ResourceGuild '%s': cluster_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, cluster_curve.min_domain, cluster_curve.max_domain
 		])
 	for member in members:
 		warnings.append_array(member.get_curve_domain_warnings())

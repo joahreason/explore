@@ -30,6 +30,8 @@ const ITEMS := [
 	{"label": "Oak Placement", "mode": ChunkManagerScript.ViewMode.RESOURCE_PLACEMENT_OAK},
 	{"label": "Tree Cover", "mode": ChunkManagerScript.ViewMode.TREE_COVER},
 	{"label": "Tree Placement", "mode": ChunkManagerScript.ViewMode.TREE_PLACEMENT},
+	{"label": "Rock Placement", "mode": ChunkManagerScript.ViewMode.ROCK_PLACEMENT},
+	{"label": "Berry Placement", "mode": ChunkManagerScript.ViewMode.BERRY_PLACEMENT},
 ]
 
 

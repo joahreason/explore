@@ -1,11 +1,11 @@
 extends SceneTree
 
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
-## marker layer follows view/LOD/chunk streaming, then that Tree Placement
-## (canopy-tree guild) draws both species. If OUT_PNG is set, also renders
-## the real _color_for() base + chunk-by-chunk Tree Placement (species
-## colors, chunk grid drawn) to that path for visual inspection. Run via
-## tests/run_tests.sh.
+## marker layer follows view/LOD/chunk streaming, then that the guild views
+## (Tree/Rock/Berry Placement, Vegetation) draw their members. If OUT_PNG is
+## set, also renders the real _color_for() base + chunk-by-chunk Vegetation
+## view (every guild, in its marker shapes; chunk grid drawn) to that path
+## for visual inspection. Run via tests/run_tests.sh.
 
 var _fails := 0
 
@@ -81,17 +81,39 @@ func _init() -> void:
 		only_members = only_members and member_colors.has(c)
 	check(fills.get(oak_c, 0) > 0 and fills.get(pine_c, 0) > 0 and only_members, "tree view: oak (%d) and pine (%d) markers, species colors only (%d colors)" % [fills.get(oak_c, 0), fills.get(pine_c, 0), fills.size()])
 
-	# Vegetation view: Material base image, same trees drawn as triangles.
+	# Rock/Berry Placement: each guild's members only.
+	var guild_counts := {}
+	for mode in [CM.ViewMode.ROCK_PLACEMENT, CM.ViewMode.BERRY_PLACEMENT]:
+		world.set_view_mode(mode)
+		var guild: ResourceGuild = world._placement_layers()[0][0]
+		var ok: bool = world._loaded_placements.size() == world._loaded_chunks.size()
+		var n := 0
+		for m in world._loaded_placements.values():
+			n += m._positions.size()
+			for c in m._fills:
+				ok = ok and guild.members.any(func(member): return member.debug_color == c)
+		guild_counts[guild.id] = n
+		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
+
+	# Vegetation view: Material base image; the same trees as Tree Placement
+	# as triangles, plus the same rocks (squares) and berry bushes (circles).
 	var tree_count := 0
+	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
 		tree_count += m._positions.size()
+	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.VEGETATION)
-	var veg_count := 0
-	var all_triangles := true
+	print("INFO switch to Vegetation (3 guilds): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	var shape_counts := {}
 	for m in world._loaded_placements.values():
-		veg_count += m._positions.size()
-		all_triangles = all_triangles and m._triangles
-	check(veg_count == tree_count and veg_count > 0 and all_triangles, "vegetation view: same %d trees as Tree Placement, drawn as triangles" % veg_count)
+		for s in m._shapes:
+			shape_counts[s] = shape_counts.get(s, 0) + 1
+	var Shape = world.ResourceMarkerChunkScript.Shape
+	check(shape_counts.get(Shape.TRIANGLE, 0) == tree_count and tree_count > 0
+		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
+		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"],
+		"vegetation view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles" % [
+			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0)])
 	var probe: Dictionary = world._world_gen.sample(3, 5)
 	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "vegetation view: base image is the Material color")
 
@@ -103,14 +125,11 @@ func _init() -> void:
 	quit(1 if _fails > 0 else 0)
 
 
-## Real _color_for() in the Vegetation view (Material) + species-colored
-## tree triangles, chunk grid drawn.
+## Real _color_for() in the Vegetation view (Material) + every placement
+## layer (rocks, berry bushes, trees) placed chunk by chunk through the real
+## _place_chunk(), in the view's shapes and colors, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
 	world.set_view_mode(CM.ViewMode.VEGETATION)
-	var guild: ResourceGuild = world.CANOPY_TREES
-	var colors := {}
-	for member in guild.members:
-		colors[member.id] = member.debug_color
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
 	var px := 5
 	var origin := Vector2i(-tiles / 2, -tiles / 2)
@@ -121,20 +140,20 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			var wy := origin.y + ty
 			var c: Color = world._color_for(world._world_gen.sample(wx, wy), wx, wy)
 			img.fill_rect(Rect2i(tx * px, ty * px, px, px), c)
-	var density_fn := func(x: int, y: int) -> float:
-		return world._guild_density(world._world_gen.sample(x, y), guild, x, y)
-	var shares_fn := func(x: int, y: int) -> PackedFloat32Array:
-		return world._species_shares(world._world_gen.sample(x, y), guild)
-	var instances := []
-	# Place chunk by chunk, exactly as the game does.
-	for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
-		for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
-			instances.append_array(ResourcePlacement.place_guild_in_rect(guild, 4242, Rect2i(cx * 16, cy * 16, 16, 16), density_fn, shares_fn))
-	var outline := Color(0.02, 0.06, 0.02)
-	for inst in instances:
-		var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
-		_fill_triangle(img, p, 5.0, outline)
-		_fill_triangle(img, p, 3.5, colors[inst["id"]])
+	var markers = world.ResourceMarkerChunkScript
+	var outline: Color = markers.OUTLINE
+	var total := 0
+	for layer in world._placement_layers():
+		var source: Resource = layer[0]
+		var radius: float = source.minimum_spacing * px * 0.35
+		for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
+			for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
+				var colors := {}
+				for inst in world._place_chunk(source, Vector2i(cx * 16, cy * 16), colors):
+					var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
+					_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
+					_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])
+					total += 1
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:
@@ -142,13 +161,14 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			img.set_pixel(k, j, Color(1, 1, 1, 1).darkened(0.6))
 			img.set_pixel(j, k, Color(1, 1, 1, 1).darkened(0.6))
 	img.save_png(out)
-	print("INFO rendered %d instances to %s" % [instances.size(), out])
+	print("INFO rendered %d instances to %s" % [total, out])
 
 
-## Same upward triangle as resource_marker_chunk.gd, rasterized.
-func _fill_triangle(img: Image, p: Vector2, r: float, c: Color) -> void:
-	var tri := PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.87, r * 0.5), p + Vector2(-r * 0.87, r * 0.5)])
-	for y in range(floori(p.y - r), ceili(p.y + r) + 1):
-		for x in range(floori(p.x - r), ceili(p.x + r) + 1):
-			if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height() and Geometry2D.is_point_in_polygon(Vector2(x, y), tri):
+func _fill_polygon(img: Image, poly: PackedVector2Array, c: Color) -> void:
+	var box := Rect2(poly[0], Vector2.ZERO)
+	for v in poly:
+		box = box.expand(v)
+	for y in range(floori(box.position.y), ceili(box.end.y) + 1):
+		for x in range(floori(box.position.x), ceili(box.end.x) + 1):
+			if x >= 0 and y >= 0 and x < img.get_width() and y < img.get_height() and Geometry2D.is_point_in_polygon(Vector2(x, y), poly):
 				img.set_pixel(x, y, c)

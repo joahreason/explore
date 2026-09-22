@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+
+[sub_resource type="Curve" id="Curve_elev"]
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.05, 0.6), 0.0, 0.0, 0, 0, Vector2(0.1, 0.7), 0.0, 0.0, 0, 0, Vector2(0.4, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_slope"]
+_limits = [0.0, 1.0, 0.0, 0.02]
+_data = [Vector2(0, 0.15), 0.0, 0.0, 0, 0, Vector2(0.003, 0.45), 0.0, 0.0, 0, 0, Vector2(0.006, 0.9), 0.0, 0.0, 0, 0, Vector2(0.01, 1), 0.0, 0.0, 0, 0, Vector2(0.02, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_erosion"]
+_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.1, 0.35), 0.0, 0.0, 0, 0, Vector2(0.25, 0.8), 0.0, 0.0, 0, 0, Vector2(0.35, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_drain"]
+_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.5), 0.0, 0.0, 0, 0, Vector2(0.6, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_def")
+id = "basalt"
+category = "rock"
+elevation_curve = SubResource("Curve_elev")
+slope_curve = SubResource("Curve_slope")
+drainage_curve = SubResource("Curve_drain")
+erosion_curve = SubResource("Curve_erosion")
+required_curves = PackedStringArray("elevation_curve")
+geology_weights = {
+0: 0.0,
+1: 0.0,
+2: 0.0,
+3: 0.85
+}
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.0
+}
+placement_type = "scatter"
+debug_color = Color(0.22, 0.22, 0.26, 1)

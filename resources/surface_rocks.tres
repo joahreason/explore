@@ -1,0 +1,22 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="2_def"]
+[ext_resource type="Resource" path="res://resources/granite.tres" id="3_granite"]
+[ext_resource type="Resource" path="res://resources/sandstone.tres" id="4_sandstone"]
+[ext_resource type="Resource" path="res://resources/basalt.tres" id="5_basalt"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.2, 0.65), 0.0, 0.0, 0, 0, Vector2(0.35, 0.25), 0.0, 0.0, 0, 0, Vector2(0.5, 0.08), 0.0, 0.0, 0, 0, Vector2(1, 0.04), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[resource]
+script = ExtResource("1_guild")
+id = "surface_rocks"
+members = Array[ExtResource("2_def")]([ExtResource("3_granite"), ExtResource("4_sandstone"), ExtResource("5_basalt")])
+cover_curve = SubResource("Curve_cover")
+base_density = 0.8
+species_sharpness = 4.0
+cluster_scale = 24.0
+cluster_strength = 0.7
+minimum_spacing = 1.5

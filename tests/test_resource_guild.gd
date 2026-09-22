@@ -2,11 +2,14 @@ extends SceneTree
 
 ## Phase 8 guild invariants: species shares, one shared placement grid per
 ## guild (spacing holds across species, chunk seams), deterministic species
-## rolls, and - with the real canopy-tree guild on a real world - no trees on
-## water, every tree on a tile its species tolerates, and pine on colder
-## ground than oak. Run via tests/run_tests.sh.
+## rolls, and - with the real guilds on a real world - no instances on water,
+## every instance on a tile its species tolerates, pine on colder ground than
+## oak, rock type following geology, berry bushes favoring river banks and
+## clustering more strongly than trees. Run via tests/run_tests.sh.
 
 const TREES := preload("res://resources/canopy_trees.tres")
+const ROCKS := preload("res://resources/surface_rocks.tres")
+const SHRUBS := preload("res://resources/shrubs.tres")
 const CHUNK := 16
 
 var _fails := 0
@@ -133,5 +136,117 @@ func _init() -> void:
 	check(ok and pine_t < oak_t - 0.1, "pine on colder ground than oak: pine %d @ %.2f, oak %d @ %.2f mean temperature" % [pine_n, pine_t, oak_n, oak_t])
 	print("INFO real canopy-tree placement cost: %.2f ms/chunk" % per_chunk_ms)
 
+	# 4. Rocks and berry bushes (Phase 8 step 4) on the same real world, in a
+	# region with sedimentary, metamorphic and volcanic ground (all three rock
+	# types), shrub habitat and rivers - the origin has no sedimentary rock.
+	var area := Rect2i(17840, 8840, 320, 320)
+	for g in [ROCKS, SHRUBS]:
+		check(g.get_curve_domain_warnings().is_empty(), "%s + members: no curve-domain warnings %s" % [g.id, g.get_curve_domain_warnings()])
+	var rocks := place_real(ROCKS, wg, seed, area)
+	var rock_geology := {"granite": [WorldGen.Geology.METAMORPHIC, WorldGen.Geology.IGNEOUS], "sandstone": [WorldGen.Geology.SEDIMENTARY], "basalt": [WorldGen.Geology.VOLCANIC]}
+	var wrong_rock := 0
+	var rock_ids := {}
+	for inst in rocks:
+		var p: Vector2 = inst["position"]
+		rock_ids[inst["id"]] = rock_ids.get(inst["id"], 0) + 1
+		if not wg.sample(floori(p.x), floori(p.y))["geology"] in rock_geology[inst["id"]]:
+			wrong_rock += 1
+	var bad := violations(ROCKS, wg, rocks)
+	check(bad == [0, 0], "real rocks: %d instances, 0 on water (%d), 0 where their type scores 0 (%d)" % [rocks.size(), bad[0], bad[1]])
+	check(wrong_rock == 0 and rock_ids.size() == 3, "rock type follows geology: %s, %d on the wrong rock" % [rock_ids, wrong_rock])
+
+	var berries := place_real(SHRUBS, wg, seed, area)
+	bad = violations(SHRUBS, wg, berries)
+	check(bad == [0, 0] and berries.size() > 50, "real berry bushes: %d instances, 0 on water (%d), 0 where they score 0 (%d)" % [berries.size(), bad[0], bad[1]])
+
+	# River proximity: berries per tile on river-bank land vs. other land
+	# where shrubs grow at all.
+	var bank_tiles := 0
+	var other_tiles := 0
+	for y in range(area.position.y, area.end.y):
+		for x in range(area.position.x, area.end.x):
+			var s := wg.sample(x, y)
+			if s["water_body"] != "none" or s["vegetation"] < 0.15:
+				continue
+			if s["river"] > 0.1:
+				bank_tiles += 1
+			else:
+				other_tiles += 1
+	var on_bank := 0
+	for inst in berries:
+		var p: Vector2 = inst["position"]
+		var s := wg.sample(floori(p.x), floori(p.y))
+		if s["river"] > 0.1:
+			on_bank += 1
+	var bank_rate := float(on_bank) / maxi(bank_tiles, 1)
+	var other_rate := float(berries.size() - on_bank) / maxi(other_tiles, 1)
+	check(bank_tiles > 200 and bank_rate > other_rate * 1.3, "berries favor river banks: %.2f vs %.2f per 100 tiles (%d bank tiles)" % [100 * bank_rate, 100 * other_rate, bank_tiles])
+
+	# Clustering: place each guild on its own patch noise alone (uniform
+	# environment), then compare how clumped the counts are in 16x16 blocks
+	# (variance / mean; higher = patchier).
+	var trees_d := dispersion(TREES, seed)
+	var berries_d := dispersion(SHRUBS, seed)
+	check(berries_d > trees_d * 1.5, "berries cluster more strongly than trees: dispersion %.2f vs %.2f" % [berries_d, trees_d])
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
+
+
+func place_real(guild: ResourceGuild, wg: WorldGen, seed: int, rect: Rect2i) -> Array[Dictionary]:
+	var density_fn := func(x: int, y: int) -> float:
+		var s := wg.sample(x, y)
+		return ResourceManager.get_guild_density(EnvironmentalState.from_sample(s), guild, seed, x, y, BiomeClassifier.classify_full(s))
+	var shares_fn := func(x: int, y: int) -> PackedFloat32Array:
+		var s := wg.sample(x, y)
+		var suit := ResourceManager.get_member_suitabilities(EnvironmentalState.from_sample(s), guild, BiomeClassifier.classify_full(s))
+		return ResourceManager.get_species_shares(suit, guild.species_sharpness)
+	return ResourcePlacement.place_guild_in_rect(guild, seed, rect, density_fn, shares_fn)
+
+
+## [instances on water, instances whose own species scores 0 at their tile]
+func violations(guild: ResourceGuild, wg: WorldGen, instances: Array) -> Array:
+	var member_index := {}
+	for i in guild.members.size():
+		member_index[guild.members[i].id] = i
+	var on_water := 0
+	var intolerant := 0
+	for inst in instances:
+		var p: Vector2 = inst["position"]
+		var s := wg.sample(floori(p.x), floori(p.y))
+		if s["water_body"] in ["ocean", "sea", "lake", "river"]:
+			on_water += 1
+		var suit := ResourceManager.get_member_suitabilities(EnvironmentalState.from_sample(s), guild, BiomeClassifier.classify_full(s))
+		if suit[member_index[inst["id"]]] <= 0.0:
+			intolerant += 1
+	return [on_water, intolerant]
+
+
+## Variance/mean of instance counts per 16x16 block when a guild is placed on
+## its patch noise alone (density = patch value), 512x512 tiles.
+func dispersion(guild: ResourceGuild, seed: int) -> float:
+	var proxy := ResourceDefinition.new()
+	proxy.id = "proxy"
+	var density_fn := func(x: int, y: int) -> float:
+		return ResourceManager.get_guild_patch_modifier(guild, seed, x, y)
+	var shares_fn := const_shares(PackedFloat32Array([1.0]))
+	var one := ResourceGuild.new()
+	one.id = guild.id
+	one.members = [proxy]
+	one.minimum_spacing = guild.minimum_spacing
+	var counts := {}
+	for inst in ResourcePlacement.place_guild_in_rect(one, seed, Rect2i(0, 0, 512, 512), density_fn, shares_fn):
+		var p: Vector2 = inst["position"]
+		var k := Vector2i(floori(p.x / 16.0), floori(p.y / 16.0))
+		counts[k] = counts.get(k, 0) + 1
+	var n := 32 * 32
+	var mean := 0.0
+	for k in counts:
+		mean += counts[k]
+	mean /= n
+	var variance := 0.0
+	for by in 32:
+		for bx in 32:
+			variance += pow(counts.get(Vector2i(bx, by), 0) - mean, 2)
+	variance /= n
+	return variance / maxf(mean, 0.001)
