@@ -17,6 +17,9 @@ const WET := Color(0.15, 0.45, 0.85)
 const LOW := Color(0.1, 0.1, 0.15)
 const HIGH := Color(0.95, 0.9, 0.4)
 
+const POOR_DRAINAGE := Color(0.25, 0.2, 0.35)
+const GOOD_DRAINAGE := Color(0.85, 0.7, 0.35)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -35,3 +38,7 @@ static func temp_variation(s: Dictionary) -> Color:
 
 static func precip_seasonality(s: Dictionary) -> Color:
 	return LOW.lerp(HIGH, clampf(float(s["precip_seasonality"]), 0.0, 1.0))
+
+
+static func drainage(s: Dictionary) -> Color:
+	return POOR_DRAINAGE.lerp(GOOD_DRAINAGE, clampf(float(s["drainage"]), 0.0, 1.0))

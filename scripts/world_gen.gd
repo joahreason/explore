@@ -145,6 +145,17 @@ const GEOLOGY_RESOURCE_BIAS := {
 	Geology.IGNEOUS: 1.0,
 	Geology.VOLCANIC: 1.2,
 }
+# baseline permeability (0 clay-like/waterlogging .. 1 free-draining) before
+# slope/curvature/moisture adjust it per-tile - sedimentary rock is often
+# fine-grained (shale/clay), metamorphic is dense/low-permeability, igneous
+# is commonly fractured (good drainage), volcanic is mixed (fractured basalt
+# vs. fine ash) so sits in the middle.
+const GEOLOGY_DRAINAGE_BIAS := {
+	Geology.SEDIMENTARY: 0.4,
+	Geology.METAMORPHIC: 0.45,
+	Geology.IGNEOUS: 0.7,
+	Geology.VOLCANIC: 0.55,
+}
 
 var _elev_base := FastNoiseLite.new()
 var _elev_ridge := FastNoiseLite.new()
@@ -337,6 +348,22 @@ func sample(wx: int, wy: int) -> Dictionary:
 	# --- soil fertility (geology parent material + moisture + deposition) ---
 	var soil_fertility := clampf((1.0 - hardness) * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
 
+	# --- drainage (permeability - distinct from fertility) ---
+	# Steep/convex ground sheds water (good drainage); concave basins pool it
+	# (poor drainage); already-saturated or low-lying-near-water ground drains
+	# less freely simply because it's already full. Heavy rain + poor
+	# drainage reads as marsh/swamp; heavy rain + good drainage reads as
+	# forest; low rain + very high drainage reads as arid land - those
+	# readings fall out of how `drainage` later combines with moisture in the
+	# classifier, not from any special-casing here.
+	var curvature_signed := clampf(laplacian * deposit_scale, -1.0, 1.0)
+	var drainage := float(GEOLOGY_DRAINAGE_BIAS[geology])
+	drainage += slope * 40.0
+	drainage -= curvature_signed * 0.3
+	drainage -= moisture01 * 0.15
+	drainage -= shore_proximity * 0.2
+	drainage = clampf(drainage, 0.0, 1.0)
+
 	# --- water body typing (ocean/sea/lake/swamp/river) ---
 	# Ocean vs. sea vs. lake identity comes from its OWN dedicated, much
 	# lower-frequency noise - not the terrain-shape elevation noise. Reusing
@@ -425,6 +452,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"wind_strength": wind_strength01,
 		"temp_variation": temp_variation01,
 		"precip_seasonality": precip_seasonality01,
+		"drainage": drainage,
 	}
 
 

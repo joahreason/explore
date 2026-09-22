@@ -27,6 +27,7 @@ enum ViewMode {
 	MOISTURE,
 	TEMP_VARIATION,
 	PRECIP_SEASONALITY,
+	DRAINAGE,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -169,6 +170,8 @@ func _color_for(sample: Dictionary) -> Color:
 			return HeatmapColorizerScript.temp_variation(sample)
 		ViewMode.PRECIP_SEASONALITY:
 			return HeatmapColorizerScript.precip_seasonality(sample)
+		ViewMode.DRAINAGE:
+			return HeatmapColorizerScript.drainage(sample)
 		_:
 			return DebugColorizerScript.color_for(sample)
 
