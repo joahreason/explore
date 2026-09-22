@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. In progress: steps 1-3 (guild type, shared guild placement, oak + pine canopy-tree guild) done; rocks, berries, cross-guild footprint check and sprites remain.
+Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. In progress: canopy-tree guild done (guild type, shared guild placement, oak + pine + palm, Vegetation view), plus a world-gen climate/vegetation/biome-balance pass; rocks, berries, cross-guild footprint check and sprites remain.
 
 ## Completed
 
@@ -46,7 +46,7 @@ Phase 8 — First Playable Resources (trees, rocks, berries), built around resou
 
 ## In Progress
 
-- Phase 8: steps 4-6 (rocks, berry bushes, cross-guild footprint, sprites).
+- Phase 8: steps 4-6 (rocks, berry bushes, cross-guild footprint, sprites). Nothing half-done in the tree - every step so far is committed, tested and on `main`.
 
 ## Next
 
@@ -119,11 +119,14 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phases 0-7, the oak fix, the plan amendments, the test suite and the suitability refinements are all on `main` (fast-forwarded from `claude/phase-6-continuation-k99sqh`, a cloud session) and deployed. `main` is the integration branch now; the old `resource-generation` branch stops at Phase 6 and is behind `main` - branch new work from `main`.
+- Phases 0-7 plus Phase 8 so far (canopy-tree guild: oak/pine/palm, Tree Cover / Tree Placement / Vegetation views) and the world-gen balance pass (temperature contrast/offset, heat-x-dryness vegetation, even land-biome shares, Wetland = waterlogged, cold-only Alpine Snow) are on `main`, fast-forwarded from `claude/phase-8-continuation-xk9cwo` (cloud session) and deployed by the push. `main` is the integration branch - branch new work from `main`.
+- World-gen changes shifted every biome view; land-only biome shares (4 seeds, 60k-tile sample) are now Forest 21.5, Grassland 18.4, Plains 11.4, Tundra 10.6, Desert 9.2, Rainforest 8.0, Wetland 5.8, Savanna 5.4, Badlands 4.9, Alpine Snow 4.9 %. None of this has been looked at in the running game/web build yet - only headless renders.
 
 ### Next Action
 
-- Phase 8 steps 1-3 are on `claude/phase-8-continuation-xk9cwo` (not yet merged to `main`). Continue with (4) rocks and berry bushes; (5) cross-guild footprint check; (6) sprites instead of debug circles. Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://...tres` for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
+- First, open the deployed web build and check the Vegetation view by eye (and the view-switch hitch, ~2.6s headless for 81 chunks).
+- Then Phase 8 step 4: rocks and berry bushes (see Next above for the design note on rocks' cover source), step 5: cross-guild footprint check, step 6: sprites instead of debug markers. Add each new guild to the Vegetation view (it currently shows only `CANOPY_TREES`). Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://...tres` for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
+- Biome-share numbers above came from ad hoc stride-sampling scripts (not committed); `tests/resource_by_biome.gd` only covers 600x600 tiles around the origin per seed, i.e. a single climate zone - widen it if biome balance matters again.
 
 ### Things To Watch Out For
 
