@@ -8,6 +8,7 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
 	{"label": "Base Biome", "mode": ChunkManagerScript.ViewMode.BASE_BIOME},
+	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},
 	{"label": "Moisture", "mode": ChunkManagerScript.ViewMode.MOISTURE},
 	{"label": "Temp Variation", "mode": ChunkManagerScript.ViewMode.TEMP_VARIATION},

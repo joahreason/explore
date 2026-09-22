@@ -7,13 +7,17 @@ extends Node2D
 
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 
-var _cells: Array = []
+var _cells: Array = []    # base biome names - drives fill color + outlines
+var _labels: Array = []   # display text per cell - may differ from _cells
 var _chunk_size: int = 16
 var _tile_size: int = 12
 
 
-func setup(cells: Array, chunk_size: int, tile_size: int) -> void:
+## labels defaults to cells (base-biome-only label) when not given, so
+## existing callers (Base Biome view) don't need to change.
+func setup(cells: Array, chunk_size: int, tile_size: int, labels: Array = []) -> void:
 	_cells = cells
+	_labels = labels if not labels.is_empty() else cells
 	_chunk_size = chunk_size
 	_tile_size = tile_size
 	queue_redraw()
@@ -41,8 +45,8 @@ func _draw() -> void:
 				var y := float((ly + 1) * _tile_size)
 				draw_line(Vector2(lx * _tile_size, y), Vector2((lx + 1) * _tile_size, y), outline_color, 1.0)
 
-	var center_biome: String = _cells[(_chunk_size / 2) * stride + (_chunk_size / 2)]
+	var center_label: String = _labels[(_chunk_size / 2) * stride + (_chunk_size / 2)]
 	var font := ThemeDB.fallback_font
 	var text_pos := Vector2(4, _chunk_size * _tile_size * 0.5)
-	draw_string(font, text_pos + Vector2(1, 1), center_biome, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.BLACK)
-	draw_string(font, text_pos, center_biome, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)
+	draw_string(font, text_pos + Vector2(1, 1), center_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.BLACK)
+	draw_string(font, text_pos, center_label, HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color.WHITE)

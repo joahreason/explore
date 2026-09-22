@@ -17,12 +17,14 @@ const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
 const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
 
 ## Render-method views swap what color a chunk's base image is built from
-## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer. Only
-## BASE_BIOME additionally draws the label overlay, since text can't be
-## baked into a flat pixel image. Keep in sync with view_mode_dropdown.gd.
+## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer.
+## BASE_BIOME and SUBTYPE additionally draw a label overlay, since text can't
+## be baked into a flat pixel image (see _is_label_view). Keep in sync with
+## view_mode_dropdown.gd.
 enum ViewMode {
 	MATERIAL,
 	BASE_BIOME,
+	SUBTYPE,
 	TEMPERATURE,
 	MOISTURE,
 	TEMP_VARIATION,
@@ -48,7 +50,7 @@ enum ViewMode {
 var _target: Node2D
 var _world_gen: WorldGen
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
-var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in BASE_BIOME view
+var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -97,6 +99,10 @@ func toggle_biome_overlay() -> void:
 	set_view_mode(ViewMode.MATERIAL if _view_mode == ViewMode.BASE_BIOME else ViewMode.BASE_BIOME)
 
 
+func _is_label_view(mode: ViewMode) -> bool:
+	return mode == ViewMode.BASE_BIOME or mode == ViewMode.SUBTYPE
+
+
 ## Public entry point for the view-mode dropdown. Regenerates every currently
 ## loaded chunk's image in place (swap Sprite2D.texture) rather than adding a
 ## second layer - see plan doc §7 for why heatmap views are render methods,
@@ -104,17 +110,22 @@ func toggle_biome_overlay() -> void:
 func set_view_mode(mode: ViewMode) -> void:
 	if mode == _view_mode:
 		return
-	var was_biome := _view_mode == ViewMode.BASE_BIOME
+	var was_label := _is_label_view(_view_mode)
 	_view_mode = mode
-	var now_biome := _view_mode == ViewMode.BASE_BIOME
+	var now_label := _is_label_view(_view_mode)
 
 	for chunk_coord in _loaded_chunks.keys():
 		_regenerate_chunk_image(chunk_coord)
 
-	if now_biome and not was_biome:
+	if now_label:
+		# Also covers switching BASE_BIOME <-> SUBTYPE directly - labels
+		# differ, so existing overlays need rebuilding either way.
+		for overlay in _loaded_overlays.values():
+			overlay.queue_free()
+		_loaded_overlays.clear()
 		for chunk_coord in _loaded_chunks.keys():
 			_generate_overlay_chunk(chunk_coord)
-	elif was_biome and not now_biome:
+	elif was_label:
 		for overlay in _loaded_overlays.values():
 			overlay.queue_free()
 		_loaded_overlays.clear()
@@ -217,7 +228,7 @@ func _generate_chunk(chunk_coord: Vector2i) -> void:
 
 	_loaded_chunks[chunk_coord] = sprite
 
-	if _view_mode == ViewMode.BASE_BIOME:
+	if _is_label_view(_view_mode):
 		_generate_overlay_chunk(chunk_coord)
 
 
@@ -229,19 +240,34 @@ func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
 ## Biome labels are derived from the same WorldGen fields but sampled on a
 ## (chunk_size+1)^2 grid so boundary outlines line up with tiles one step
 ## into the neighboring chunk, without that chunk needing to be loaded.
+## Fill/outlines always key on base biome; SUBTYPE view only changes the
+## drawn label text ("Forest (Montane)" etc.), not the region shapes.
 func _generate_overlay_chunk(chunk_coord: Vector2i) -> void:
 	var base := chunk_coord * CHUNK_SIZE
 	var stride := CHUNK_SIZE + 1
+	var show_subtype := _view_mode == ViewMode.SUBTYPE
 	var biome_grid := []
+	var label_grid := []
 	biome_grid.resize(stride * stride)
+	label_grid.resize(stride * stride)
 
 	for ly in range(stride):
 		for lx in range(stride):
 			var sample := _world_gen.sample(base.x + lx, base.y + ly)
-			biome_grid[ly * stride + lx] = BiomeClassifierScript.classify(sample)
+			var i := ly * stride + lx
+			if show_subtype:
+				var full: Dictionary = BiomeClassifierScript.classify_full(sample)
+				var base_biome: String = full["base_biome"]
+				var subtype: String = full["subtype"]
+				biome_grid[i] = base_biome
+				label_grid[i] = "%s (%s)" % [base_biome, subtype] if subtype != "" else base_biome
+			else:
+				var base_biome: String = BiomeClassifierScript.classify(sample)
+				biome_grid[i] = base_biome
+				label_grid[i] = base_biome
 
 	var overlay := BiomeOverlayChunkScript.new()
-	overlay.setup(biome_grid, CHUNK_SIZE, TILE_SIZE)
+	overlay.setup(biome_grid, CHUNK_SIZE, TILE_SIZE, label_grid)
 	overlay.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	overlay_root.add_child(overlay)
 	_loaded_overlays[chunk_coord] = overlay
