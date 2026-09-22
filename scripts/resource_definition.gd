@@ -10,11 +10,19 @@ extends Resource
 ##
 ## Curves use Godot's built-in Curve resource (matches the plan's own
 ## "temperature_curve.sample(temperature)" language exactly) rather than a
-## custom curve type - a fresh Curve defaults to a 0..1 domain/range, which
-## is the "0.0 unsuitable .. 1.0 highly suitable" convention the plan asks
-## for throughout. Leaving a curve unassigned means "this factor doesn't
-## constrain this resource" (ResourceManager, once it exists, should treat a
-## null curve as neutral/1.0 rather than 0.0 - see Phase 3).
+## custom curve type. A curve's Y range should stay within the plan's
+## "0.0 unsuitable .. 1.0 highly suitable" convention, but its X DOMAIN must
+## be set (in the Inspector, via the curve's min_domain/max_domain) to match
+## that field's actual natural range from docs/architecture.md §2 - most
+## fields are already 0..1, but e.g. temperature and elevation are -1..1,
+## and slope is a small unbounded-above magnitude (commonly ~0..0.05) rather
+## than 0..1. ResourceManager.get_suitability() (Phase 3) passes each raw
+## EnvironmentalState field straight into curve.sample() with no
+## renormalization, relying on the curve's own configured domain - this
+## keeps the combination formula generic instead of hardcoding per-field
+## rescaling. Leaving a curve unassigned means "this factor doesn't
+## constrain this resource" (ResourceManager treats a null curve as
+## neutral/1.0, never 0.0 - see Phase 3).
 
 @export var id: String
 @export var category: String

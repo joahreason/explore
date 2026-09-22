@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 3 — Habitat Suitability (about to start; see `docs/resource-generation-plan.md`).
+Phase 4 — Resource Suitability Debug Views (about to start; see `docs/resource-generation-plan.md`).
 
 ## Completed
 
@@ -17,13 +17,16 @@ Phase 3 — Habitat Suitability (about to start; see `docs/resource-generation-p
 - Phase 1: added `scripts/environmental_state.gd`, an `EnvironmentalState` typed wrapper with `from_sample(dict)`, built as an *additional* representation alongside the existing Dictionary (decision: `WorldGen.sample()` keeps returning a Dictionary unchanged; all 7 existing callers - biome_classifier, biome_subtype, biome_modifiers, debug_colorizer, heatmap_colorizer, chunk_manager, tile_inspector_panel - are untouched, per the plan's own "introduce a clean representation without breaking existing callers"). Verified via a headless script: same-seed/same-coordinate determinism across multiple WorldGen instances, and field-for-field match between the wrapper and the source Dictionary. PASS.
 - Phase 2: added `scripts/resource_definition.gd` (`ResourceDefinition`, `class_name ... extends Resource` with `@export` fields), following WorldGen's own Resource+@export pattern - the project's one existing precedent for a large tunable/inspector-editable data object. Suitability curves use Godot's built-in `Curve` resource (matches the plan's own `temperature_curve.sample(temperature)` language exactly; a fresh Curve defaults to a 0..1 domain/range). Categorical weights (biome/subtype/geology) are plain `Dictionary` exports; an unset curve or missing weight-map entry is defined as neutral (1.0), not 0.0 - see the file's doc comment, this convention matters for Phase 3. Verified via a headless script: instantiation, Curve.sample() behavior, Dictionary round-trip, and a real ResourceSaver.save()/load() round-trip (confirms it behaves as a genuine Godot Resource, not just a plain object). PASS.
 
+- Phase 3: implemented `ResourceManager.get_suitability(state, definition, classified={}) -> float`. Curve-based physical factors (temperature/moisture/fertility/elevation/slope/drainage/erosion) plus geology weight combine via GEOMETRIC MEAN (not a blind product - the plan warns that craters every score); biome/subtype weights are separate multiplicative modifiers applied after; river/shore/disturbance affinities are additive bonuses; final result clamped to [0,1]. Unset curve or missing weight-map entry = neutral 1.0, per the established convention. Verified headless against the plan's own Oak/Iron examples: neutral-when-empty, good vs. hostile temperature, unlisted-biome-is-neutral vs. listed-lower-weight-biome-reduces-score, geology as a hard requirement for Iron, and output clamping. PASS.
+- Fixed a real gap in the headless dev workflow: this project's `.godot/global_script_class_cache.cfg` (gitignored, local-only) only gets rebuilt by opening the editor, so any `class_name` added since the last rebuild fails to resolve in ad hoc `--script` test runs. One-time fix documented in "Things To Watch Out For" below; applied this session so `EnvironmentalState`/`ResourceDefinition`/`ResourceManager` all resolve normally now.
+
 ## In Progress
 
-- (none - Phase 2 complete, Phase 3 not yet started)
+- (none - Phase 3 complete, Phase 4 not yet started)
 
 ## Next
 
-- Phase 3: `ResourceManager.get_suitability(state, resource) -> float` (fill in `scripts/resource_manager.gd`, currently an empty stub), combining ResourceDefinition's curves/weights against an EnvironmentalState per the plan's tuned-combination guidance (not blind multiplication of every factor).
+- Phase 4: resource-suitability heatmap debug views wired into `chunk_manager.gd`'s view-mode dropdown (one per registered resource, e.g. "Oak Suitability"), following the existing heatmap-view pattern (`HeatmapColorizerScript`, blended 65% onto Material).
 
 ## Important Architecture
 
@@ -69,6 +72,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - Phase 1: same-seed/same-coordinate determinism check across multiple `WorldGen` instances and multiple `sample()` calls; field-for-field match between `EnvironmentalState` and the source Dictionary.
 - Phase 2: `ResourceDefinition` instantiation, `Curve.sample()` output, `Dictionary` weight round-trip, and `ResourceSaver.save()`/`load()` round-trip, all headless.
+- Phase 3: `ResourceManager.get_suitability()` against the plan's own Oak/Iron worked examples (see Completed above), headless.
 
 ### Known Unverified Areas
 
@@ -78,13 +82,13 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 0 committed on branch `resource-generation` (commit `8a50906`). Phase 1 (`EnvironmentalState`, commit `83646be`) and Phase 2 (`ResourceDefinition`) both written and verified (PASS).
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`) committed on branch `resource-generation`. Phase 3 (`ResourceManager.get_suitability()`) written and verified (PASS), about to be committed.
 
 ### Next Action
 
-- Begin Phase 3 (`ResourceManager.get_suitability()`) per `docs/resource-generation-plan.md`.
+- Begin Phase 4 (resource-suitability heatmap debug views in `chunk_manager.gd`) per `docs/resource-generation-plan.md`.
 
 ### Things To Watch Out For
 
-- GDScript `class_name`-based global class resolution is unreliable in headless `--script` runs in this project (seen before, in this session and prior ones) - use `preload("res://scripts/<file>.gd")` with an explicit const in throwaway test scripts instead of referring to the class_name directly.
+- GDScript `class_name`-based global class resolution fails in headless `--script` runs for any script added since `.godot/global_script_class_cache.cfg` was last built (that cache is gitignored, local-only, and is normally only rebuilt by opening the editor). Fix for a fresh session/checkout: run `Godot.exe --headless --path . --editor --quit-after 3` once to force a rebuild before running any other headless test scripts - confirm with `grep <new_file> .godot/global_script_class_cache.cfg`. Not needed for the real game (editor/export always rebuilds it), only for this project's headless-script verification workflow.
 - `WorldGen.sample()`'s Dictionary keys don't always match the plan doc's conceptual field names 1:1 (e.g. actual key is `laplacian`, not `curvature`; actual key is `exposure`, not `wind_exposure`) - `docs/architecture.md` §2 has the verified real key table; use that, not the plan doc's conceptual sketch, when writing code.
