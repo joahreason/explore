@@ -7,6 +7,7 @@
 [ext_resource type="Script" path="res://scripts/seed_input.gd" id="5"]
 [ext_resource type="Script" path="res://scripts/randomize_seed_button.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/tile_inspector_panel.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/touch_scroll_container.gd" id="8"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -28,11 +29,11 @@ current = true
 [node name="SeedInput" type="LineEdit" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
+offset_left = -276.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 64.0
-theme_override_font_sizes/font_size = 22
+offset_bottom = 80.0
+theme_override_font_sizes/font_size = 30
 placeholder_text = "Seed"
 max_length = 40
 script = ExtResource("5")
@@ -40,64 +41,69 @@ script = ExtResource("5")
 [node name="RandomizeButton" type="Button" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
-offset_top = 72.0
+offset_left = -276.0
+offset_top = 92.0
 offset_right = -16.0
-offset_bottom = 136.0
-theme_override_font_sizes/font_size = 24
+offset_bottom = 176.0
+theme_override_font_sizes/font_size = 32
 text = "Randomize"
 script = ExtResource("6")
 
 [node name="ReloadButton" type="Button" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
-offset_top = 144.0
+offset_left = -276.0
+offset_top = 188.0
 offset_right = -16.0
-offset_bottom = 208.0
-theme_override_font_sizes/font_size = 28
+offset_bottom = 272.0
+theme_override_font_sizes/font_size = 36
 text = "Reload"
 script = ExtResource("3")
 
 [node name="ViewModeDropdown" type="OptionButton" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
-offset_left = -220.0
-offset_top = 216.0
+offset_left = -276.0
+offset_top = 284.0
 offset_right = -16.0
-offset_bottom = 264.0
-theme_override_font_sizes/font_size = 22
+offset_bottom = 348.0
+theme_override_font_sizes/font_size = 30
 script = ExtResource("4")
 
 [node name="TileInspector" type="PanelContainer" parent="UI"]
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 356.0
-offset_bottom = 536.0
+offset_right = 436.0
+offset_bottom = 636.0
 script = ExtResource("7")
 
 [node name="Margin" type="MarginContainer" parent="UI/TileInspector"]
 layout_mode = 2
-theme_override_constants/margin_left = 12
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 12
-theme_override_constants/margin_bottom = 12
+theme_override_constants/margin_left = 16
+theme_override_constants/margin_top = 16
+theme_override_constants/margin_right = 16
+theme_override_constants/margin_bottom = 16
 
 [node name="VBox" type="VBoxContainer" parent="UI/TileInspector/Margin"]
 layout_mode = 2
+theme_override_constants/separation = 8
 
 [node name="CloseButton" type="Button" parent="UI/TileInspector/Margin/VBox"]
+custom_minimum_size = Vector2(64, 56)
 layout_mode = 2
 size_flags_horizontal = 8
+theme_override_font_sizes/font_size = 26
 text = "X"
 
 [node name="Scroll" type="ScrollContainer" parent="UI/TileInspector/Margin/VBox"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 460)
+custom_minimum_size = Vector2(0, 512)
+script = ExtResource("8")
 
 [node name="Label" type="RichTextLabel" parent="UI/TileInspector/Margin/VBox/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
+mouse_filter = 2
 bbcode_enabled = true
 fit_content = true
-theme_override_font_sizes/normal_font_size = 15
+theme_override_font_sizes/normal_font_size = 20
