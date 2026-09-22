@@ -17,6 +17,12 @@ extends RefCounted
 const BiomeSubtypeScript := preload("res://scripts/biome_subtype.gd")
 const BiomeModifiersScript := preload("res://scripts/biome_modifiers.gd")
 
+## Tundra's score ramps from 0 at temperature -TUNDRA_COLD_START to 1 at
+## -TUNDRA_COLD_FULL. It used to start at -0.1, so merely cool land beat the
+## Plains floor (0.2) by -0.16 and Tundra covered ~a third of the world.
+const TUNDRA_COLD_START := 0.3
+const TUNDRA_COLD_FULL := 0.55
+
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
 	"Frozen Sea": Color(0.7, 0.85, 0.95, 0.55),
@@ -106,7 +112,7 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 
 	return {
 		"Alpine Snow": smoothstep(0.55, 0.85, elev01),
-		"Tundra": smoothstep(0.1, 0.4, -temperature),
+		"Tundra": smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature),
 		"Badlands": maxf(smoothstep(0.15, 0.45, erosion), smoothstep(0.004, 0.009, slope)),
 		"Desert": (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation)),
 		"Wetland": smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.15, 0.25, vegetation)),

@@ -36,6 +36,15 @@ extends Resource
 @export var elevation_lapse: float = 0.9
 @export var exposure_sun_strength: float = 0.5
 @export var micro_variation: float = 0.06
+## Regional climate noise is FBM simplex, which clusters near 0 and rarely
+## nears +/-1 - without a stretch the world has few truly hot or cold
+## regions. climate_contrast scales it (the sum is clamped to -1..1 anyway).
+@export var climate_contrast: float = 1.6
+## Added to every tile's temperature. Land always sits above sea_level, so
+## elevation_lapse alone pulls typical land (elevation ~0..0.3) colder than
+## the climate noise says; this offsets that bias so cold regions don't
+## dominate the land.
+@export var temperature_offset: float = 0.2
 
 # --- Moisture / hydrology ---
 @export_group("Hydrology")
@@ -306,7 +315,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var exposure01 := clampf(wind_strength01 * (0.3 + 0.7 * clampf(e, 0.0, 1.0) + slope * 2.0), 0.0, 1.0)
 
 	# --- temperature (elevation lapse + slope sun exposure + regional climate) ---
-	var climate := _climate.get_noise_2d(fx, fy)
+	var climate := _climate.get_noise_2d(fx, fy) * climate_contrast + temperature_offset
 	var micro := _micro.get_noise_2d(fx * 3.0, fy * 3.0) * micro_variation
 	var temperature := clampf(climate - e * elevation_lapse - dy * exposure_sun_strength + micro, -1.0, 1.0)
 
