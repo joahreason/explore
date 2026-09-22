@@ -19,6 +19,7 @@ target_path = NodePath("CameraRig")
 
 [node name="CameraRig" type="Node2D" parent="."]
 script = ExtResource("2")
+ui_root_path = NodePath("../UI")
 
 [node name="Camera2D" type="Camera2D" parent="CameraRig"]
 zoom = Vector2(4, 4)
