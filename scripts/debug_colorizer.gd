@@ -40,6 +40,8 @@ static func color_for(s: Dictionary) -> Color:
 	var resource: float = s["resource"]
 	var water_body: String = s["water_body"]
 	var shore_proximity: float = s["shore_proximity"]
+	var drainage: float = s["drainage"]
+	var fire_risk: float = s["fire_risk"]
 
 	var sea_level := -0.1
 
@@ -57,17 +59,29 @@ static func color_for(s: Dictionary) -> Color:
 
 	var elev01 := clampf((elevation + 1.0) * 0.5, 0.0, 1.0)
 	var warm_trigger := smoothstep(-0.2, 0.3, temperature)
-	var flat_trigger := 1.0 - smoothstep(0.0013, 0.0065, slope)
 
 	var w_snow := maxf(smoothstep(0.15, 0.55, -temperature), smoothstep(0.55, 0.85, elev01))
 	var w_rock := clampf(erosion * 1.3 + smoothstep(0.0045, 0.012, slope) * 0.7, 0.0, 1.0)
 	# Beach: sandy right at the coast regardless of climate (real beaches form
 	# from wave action, not aridity), on top of the climate-driven desert sand.
 	var w_sand := clampf((1.0 - moisture) * warm_trigger + shore_proximity * 0.9, 0.0, 1.0)
-	var w_mud := clampf(moisture * (1.0 - vegetation) * flat_trigger, 0.0, 1.0)
+	# Mud now driven by the real `drainage` field (geology + slope + curvature
+	# + moisture + shore proximity) instead of a slope-only stand-in - poorly-
+	# drained + wet + unvegetated ground pools into mud.
+	var w_mud := clampf(moisture * (1.0 - vegetation) * (1.0 - drainage), 0.0, 1.0)
 	var w_soil := clampf((1.0 - vegetation) * (1.0 - w_mud) * 0.6, 0.0, 1.0)
 	var w_grass := clampf(vegetation * (1.0 - smoothstep(0.6, 1.0, vegetation)), 0.0, 1.0)
 	var w_forest := clampf(vegetation * smoothstep(0.55, 1.0, vegetation), 0.0, 1.0)
+
+	# Fire-prone ground reads drier/scrubbier: thin the grass/forest look and
+	# nudge toward sand. fire_risk's real range is compressed (~0-0.07
+	# typical, see world_gen.gd), same display-gain reasoning as its heatmap
+	# view - this is a purely cosmetic nudge, not a reinterpretation of the
+	# underlying data.
+	var scrub := clampf(fire_risk * 6.0, 0.0, 0.4)
+	w_forest *= 1.0 - scrub
+	w_grass *= 1.0 - scrub * 0.5
+	w_sand = clampf(w_sand + scrub * 0.3, 0.0, 1.0)
 
 	var total := w_snow + w_rock + w_sand + w_mud + w_soil + w_grass + w_forest + 0.001
 	var color := (
