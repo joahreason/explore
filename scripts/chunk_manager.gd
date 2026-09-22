@@ -34,6 +34,7 @@ var _last_load_radius: int = -1
 
 
 func _ready() -> void:
+	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 
@@ -41,6 +42,27 @@ func _ready() -> void:
 		_target = get_node(target_path)
 
 	_update_chunks(_chunk_of(_target.global_position if _target else Vector2.ZERO), _current_load_radius())
+
+
+## Web only: a "?seed=" query param overrides the exported world_seed - set
+## by ReloadButton from whatever was typed into the seed field. A purely
+## numeric seed is used directly (matches the exported int seed behavior
+## everywhere else in this project); anything else (letters/spaces) is
+## hashed to a deterministic int, so the same text always regenerates the
+## same world.
+func _resolve_world_seed() -> int:
+	if not OS.has_feature("web"):
+		return world_seed
+
+	var raw = JavaScriptBridge.eval(
+		"new URLSearchParams(location.search).get('seed') || ''", true
+	)
+	var raw_str := str(raw) if raw != null else ""
+	if raw_str == "":
+		return world_seed
+	if raw_str.is_valid_int():
+		return int(raw_str)
+	return raw_str.hash()
 
 
 func _unhandled_input(event: InputEvent) -> void:
