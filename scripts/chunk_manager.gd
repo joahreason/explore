@@ -16,6 +16,21 @@ const CHUNK_SIZE := 16         # tiles per chunk edge
 const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
 const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
 
+## LOD: at low zoom, sample each chunk on a coarser grid (1 sample per
+## lod_step^2 tiles instead of per-tile) and let the Sprite2D's scale
+## stretch it back to the same world-space footprint - same idea as a
+## mipmap. Zoomed out means MORE chunks are needed to cover the screen, not
+## fewer, so without this every additional chunk still paid full per-tile
+## WorldGen.sample() cost (~30-40 noise calls each after all the biome-
+## variety fields) even though individual tiles aren't perceivable at that
+## zoom anyway. Steps must evenly divide CHUNK_SIZE.
+const LOD_THRESHOLDS := [
+	{"zoom": 1.0, "step": 1},
+	{"zoom": 0.5, "step": 2},
+	{"zoom": 0.25, "step": 4},
+	{"zoom": 0.0, "step": 8},
+]
+
 ## Render-method views swap what color a chunk's base image is built from
 ## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer.
 ## BASE_BIOME and SUBTYPE additionally draw a label overlay, since text can't
@@ -55,6 +70,7 @@ var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay)
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
+var _last_lod_step: int = -1
 
 
 func _ready() -> void:
@@ -135,6 +151,13 @@ func set_view_mode(mode: ViewMode) -> void:
 func _process(_delta: float) -> void:
 	if _target == null:
 		return
+
+	var lod_step := _current_lod_step()
+	if lod_step != _last_lod_step:
+		_last_lod_step = lod_step
+		for chunk_coord in _loaded_chunks.keys():
+			_regenerate_chunk_image(chunk_coord)
+
 	var center := _chunk_of(_target.global_position)
 	var load_radius := _current_load_radius()
 	if center == _last_center and load_radius == _last_load_radius:
@@ -144,17 +167,29 @@ func _process(_delta: float) -> void:
 	_update_chunks(center, load_radius)
 
 
+func _current_zoom() -> float:
+	var cam := get_viewport().get_camera_2d()
+	return cam.zoom.x if cam else 4.0
+
+
 ## Enough chunks to cover the current camera view (whatever its zoom), plus
 ## a floor so a fully zoomed-in camera still has a comfortable buffer.
 func _current_load_radius() -> int:
-	var cam := get_viewport().get_camera_2d()
-	var zoom: float = cam.zoom.x if cam else 4.0
+	var zoom := _current_zoom()
 	var viewport_size := get_viewport().get_visible_rect().size
 	var half_extent_px := (viewport_size / zoom) * 0.5
 	var half_diagonal_px := half_extent_px.length()
 	var chunk_px := CHUNK_SIZE * TILE_SIZE
 	var needed := ceili(half_diagonal_px / chunk_px) + 1
 	return maxi(MIN_LOAD_RADIUS, needed)
+
+
+func _current_lod_step() -> int:
+	var zoom := _current_zoom()
+	for entry in LOD_THRESHOLDS:
+		if zoom >= entry["zoom"]:
+			return entry["step"]
+	return 1
 
 
 func _chunk_of(world_pos: Vector2) -> Vector2i:
@@ -206,24 +241,32 @@ func _color_for(sample: Dictionary) -> Color:
 			return DebugColorizerScript.color_for(sample)
 
 
-func _build_chunk_image(chunk_coord: Vector2i) -> Image:
+## lod_step tiles collapse into one sample (taken at the block's center);
+## the returned image is (CHUNK_SIZE/lod_step)^2, and the caller scales the
+## Sprite2D back up to compensate, so a chunk's world-space footprint never
+## changes - only how much per-tile detail it actually shows.
+func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
 	var base := chunk_coord * CHUNK_SIZE
-	var img := Image.create(CHUNK_SIZE, CHUNK_SIZE, false, Image.FORMAT_RGB8)
-	for ly in range(CHUNK_SIZE):
-		for lx in range(CHUNK_SIZE):
-			var sample := _world_gen.sample(base.x + lx, base.y + ly)
+	var cells := CHUNK_SIZE / lod_step
+	var img := Image.create(cells, cells, false, Image.FORMAT_RGB8)
+	for ly in range(cells):
+		for lx in range(cells):
+			var wx := base.x + lx * lod_step + lod_step / 2
+			var wy := base.y + ly * lod_step + lod_step / 2
+			var sample := _world_gen.sample(wx, wy)
 			img.set_pixel(lx, ly, _color_for(sample))
 	return img
 
 
 func _generate_chunk(chunk_coord: Vector2i) -> void:
 	var base := chunk_coord * CHUNK_SIZE
-	var texture := ImageTexture.create_from_image(_build_chunk_image(chunk_coord))
+	var lod_step := _current_lod_step()
+	var texture := ImageTexture.create_from_image(_build_chunk_image(chunk_coord, lod_step))
 	var sprite := Sprite2D.new()
 	sprite.texture = texture
 	sprite.centered = false
 	sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	sprite.scale = Vector2(TILE_SIZE, TILE_SIZE)
+	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	chunks_root.add_child(sprite)
 
@@ -235,7 +278,9 @@ func _generate_chunk(chunk_coord: Vector2i) -> void:
 
 func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
 	var sprite: Sprite2D = _loaded_chunks[chunk_coord]
-	sprite.texture = ImageTexture.create_from_image(_build_chunk_image(chunk_coord))
+	var lod_step := _current_lod_step()
+	sprite.texture = ImageTexture.create_from_image(_build_chunk_image(chunk_coord, lod_step))
+	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
 
 
 ## Biome labels are derived from the same WorldGen fields but sampled on a
