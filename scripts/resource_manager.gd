@@ -147,20 +147,24 @@ static func _geometric_mean(values: Array[float]) -> float:
 ## cluster_scale sets the patch size (tiles), cluster_strength how much the
 ## patch noise modulates density (0 = uniform 1.0, 1 = full 0..1 range).
 static func get_patch_modifier(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
-	if definition.cluster_strength <= 0.0:
+	return _patch_value(definition.id, definition.cluster_scale, definition.cluster_strength, world_seed, wx, wy)
+
+
+static func _patch_value(id: String, cluster_scale: float, cluster_strength: float, world_seed: int, wx: int, wy: int) -> float:
+	if cluster_strength <= 0.0:
 		return 1.0
-	var noise := _patch_noise(definition, world_seed)
+	var noise := _patch_noise(id, cluster_scale, world_seed)
 	var patch := clampf(noise.get_noise_2d(wx, wy) * PATCH_CONTRAST * 0.5 + 0.5, 0.0, 1.0)
-	return lerpf(1.0, patch, clampf(definition.cluster_strength, 0.0, 1.0))
+	return lerpf(1.0, patch, clampf(cluster_strength, 0.0, 1.0))
 
 
-static func _patch_noise(definition: ResourceDefinition, world_seed: int) -> FastNoiseLite:
-	var scale := maxf(definition.cluster_scale, 1.0)
-	var key := "%d|%s|%f" % [world_seed, definition.id, scale]
+static func _patch_noise(id: String, cluster_scale: float, world_seed: int) -> FastNoiseLite:
+	var scale := maxf(cluster_scale, 1.0)
+	var key := "%d|%s|%f" % [world_seed, id, scale]
 	if _patch_noise_cache.has(key):
 		return _patch_noise_cache[key]
 	var noise := FastNoiseLite.new()
-	noise.seed = ("%d:%s" % [world_seed + WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET, definition.id]).hash()
+	noise.seed = ("%d:%s" % [world_seed + WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET, id]).hash()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = 1.0 / scale
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
@@ -190,3 +194,48 @@ static func get_density(
 	var base_density := clampf(definition.base_density, 0.0, 1.0)
 	var patch := get_patch_modifier(definition, world_seed, wx, wy)
 	return clampf(suitability * base_density * patch, 0.0, 1.0)
+
+
+## Phase 8 amendment (guilds, see ResourceGuild): each member's
+## get_suitability() at this tile, in guild.members order.
+static func get_member_suitabilities(
+	state: EnvironmentalState, guild: ResourceGuild, classified: Dictionary = {}
+) -> PackedFloat32Array:
+	var result := PackedFloat32Array()
+	for member in guild.members:
+		result.append(get_suitability(state, member, classified))
+	return result
+
+
+## Each member's share of the guild's instances at a tile:
+## s_i^sharpness / sum_j s_j^sharpness. All zeros where no member can live.
+static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: float) -> PackedFloat32Array:
+	var shares := PackedFloat32Array()
+	var total := 0.0
+	for s in suitabilities:
+		var w := pow(maxf(s, 0.0), maxf(sharpness, 0.0)) if s > 0.0 else 0.0
+		shares.append(w)
+		total += w
+	if total > 0.0:
+		for i in shares.size():
+			shares[i] /= total
+	return shares
+
+
+## Guild counterpart of get_density(): cover(cover_field) * base_density *
+## the guild's patch noise * the best member's suitability. The environment
+## sets how much can grow; the max-suitability cap keeps the guild off tiles
+## none of its members tolerate (and thins it toward every member's limits)
+## without letting the member mix change the total.
+static func get_guild_density(
+	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> float:
+	var best := 0.0
+	for s in get_member_suitabilities(state, guild, classified):
+		best = maxf(best, s)
+	if best <= 0.0:
+		return 0.0
+	var field := clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
+	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
+	var patch := _patch_value(guild.id, guild.cluster_scale, guild.cluster_strength, world_seed, wx, wy)
+	return clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)

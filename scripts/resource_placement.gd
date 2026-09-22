@@ -31,8 +31,9 @@ extends RefCounted
 ## order-independent, which is what makes it chunk-safe.
 ##
 ## minimum_spacing is also the resource's footprint for collision avoidance
-## between instances of the SAME resource. Cross-resource collision (e.g. a
-## rock and a tree) needs a second resource type to exist first - Phase 8.
+## between instances of the SAME resource - or, via place_guild_in_rect(),
+## of the same guild. Collision between different guilds (e.g. a rock and a
+## tree) is not handled here yet.
 ##
 ## Each instance is identified by (resource id, cell) - stable across
 ## sessions and chunk loads, which later phases (gameplay entities,
@@ -45,6 +46,7 @@ const _SALT_JITTER_X := 1
 const _SALT_JITTER_Y := 2
 const _SALT_ACCEPT := 3
 const _SALT_PRIORITY := 4
+const _SALT_SPECIES := 5
 
 
 ## Returns every instance of `definition` whose position falls inside
@@ -57,8 +59,58 @@ const _SALT_PRIORITY := 4
 static func place_in_rect(
 	definition: ResourceDefinition, world_seed: int, tile_rect: Rect2i, density_fn: Callable
 ) -> Array[Dictionary]:
-	var spacing := maxf(definition.minimum_spacing, 0.5)
-	var resource_seed := _resource_seed(definition, world_seed)
+	return _place(definition.id, definition.minimum_spacing, world_seed, tile_rect, density_fn)
+
+
+## Phase 8 amendment: places a whole ResourceGuild on ONE shared grid
+## (guild.minimum_spacing, seeded by guild.id), so members can never overlap,
+## then gives each instance a species by a per-cell hash roll against
+## `shares_fn` - Callable(wx: int, wy: int) -> PackedFloat32Array, one share
+## per guild.members entry, normally ResourceManager.get_species_shares().
+## Instances are {"id": member id, "guild": guild id, "cell", "position"};
+## (guild id, cell) is the stable key. An instance whose shares are all zero
+## is dropped (density_fn should already be zero there).
+static func place_guild_in_rect(
+	guild: ResourceGuild, world_seed: int, tile_rect: Rect2i, density_fn: Callable, shares_fn: Callable
+) -> Array[Dictionary]:
+	var guild_seed := _resource_seed(guild.id, world_seed)
+	var result: Array[Dictionary] = []
+	for inst in _place(guild.id, guild.minimum_spacing, world_seed, tile_rect, density_fn):
+		var pos: Vector2 = inst["position"]
+		var shares: PackedFloat32Array = shares_fn.call(floori(pos.x), floori(pos.y))
+		var member := _pick(shares, _cell_unit(guild_seed, inst["cell"], _SALT_SPECIES))
+		if member < 0:
+			continue
+		inst["guild"] = guild.id
+		inst["id"] = guild.members[member].id
+		result.append(inst)
+	return result
+
+
+## Index whose cumulative share first exceeds roll (0..1); -1 if all zero.
+static func _pick(shares: PackedFloat32Array, roll: float) -> int:
+	var total := 0.0
+	for s in shares:
+		total += maxf(s, 0.0)
+	if total <= 0.0:
+		return -1
+	var acc := 0.0
+	var last := -1
+	for i in shares.size():
+		if shares[i] <= 0.0:
+			continue
+		acc += shares[i] / total
+		last = i
+		if roll < acc:
+			return i
+	return last
+
+
+static func _place(
+	id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_fn: Callable
+) -> Array[Dictionary]:
+	var spacing := maxf(minimum_spacing, 0.5)
+	var resource_seed := _resource_seed(id, world_seed)
 
 	var c0 := Vector2i(floori(tile_rect.position.x / spacing), floori(tile_rect.position.y / spacing))
 	var c1 := Vector2i(floori(tile_rect.end.x / spacing), floori(tile_rect.end.y / spacing))
@@ -83,7 +135,7 @@ static func place_in_rect(
 			continue
 		if _is_suppressed(candidate, survivors, min_dist_sq):
 			continue
-		result.append({"id": definition.id, "cell": cell, "position": pos})
+		result.append({"id": id, "cell": cell, "position": pos})
 	return result
 
 
@@ -128,8 +180,8 @@ static func _candidate(resource_seed: int, spacing: float, cell: Vector2i) -> Di
 ## Same derivation style as ResourceManager's patch noise (world_seed +
 ## reserved offset, mixed with the unique resource id), but its own offset
 ## so placement rolls are decorrelated from the patch field.
-static func _resource_seed(definition: ResourceDefinition, world_seed: int) -> int:
-	return ("%d:%s" % [world_seed + WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET, definition.id]).hash() & _MASK32
+static func _resource_seed(id: String, world_seed: int) -> int:
+	return ("%d:%s" % [world_seed + WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET, id]).hash() & _MASK32
 
 
 ## 0..1 (exclusive of 1) from the low 24 bits of the cell hash.

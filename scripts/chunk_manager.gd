@@ -15,6 +15,7 @@ const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
+const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -65,6 +66,8 @@ enum ViewMode {
 	RESOURCE_SUITABILITY_OAK,
 	RESOURCE_DENSITY_OAK,
 	RESOURCE_PLACEMENT_OAK,
+	TREE_COVER,
+	TREE_PLACEMENT,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -96,7 +99,8 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 
-	for warning in OAK_RESOURCE.get_curve_domain_warnings():
+	# The guild's warnings include its members' (oak among them).
+	for warning in CANOPY_TREES.get_curve_domain_warnings():
 		push_warning(warning)
 
 	if _seed_text != "":
@@ -304,6 +308,8 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
 		ViewMode.RESOURCE_DENSITY_OAK, ViewMode.RESOURCE_PLACEMENT_OAK:
 			return HeatmapColorizerScript.resource_density(_resource_density(sample, OAK_RESOURCE, wx, wy))
+		ViewMode.TREE_COVER, ViewMode.TREE_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_guild_density(sample, CANOPY_TREES, wx, wy))
 		_:
 			return null
 
@@ -323,6 +329,20 @@ func _resource_density(sample: Dictionary, definition: ResourceDefinition, wx: i
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	return ResourceManagerScript.get_density(state, definition, world_seed, wx, wy, classified)
+
+
+## Phase 8 (guilds): the guild's total density, whatever the species mix.
+func _guild_density(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> float:
+	var state = EnvironmentalStateScript.from_sample(sample)
+	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
+	return ResourceManagerScript.get_guild_density(state, guild, world_seed, wx, wy, classified)
+
+
+func _species_shares(sample: Dictionary, guild: ResourceGuild) -> PackedFloat32Array:
+	var state = EnvironmentalStateScript.from_sample(sample)
+	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
+	var suitabilities: PackedFloat32Array = ResourceManagerScript.get_member_suitabilities(state, guild, classified)
+	return ResourceManagerScript.get_species_shares(suitabilities, guild.species_sharpness)
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);
@@ -428,20 +448,22 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 		_loaded_placements.erase(chunk_coord)
 
 
-## Phase 7: which resource the current view places instances of (null = no
-## placement markers in this view). Placement views keep the matching
-## density heatmap as their base image, so each marker can be read against
-## the field it was drawn from.
-func _placement_definition() -> ResourceDefinition:
+## Phase 7: which ResourceDefinition or ResourceGuild the current view
+## places instances of (null = no placement markers in this view).
+## Placement views keep the matching density heatmap as their base image, so
+## each marker can be read against the field it was drawn from.
+func _placement_source() -> Resource:
 	match _view_mode:
 		ViewMode.RESOURCE_PLACEMENT_OAK:
 			return OAK_RESOURCE
+		ViewMode.TREE_PLACEMENT:
+			return CANOPY_TREES
 		_:
 			return null
 
 
 func _placements_visible() -> bool:
-	return _placement_definition() != null and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
+	return _placement_source() != null and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
 
 
 ## Drops every marker node and rebuilds them for all loaded chunks if the
@@ -459,15 +481,28 @@ func _refresh_placements() -> void:
 ## ResourcePlacement decides instances purely from world coordinates, so
 ## each chunk is placed on its own and neighbors agree at shared edges.
 func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
-	var definition := _placement_definition()
+	var source := _placement_source()
 	var base := chunk_coord * CHUNK_SIZE
-	var density_fn := func(wx: int, wy: int) -> float:
-		return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
-	var instances: Array = ResourcePlacementScript.place_in_rect(
-		definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn
-	)
+	var rect := Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
+	var instances: Array
+	var colors := {}
+	if source is ResourceGuild:
+		var guild: ResourceGuild = source
+		var density_fn := func(wx: int, wy: int) -> float:
+			return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
+		var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
+			return _species_shares(_world_gen.sample(wx, wy), guild)
+		instances = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, rect, density_fn, shares_fn)
+		for member in guild.members:
+			colors[member.id] = member.debug_color
+	else:
+		var definition: ResourceDefinition = source
+		var density_fn := func(wx: int, wy: int) -> float:
+			return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
+		instances = ResourcePlacementScript.place_in_rect(definition, world_seed, rect, density_fn)
+		colors[definition.id] = definition.debug_color
 	var markers := ResourceMarkerChunkScript.new()
-	markers.setup(instances, base, TILE_SIZE, definition.minimum_spacing)
+	markers.setup(instances, base, TILE_SIZE, source.minimum_spacing, colors)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers

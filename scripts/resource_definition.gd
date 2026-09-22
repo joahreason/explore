@@ -79,6 +79,8 @@ extends Resource
 @export_range(0.0, 1.0) var cluster_strength: float = 0.0
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""
+## Marker color in the placement debug views, until real sprites exist.
+@export var debug_color: Color = Color(0.10, 0.32, 0.10)
 
 
 ## Real value range of the EnvironmentalState field each curve samples

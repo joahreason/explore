@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 8: first playable resources (trees, rocks, berries) - built around guilds (plan Phase 8 amendment), first test oak + pine; includes cross-guild collision and sprites instead of debug circles
+- [ ] Phase 8: rocks + berry bushes (as guild members), cross-guild footprint check, sprites instead of debug circles (guild type + oak/pine canopy-tree guild done)
 
 ## Next
 

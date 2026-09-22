@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="4_def"]
+[ext_resource type="Resource" path="res://resources/oak.tres" id="2_oak"]
+[ext_resource type="Resource" path="res://resources/pine.tres" id="3_pine"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.03, 0.15), 0.0, 0.0, 0, 0, Vector2(0.1, 0.5), 0.0, 0.0, 0, 0, Vector2(0.2, 0.9), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[resource]
+script = ExtResource("1_guild")
+id = "canopy_trees"
+members = Array[ExtResource("4_def")]([ExtResource("2_oak"), ExtResource("3_pine")])
+cover_curve = SubResource("Curve_cover")
+species_sharpness = 4.0
+cluster_scale = 48.0
+cluster_strength = 0.8
+minimum_spacing = 2.0

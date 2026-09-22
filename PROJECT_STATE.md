@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. Not started; everything before it is done and deployed.
+Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. In progress: steps 1-3 (guild type, shared guild placement, oak + pine canopy-tree guild) done; rocks, berries, cross-guild footprint check and sprites remain.
 
 ## Completed
 
@@ -35,13 +35,17 @@ Phase 8 — First Playable Resources (trees, rocks, berries), built around resou
 - Suitability refinements (plan Phase 3 amendment): `ResourceDefinition.required_curves` names the curves that form a resource's tolerance envelope - `get_suitability()` multiplies by the lowest of them instead of averaging them in, so falling outside one means absent; the other curves stay geometric-mean preferences. Biome weights now apply against the tile's normalized classifier scores (`score^4`, `ResourceManager.BIOME_MEMBERSHIP_SHARPNESS`) rather than the argmax label - continuous across boundaries; water/beach tiles (no scores) still use the label. Subtype weights are still label-based (the plan amendment notes subtypes need their scores exposed; do that when a resource first depends on subtypes heavily). Oak's requirements: temperature, elevation, moisture, erosion. `tests/resource_by_biome.gd`, oaks/100 tiles, before -> after: Plains 6.6 -> 4.3, Grassland 2.8 -> 2.1, Badlands 5.1 -> 2.3, Alpine Snow 3.3 -> 1.1, Desert 4.5 -> 0.6, Tundra 1.9 -> 0.4, Beach 1.6 -> 0.1. Oak is sparser overall (moisture now caps it); absolute density is Phase 8 tuning. The Grassland-weight speckle is gone in the render.
 - Test suite committed in `tests/` (was scratch-only before): `tests/run_tests.sh` downloads the CI's Godot if `$GODOT` is unset, rebuilds the class cache, runs `test_resource_placement.gd` (14 checks) and `test_world_scene.gd` (8 checks); `--by-biome` adds the per-biome placement breakdown; `OUT_PNG=path` renders the Oak Placement view. `tests/*` is excluded from the Web export. Verified from a clean `$HOME` (fresh download).
 
+- Phase 8, steps 1-3 (guilds): `scripts/resource_guild.gd` (`ResourceGuild`, Resource + @export: `id`, `members: Array[ResourceDefinition]`, `cover_field` = `"vegetation"`, `cover_curve`, `base_density`, `species_sharpness`, guild-level `cluster_scale`/`cluster_strength`/`minimum_spacing`). `ResourceManager.get_guild_density()` = cover_curve(vegetation) x base_density x guild patch noise x **best member's suitability**; `get_member_suitabilities()` + `get_species_shares()` (share_i = s_i^sharpness / sum). `ResourcePlacement.place_guild_in_rect(guild, seed, rect, density_fn, shares_fn)` runs the Phase 7 algorithm once on one grid seeded by the guild id, then picks each instance's species with a per-cell hash roll (new salt); instances carry `id` (species) and `guild`, key `(guild id, cell)`. New `resources/pine.tres` (cold/high/drier-tolerant, real-unit curves, biome weights thinning it on Tundra/Grassland/Alpine/Desert/wet biomes) and `resources/canopy_trees.tres` (oak + pine, cover curve lifts vegetation's typical 0.05..0.3 land range, spacing 2, patch 48/0.8). `ResourceDefinition.debug_color` colors markers per species. New views "Tree Cover" (guild density) and "Tree Placement" (cover + species-colored markers); startup warnings now come from the guild (members included). `tests/resource_by_biome.gd` defaults to the guild with a per-species column; new `tests/test_resource_guild.gd` (12 checks).
+  - Design decision: the best-member-suitability cap in guild density. The amendment says cover comes from the environment; without the cap, green tiles no member tolerates (and biomes that should be open, like Grassland) get full cover, and species roll against all-zero shares. The cap uses only the *max*, so the member mix never changes the total.
+  - First tuning had pine winning Plains/Grassland (its warm edge overlapped oak's optimum); pine's temperature optimum is now -0.4..-0.2, 0.4 at -0.05, 0 at 0.1. Result (by-biome, per 100 tiles, total | oak pine): Plains 3.77 | 1.56 2.21, Grassland 2.22 | 1.62 0.60, Swamp 0.79 | 0.79 0.00, Tundra 1.48 | 0.01 1.47, Alpine Snow 2.21 | 0.05 2.16, Badlands 2.46 | 0.46 2.00, Desert 0.33, Beach 0.33, water 0. Real-world test, seed 4242, 320x320: pine mean temperature -0.18 vs oak -0.04. Forest is ~0% of area on these seeds - the world is cool overall, which is why pine is the majority species.
+
 ## In Progress
 
-- (none - Phase 7 complete, Phase 8 not yet started)
+- Phase 8: steps 4-6 (rocks, berry bushes, cross-guild footprint, sprites).
 
 ## Next
 
-- Phase 8: first playable resources (trees, rocks, berries). Brings the second/third resource types, so it's also where cross-resource collision (tree vs. rock footprint) and real sprites/art instead of debug circles belong.
+- Phase 8 step 4: rocks (geology/slope/erosion/elevation/hardness) and berry bushes (vegetation/moisture/fertility/temperature/forest habitat/river proximity, stronger clustering). Berries are a shrub-guild member; rocks are not vegetation - likely their own guild whose cover comes from exposed rock (e.g. hardness x erosion / low vegetation) rather than `vegetation`, so `cover_field` may need a derived input. Then step 5: cross-guild footprint check (trees vs. rocks vs. shrubs), step 6: sprites.
 
 ## Important Architecture
 
@@ -61,7 +65,8 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - `EnvironmentalState` (`scripts/environmental_state.gd`) is a typed, transient wrapper the new resource system should consume instead of raw Dictionary string keys. It does NOT replace `WorldGen.sample()`'s Dictionary return - both exist in parallel.
 - `ResourceDefinition` (`scripts/resource_definition.gd`, Resource + `@export`) is the per-resource-type data asset (curves + categorical weights + affinities + spatial params). `resources/oak.tres` is the first real instance.
-- `ResourcePlacement` (`scripts/resource_placement.gd`) turns a density field into instances; it only sees density through the `density_fn` Callable. `(id, cell)` is a stable per-instance key (intended for Phase 15/16 gameplay state/persistence).
+- `ResourcePlacement` (`scripts/resource_placement.gd`) turns a density field into instances; it only sees density through the `density_fn` Callable. `(id, cell)` is a stable per-instance key (intended for Phase 15/16 gameplay state/persistence); for guild placement the key is `(guild id, cell)` and the instance's `id` is the species (plan Phase 16 amendment: record both).
+- `ResourceGuild` (`scripts/resource_guild.gd`) groups competing `ResourceDefinition`s; when placed via a guild, members' own `cluster_*`/`minimum_spacing`/`base_density` are ignored (the guild's are used). Guild ids share the namespace of resource ids (both seed noise/placement from the id).
 - `ResourceManager` (`scripts/resource_manager.gd`) implements `get_suitability(state, definition, classified={}) -> float` - consumed by `chunk_manager.gd`'s `RESOURCE_SUITABILITY_OAK` view mode the same way `BiomeClassifier`/`HeatmapColorizer` are.
 - Any land-vegetation `ResourceDefinition` MUST set `water_body_weights` to exclude actual water (`{"none": 1.0, "ocean": 0.0, "sea": 0.0, "lake": 0.0, "river": 0.0}`, swamp optional) - `elevation_curve` alone is not sufficient, since rivers can sit well above `sea_level`. See `resources/oak.tres` for a worked example.
 
@@ -100,6 +105,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ### Known Unverified Areas
 
 - Oak Suitability, Oak Density and Oak Placement views have not been checked inside the actual Godot editor/running game or web build (only headless PNG renders + scene-level scripts under the headless dummy renderer).
+- Tree Placement view: switching takes ~2.1s headless for 81 chunks (guild placement ~5 ms/chunk; every candidate evaluates both members' suitability).
 - Performance: switching to Oak Placement with 81 chunks loaded took ~1.8s headless (that includes re-baking every chunk's density image, ~256 samples+classifications per chunk, plus ~7ms/chunk of placement). Fine for a debug view on desktop; likely a noticeable hitch on web. Phase 17 territory unless it gets in the way sooner.
 - Placement count is concave in density (Matern thinning: density 0.25 already gives ~half the instances of density 1.0), which compresses mid vs. high density. The geometric-mean half of the old contrast problem is solved by `required_curves`; this half isn't. Guilds (Phase 8) change what density means (guild cover from `vegetation`), so revisit then - the plan's optional `density_curve` is the data-driven lever if still needed.
 - Tuning: groves vs. clearings read in the placement, but contrast is mild - oak density rarely exceeds ~0.6, and hard-core thinning saturates around 0.3 instances / spacing^2. Worth revisiting in Phase 8 (base_density / curves / spacing) rather than changing the algorithm.
@@ -112,7 +118,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Begin Phase 8 from `main`: read the Phase 8 **Amendment** (guilds) in `docs/resource-generation-plan.md`. Suggested order: (1) a guild data type + canopy-tree guild whose cover comes from `vegetation`, species share from members' relative suitability; (2) one shared placement grid per guild, species assigned by a deterministic roll; (3) a cold-tolerant `pine.tres` next to oak (use `required_curves`, real-unit curve domains - the startup warning catches the 0..1 default) and check with `tests/run_tests.sh --by-biome` (extend it to report per species) that pine takes the cold and oak the temperate zone; (4) rocks and berry bushes; (5) cross-guild footprint check; (6) sprites instead of debug circles. Run `tests/run_tests.sh` before every commit.
+- Phase 8 steps 1-3 are on `claude/phase-8-continuation-xk9cwo` (not yet merged to `main`). Continue with (4) rocks and berry bushes; (5) cross-guild footprint check; (6) sprites instead of debug circles. Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://...tres` for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
 
 ### Things To Watch Out For
 

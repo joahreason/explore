@@ -1,9 +1,11 @@
 extends SceneTree
 
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
-## marker layer follows view/LOD/chunk streaming. If OUT_PNG is set, also
-## renders the real _color_for() base + chunk-by-chunk placement (chunk grid
-## drawn) to that path for visual inspection. Run via tests/run_tests.sh.
+## marker layer follows view/LOD/chunk streaming, then that Tree Placement
+## (canopy-tree guild) draws both species. If OUT_PNG is set, also renders
+## the real _color_for() base + chunk-by-chunk Tree Placement (species
+## colors, chunk grid drawn) to that path for visual inspection. Run via
+## tests/run_tests.sh.
 
 var _fails := 0
 
@@ -57,6 +59,22 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.MATERIAL)
 	check(world._loaded_placements.is_empty(), "back to Material: markers removed")
 
+	# Guild view: one marker node per chunk, markers in both species' colors.
+	cam.global_position = Vector2.ZERO
+	await process_frame
+	await process_frame
+	t0 = Time.get_ticks_msec()
+	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
+	print("INFO switch to Tree Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	check(world._loaded_placements.size() == world._loaded_chunks.size(), "tree view: one marker node per loaded chunk")
+	var fills := {}
+	for m in world._loaded_placements.values():
+		for c in m._fills:
+			fills[c] = fills.get(c, 0) + 1
+	var oak_c: Color = world.OAK_RESOURCE.debug_color
+	var pine_c: Color = load("res://resources/pine.tres").debug_color
+	check(fills.get(oak_c, 0) > 0 and fills.get(pine_c, 0) > 0 and fills.size() == 2, "tree view: oak (%d) and pine (%d) markers, species colors only" % [fills.get(oak_c, 0), fills.get(pine_c, 0)])
+
 	var out := OS.get_environment("OUT_PNG")
 	if out != "":
 		_render_png(world, CM, out)
@@ -65,12 +83,16 @@ func _init() -> void:
 	quit(1 if _fails > 0 else 0)
 
 
-## Real _color_for() in the placement view + instances, chunk grid drawn.
+## Real _color_for() in the Tree Placement view + instances, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
-	world.set_view_mode(CM.ViewMode.RESOURCE_PLACEMENT_OAK)
-	var tiles := 160
+	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
+	var guild: ResourceGuild = world.CANOPY_TREES
+	var colors := {}
+	for member in guild.members:
+		colors[member.id] = member.debug_color
+	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
 	var px := 5
-	var origin := Vector2i(-80, -80)
+	var origin := Vector2i(-tiles / 2, -tiles / 2)
 	var img := Image.create(tiles * px, tiles * px, false, Image.FORMAT_RGB8)
 	for ty in tiles:
 		for tx in tiles:
@@ -79,12 +101,14 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			var c: Color = world._color_for(world._world_gen.sample(wx, wy), wx, wy)
 			img.fill_rect(Rect2i(tx * px, ty * px, px, px), c)
 	var density_fn := func(x: int, y: int) -> float:
-		return world._resource_density(world._world_gen.sample(x, y), world.OAK_RESOURCE, x, y)
+		return world._guild_density(world._world_gen.sample(x, y), guild, x, y)
+	var shares_fn := func(x: int, y: int) -> PackedFloat32Array:
+		return world._species_shares(world._world_gen.sample(x, y), guild)
 	var instances := []
 	# Place chunk by chunk, exactly as the game does.
-	for cy in range(origin.y / 16, (origin.y + tiles) / 16):
-		for cx in range(origin.x / 16, (origin.x + tiles) / 16):
-			instances.append_array(ResourcePlacement.place_in_rect(world.OAK_RESOURCE, 4242, Rect2i(cx * 16, cy * 16, 16, 16), density_fn))
+	for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
+		for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
+			instances.append_array(ResourcePlacement.place_guild_in_rect(guild, 4242, Rect2i(cx * 16, cy * 16, 16, 16), density_fn, shares_fn))
 	for inst in instances:
 		var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
 		for dy in range(-3, 4):
@@ -92,7 +116,7 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 				if dx * dx + dy * dy <= 9:
 					var q := Vector2i(p) + Vector2i(dx, dy)
 					if q.x >= 0 and q.y >= 0 and q.x < img.get_width() and q.y < img.get_height():
-						img.set_pixelv(q, Color(0.02, 0.06, 0.02) if dx * dx + dy * dy > 4 else Color(0.2, 0.9, 0.2))
+						img.set_pixelv(q, Color(0.02, 0.06, 0.02) if dx * dx + dy * dy > 4 else colors[inst["id"]])
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:

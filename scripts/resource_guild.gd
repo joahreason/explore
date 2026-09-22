@@ -1,0 +1,60 @@
+class_name ResourceGuild
+extends Resource
+
+## Phase 8 amendment of docs/resource-generation-plan.md: a group of
+## resources that compete for the same ecological slot (canopy trees,
+## shrubs, ...). A species scored in isolation fills every tile no competitor
+## wants, so instead:
+##   * HOW MUCH of the guild grows at a tile comes from the environment -
+##     cover_field (normally WorldGen's `vegetation`) through cover_curve,
+##     modulated by the guild's own patch noise - capped by how well the
+##     best-suited member could live there (a tile no member tolerates gets
+##     nothing, however green it is).
+##   * WHICH member it is comes from the members' relative suitability
+##     (share_i = s_i^species_sharpness / sum_j s_j^species_sharpness), so
+##     adding a species narrows its neighbors' ranges automatically.
+##   * PLACEMENT runs once for the whole guild on one shared grid
+##     (minimum_spacing), then rolls a species per instance - no two members
+##     of a guild can overlap.
+## Competition is only within a guild (plan Phase 13 scope limit): guilds
+## never read each other. ResourceManager/ResourcePlacement do the math;
+## this is data only, same Resource + @export pattern as ResourceDefinition.
+##
+## id shares one namespace with ResourceDefinition ids (it seeds the guild's
+## patch noise and placement rolls the same way), so it must not reuse a
+## member's id.
+
+@export var id: String
+@export var members: Array[ResourceDefinition] = []
+
+## EnvironmentalState field (by name) the guild's cover is driven by.
+@export var cover_field: String = "vegetation"
+## Maps cover_field (0..1) to cover (0..1). Unset = the field is used as-is.
+## Needed for vegetation, whose land values mostly sit around 0.05..0.3.
+@export var cover_curve: Curve
+## Peak cover (0..1), same role as ResourceDefinition.base_density.
+@export_range(0.0, 1.0) var base_density: float = 1.0
+## Exponent in the species share - higher means the best-suited member takes
+## more of the mix (1 = proportional to suitability, large = winner-takes-all).
+@export var species_sharpness: float = 4.0
+
+## Same meaning as on ResourceDefinition, but for the guild as a whole: the
+## members' own cluster/spacing fields are ignored when placed via a guild.
+@export_group("Spatial")
+@export var cluster_scale: float = 32.0
+@export_range(0.0, 1.0) var cluster_strength: float = 0.0
+@export var minimum_spacing: float = 1.0
+
+
+## Members' curve-domain warnings plus the guild's own cover_curve check.
+func get_curve_domain_warnings() -> PackedStringArray:
+	var warnings := PackedStringArray()
+	if cover_curve != null and (cover_curve.min_domain > 0.0 or cover_curve.max_domain < 1.0):
+		warnings.append("ResourceGuild '%s': cover_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, cover_curve.min_domain, cover_curve.max_domain
+		])
+	for member in members:
+		warnings.append_array(member.get_curve_domain_warnings())
+		if member.id == id:
+			warnings.append("ResourceGuild '%s': shares its id with a member" % id)
+	return warnings

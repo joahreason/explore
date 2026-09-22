@@ -27,6 +27,8 @@ const ITEMS := [
 	{"label": "Oak Suitability", "mode": ChunkManagerScript.ViewMode.RESOURCE_SUITABILITY_OAK},
 	{"label": "Oak Density", "mode": ChunkManagerScript.ViewMode.RESOURCE_DENSITY_OAK},
 	{"label": "Oak Placement", "mode": ChunkManagerScript.ViewMode.RESOURCE_PLACEMENT_OAK},
+	{"label": "Tree Cover", "mode": ChunkManagerScript.ViewMode.TREE_COVER},
+	{"label": "Tree Placement", "mode": ChunkManagerScript.ViewMode.TREE_PLACEMENT},
 ]
 
 
