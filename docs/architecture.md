@@ -37,7 +37,7 @@ The returned Dictionary's exact keys, as currently returned (`world_gen.gd:526-5
 | `disturbance` | float, 0..1 | distance-and-age-faded scar intensity |
 | `disturbance_type` | String (`"fire"/"flood"/"storm"/"landslide"`) | per-blob, constant across the whole blob |
 | `disturbance_age` | float, 0..1 | per-blob, constant across the whole blob |
-| `vegetation` | float, 0..1 | temp suitability × moisture × fertility, penalized by exposure/erosion/disturbance |
+| `vegetation` | float, 0..1 | cold limit × (1 − heat × dryness) × (moisture × fertility)^`vegetation_water_exponent` (0.5), penalized by exposure/erosion/disturbance - heat only hurts where it is dry |
 | `exposure` | float, 0..1 | wind exposure |
 | `resource` | float, 0..1 | ridged vein noise × geology resource bias × erosion-exposure gate |
 | `water_body` | String (`"none"/"ocean"/"sea"/"lake"/"swamp"/"river"`) | see §3 |

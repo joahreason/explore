@@ -136,6 +136,19 @@ extends Resource
 @export_group("Vegetation")
 @export var vegetation_exposure_penalty: float = 0.6
 @export var vegetation_erosion_penalty: float = 0.7
+## Cold limits growth outright: none at/below vegetation_cold_limit, no
+## penalty from vegetation_cold_full up.
+@export var vegetation_cold_limit: float = -0.8
+@export var vegetation_cold_full: float = -0.1
+## Heat only limits growth where water is short: heat stress ramps from
+## vegetation_heat_start to temperature 1.0 and is scaled by dryness
+## (1 - moisture), so hot+wet can reach forest levels while hot+dry thins
+## toward savanna and desert.
+@export var vegetation_heat_start: float = 0.15
+## vegetation ~ (moisture * soil_fertility)^exponent. 1.0 = plain product,
+## which compresses land into ~0.05..0.3 (fertility already contains
+## moisture); lower values spread it toward the biome thresholds.
+@export var vegetation_water_exponent: float = 0.5
 
 # --- Disturbance / history ---
 @export_group("Disturbance")
@@ -508,8 +521,12 @@ func sample(wx: int, wy: int) -> Dictionary:
 	disturbance01 *= 1.0 - disturbance_age * 0.6
 
 	# --- vegetation (derived, not biome-assigned) ---
-	var temp_suit := 1.0 - clampf(absf(temperature), 0.0, 1.0)
-	var vegetation01 := clampf(temp_suit * moisture01 * soil_fertility, 0.0, 1.0)
+	# Cold limits outright; heat only where it's dry (see the exports above).
+	var cold_suit := smoothstep(vegetation_cold_limit, vegetation_cold_full, temperature)
+	var heat_stress := smoothstep(vegetation_heat_start, 1.0, temperature) * (1.0 - moisture01)
+	var temp_suit := cold_suit * (1.0 - heat_stress)
+	var water := pow(clampf(moisture01 * soil_fertility, 0.0, 1.0), vegetation_water_exponent)
+	var vegetation01 := clampf(temp_suit * water, 0.0, 1.0)
 	vegetation01 *= 1.0 - exposure01 * vegetation_exposure_penalty
 	vegetation01 *= 1.0 - erosion01 * vegetation_erosion_penalty
 	vegetation01 *= 1.0 - disturbance01

@@ -43,6 +43,7 @@ required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moi
 biome_weights = {
 "Forest": 1.0,
 "Grassland": 0.3,
+"Savanna": 0.3,
 "Swamp": 0.4,
 "Wetland": 0.5
 }

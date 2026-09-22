@@ -109,25 +109,27 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 	var erosion: float = s["erosion"]
 	var slope: float = s["slope"]
 	var elev01 := clampf((elevation + 1.0) * 0.5, 0.0, 1.0)
+	var wooded := smoothstep(0.3, 0.4, vegetation)
+	var grassy := smoothstep(0.15, 0.25, vegetation)
+	var hot_wet := smoothstep(0.05, 0.2, temperature) * smoothstep(0.4, 0.55, moisture)
+	var hot_dry := smoothstep(0.1, 0.25, temperature) * (1.0 - smoothstep(0.35, 0.5, moisture))
 
 	return {
 		"Alpine Snow": smoothstep(0.55, 0.85, elev01),
 		"Tundra": smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature),
 		"Badlands": maxf(smoothstep(0.15, 0.45, erosion), smoothstep(0.004, 0.009, slope)),
 		"Desert": (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation)),
-		"Wetland": smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.15, 0.25, vegetation)),
-		"Rainforest": (
-			smoothstep(0.3, 0.4, vegetation)
-			* smoothstep(0.05, 0.2, temperature)
-			* smoothstep(0.4, 0.55, moisture)
-		),
-		"Forest": smoothstep(0.3, 0.4, vegetation),
-		"Savanna": (
-			smoothstep(0.15, 0.25, vegetation)
-			* smoothstep(0.1, 0.25, temperature)
-			* (1.0 - smoothstep(0.35, 0.5, moisture))
-		),
-		"Grassland": smoothstep(0.15, 0.25, vegetation),
+		"Wetland": smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.25, 0.35, vegetation)),
+		# The hot variants split their generic biome by climate instead of
+		# multiplying it down - as a bare product (forest * hot * wet) they
+		# could never outscore the generic biome, so Rainforest/Savanna
+		# never won anywhere.
+		"Rainforest": wooded * hot_wet,
+		"Forest": wooded * (1.0 - hot_wet),
+		"Savanna": grassy * hot_dry,
+		# Halved under woodland so Forest wins where both are full (before,
+		# it only won that tie by dictionary order).
+		"Grassland": grassy * (1.0 - hot_dry) * (1.0 - 0.5 * wooded),
 		# Constant floor so something always wins in "boring middle ground"
 		# tiles where nothing else clears its threshold - matches the old
 		# code's final "else: return Plains" fallback.
