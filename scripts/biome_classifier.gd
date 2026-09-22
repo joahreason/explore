@@ -14,6 +14,9 @@ extends RefCounted
 ## whichever's extra conditions are actually met, instead of one hiding
 ## behind the other in a fixed check order.
 
+const BiomeSubtypeScript := preload("res://scripts/biome_subtype.gd")
+const BiomeModifiersScript := preload("res://scripts/biome_modifiers.gd")
+
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
 	"Frozen Sea": Color(0.7, 0.85, 0.95, 0.55),
@@ -39,6 +42,15 @@ const BIOME_COLORS := {
 ## behavior unchanged, just now backed by classify_detailed().
 static func classify(s: Dictionary) -> String:
 	return classify_detailed(s)["base_biome"]
+
+
+## {base_biome, subtype, modifiers, confidence, scores} - the real
+## "DerivedBiome" result.
+static func classify_full(s: Dictionary) -> Dictionary:
+	var d := classify_detailed(s)
+	d["subtype"] = BiomeSubtypeScript.classify(s, d["base_biome"])
+	d["modifiers"] = BiomeModifiersScript.compute(s)
+	return d
 
 
 ## Returns {base_biome, scores, confidence}. confidence is the gap between

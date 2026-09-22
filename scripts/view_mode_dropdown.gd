@@ -5,9 +5,14 @@ extends OptionButton
 
 const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 
+## Base Biome is deliberately left out of this list for now - it's still
+## reachable via the "B" keyboard shortcut (see ChunkManager.toggle_biome_overlay),
+## but click-to-inspect (see tile_inspector_panel.gd) now covers per-tile biome
+## info without needing a dedicated full-map overlay view.
 const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
-	{"label": "Base Biome", "mode": ChunkManagerScript.ViewMode.BASE_BIOME},
+	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
+	{"label": "Modifiers", "mode": ChunkManagerScript.ViewMode.MODIFIERS},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},
 	{"label": "Moisture", "mode": ChunkManagerScript.ViewMode.MOISTURE},
 	{"label": "Temp Variation", "mode": ChunkManagerScript.ViewMode.TEMP_VARIATION},
