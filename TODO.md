@@ -4,7 +4,8 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 8: first playable resources (trees, rocks, berries) - includes cross-resource collision and sprites instead of debug circles
+- [ ] Suitability refinements (plan Phase 3 amendment): requirement vs. preference curves; biome weights by normalized classifier scores instead of label - verify with the by-biome breakdown
+- [ ] Phase 8: first playable resources (trees, rocks, berries) - built around guilds (plan Phase 8 amendment), first test oak + pine; includes cross-guild collision and sprites instead of debug circles
 
 ## Next
 

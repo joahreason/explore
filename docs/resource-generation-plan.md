@@ -2,6 +2,8 @@
 
 ## Phased Implementation Plan
 
+> **Amendments.** The original plan text below is kept as written. Design decisions made while implementing it are added as clearly marked **Amendment** blocks in the phase they refine. Scope decision (2026-09-22): this plan covers **static resources only**. Animals and other mobile creatures are out of scope for now.
+
 ## Objective
 
 Extend the existing procedural world generator into a playable world-generation framework where natural objects, harvestable resources, and strategic resources emerge from the existing environmental simulation.
@@ -311,6 +313,11 @@ Return a normalized:
 
 for every resource at any world coordinate.
 
+> **Amendment (2026-09-22, after Phase 7): requirements vs. preferences, and biome membership.** The first implementation combined every curve with one geometric mean. That makes only a true 0 exclusive: with ~6 factors, a factor of 0.3 costs only ~20%, so marginal habitat (Badlands, Desert, Alpine) scored close to good habitat. Two refinements, both still generic and data-driven:
+>
+> 1. **Split tolerances from preferences.** A `ResourceDefinition` marks some curves as *requirements* (its tolerance envelope), combined multiplicatively or by minimum, so being outside any one of them means absent. The rest stay *preferences*, averaged as now, shaping abundance inside the envelope. This is what the "multiplicative factors for true requirements, weighted modifiers for preferences" guidance above describes.
+> 2. **Weight biomes by membership, not by label.** `BiomeClassifier.classify_detailed()` already scores every candidate biome per tile, but only the argmax label is used, and weighting by that label produces speckled edges where it flickers between neighboring tiles (seen when tuning oak). Instead, `biome_weights` are applied against the tile's *normalized biome scores* (a 70% Forest / 30% Plains tile gets a blend), so biome dependence can be strong while staying continuous (Rule 7). Subtypes need their scores exposed the same way. Hard categorical gates remain acceptable where something is genuinely categorical (a mangrove on the Beach/Mangrove subtype, a reed on river tiles; see Rule 6).
+
 ---
 
 # Phase 4 — Add Resource Suitability Debug Views
@@ -545,6 +552,15 @@ Berries should have stronger clustering than trees.
 At the end of this phase the world should already feel like a place containing natural ecosystems.
 
 Do not implement crafting yet.
+
+> **Amendment (2026-09-22): resource guilds (competition within a group).** A single species scored in isolation fills every tile no competitor wants (oak covered most of the map as the only resource). Phase 8 therefore introduces **guilds**: resources that occupy the same ecological slot (e.g. canopy trees; shrubs incl. berry bushes; ground cover) are grouped.
+>
+> * **How much** of a guild grows at a tile comes from the environment, e.g. canopy-tree cover from `WorldGen`'s existing `vegetation` field (modulated by patch noise), not from any one species.
+> * **Which species** it is comes from the members' relative suitability (a softmax-style share with a per-guild sharpness), so pine takes the cold, oak the temperate zone, and adding a species narrows its neighbors' ranges automatically.
+> * **Placement** runs once per guild on one shared Phase 7 grid (guild spacing), then assigns each instance a species with a deterministic roll against the shares. This also gives cross-resource collision avoidance within a guild for free. Different guilds (trees vs. rocks) still need a footprint check against each other.
+> * **Scope limit (Phase 13):** competition is *only* within a guild, splitting a budget that itself comes from the environment. There are no cross-guild rules ("if oak then mushroom"); correlations between guilds must still come from shared environmental causes.
+> * **Cost (Phase 17):** each instance needs every guild member's suitability. That is acceptable because it is evaluated only at candidate points, not per tile, but it grows with species count.
+> * Suggested first test: oak + a cold-tolerant conifer (pine) in the canopy-tree guild.
 
 ---
 
@@ -902,6 +918,8 @@ Gameplay:
 The generator should still know the tree *would* exist, while the gameplay state overrides its current existence.
 
 This avoids storing the entire world.
+
+> **Amendment (2026-09-22): generation changes vs. saved state.** Procedural output is deterministic for a given seed *and content version*, not forever. Retuning a curve, or adding a species to a guild (Phase 8 amendment), moves or re-species instances. Gameplay overrides must therefore be keyed by the stable placement key `(resource/guild id, placement cell)` from Phase 7 **and** record the resource id they applied to, and must be dropped or re-validated when the generated instance at that key no longer matches, never silently applied to a different object.
 
 ---
 

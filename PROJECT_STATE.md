@@ -69,6 +69,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ## Important Decisions
 
 - Resource-generation plan doc lives at `docs/resource-generation-plan.md` (pasted in verbatim by the user) - phases/rules there are the authority for this work; do not deviate without flagging it.
+- Plan amendments (2026-09-22, agreed with the user): static resources only, no animals for now; suitability splits requirements (tolerance envelope) from preferences and uses biome *membership* (normalized classifier scores) instead of the argmax label; Phase 8 is built around resource guilds (environment sets how much, relative suitability sets which species); persistence keys must survive content changes. Recorded as **Amendment** blocks in the plan doc, which remains the authority.
 - Phase 1 decision (this session): `EnvironmentalState` is an additive typed wrapper, not a replacement for `WorldGen.sample()`'s Dictionary - chosen specifically to avoid a large, risky refactor across 7 existing callers for zero behavior change. Confirmed against the plan's own wording ("introduce a clean representation without breaking existing callers").
 - Water bodies use real bounded/cached flood-fill topology (not a cheap local probe) - established in an earlier session, unaffected by this work.
 
