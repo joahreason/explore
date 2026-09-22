@@ -45,10 +45,11 @@ func _ready() -> void:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
-		_toggle_biome_overlay()
+		toggle_biome_overlay()
 
 
-func _toggle_biome_overlay() -> void:
+## Public so both the "B" key and the on-screen button can trigger it.
+func toggle_biome_overlay() -> void:
 	_overlay_enabled = not _overlay_enabled
 	if _overlay_enabled:
 		for chunk_coord in _loaded_chunks.keys():

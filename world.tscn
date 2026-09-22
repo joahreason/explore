@@ -3,6 +3,7 @@
 [ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/chunk_manager.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/reload_button.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/biome_toggle_button.gd" id="4"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -30,3 +31,13 @@ offset_right = -10.0
 offset_bottom = 46.0
 text = "Reload"
 script = ExtResource("3")
+
+[node name="BiomeButton" type="Button" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -100.0
+offset_top = 52.0
+offset_right = -10.0
+offset_bottom = 88.0
+text = "Biomes"
+script = ExtResource("4")
