@@ -8,6 +8,8 @@ Keep this list actionable and current.
 
 ## Next
 
+- [ ] Density contrast: geometric-mean softening + concave placement count keep marginal habitat (Badlands/Desert/Alpine) too close to Plains - consider the plan's optional `density_curve` (see PROJECT_STATE Known Unverified Areas)
+
 - [ ] Look at Oak Suitability / Density / Placement in the real editor/running game - so far only headless renders
 - [ ] Merge `claude/phase-6-continuation-k99sqh` (Phase 7) into `resource-generation`
 

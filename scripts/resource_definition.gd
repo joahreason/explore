@@ -74,3 +74,37 @@ extends Resource
 @export_range(0.0, 1.0) var cluster_strength: float = 0.0
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""
+
+
+## Real value range of the EnvironmentalState field each curve samples
+## (docs/architecture.md §2). slope has no fixed upper bound, so only its
+## lower end is checked (INF = unchecked).
+const CURVE_FIELD_RANGES := {
+	"temperature_curve": Vector2(-1.0, 1.0),
+	"moisture_curve": Vector2(0.0, 1.0),
+	"fertility_curve": Vector2(0.0, 1.0),
+	"elevation_curve": Vector2(-1.0, 1.0),
+	"slope_curve": Vector2(0.0, INF),
+	"drainage_curve": Vector2(0.0, 1.0),
+	"erosion_curve": Vector2(0.0, 1.0),
+}
+
+
+## One message per curve whose domain doesn't cover its field's real range.
+## Curve.sample() clamps out-of-domain input to the edge point's value, so a
+## temperature curve left at the default 0..1 domain silently gives every
+## sub-zero tile the same score - exactly how oak ended up densest in Tundra.
+func get_curve_domain_warnings() -> PackedStringArray:
+	var warnings := PackedStringArray()
+	for curve_name in CURVE_FIELD_RANGES:
+		var curve: Curve = get(curve_name)
+		if curve == null:
+			continue
+		var field_range: Vector2 = CURVE_FIELD_RANGES[curve_name]
+		var covers_min := curve.min_domain <= field_range.x
+		var covers_max := is_inf(field_range.y) or curve.max_domain >= field_range.y
+		if not (covers_min and covers_max):
+			warnings.append("ResourceDefinition '%s': %s domain [%s, %s] doesn't cover the field's range [%s, %s]" % [
+				id, curve_name, curve.min_domain, curve.max_domain, field_range.x, field_range.y
+			])
+	return warnings

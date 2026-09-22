@@ -96,6 +96,9 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 
+	for warning in OAK_RESOURCE.get_curve_domain_warnings():
+		push_warning(warning)
+
 	if _seed_text != "":
 		_seed_input.text = _seed_text
 

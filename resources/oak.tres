@@ -3,16 +3,17 @@
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_n2fvo"]
 
 [sub_resource type="Curve" id="Curve_n2fvo"]
-_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0, 0.9), 0.0, 0.0, 0, 0, Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.3, 0.55), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
-point_count = 5
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.03, 0.7), 0.0, 0.0, 0, 0, Vector2(0.05, 1), 0.0, 0.0, 0, 0, Vector2(0.2, 1), 0.0, 0.0, 0, 0, Vector2(0.26, 0.5), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 8
 
 [sub_resource type="Curve" id="Curve_apdl1"]
 _data = [Vector2(0, 0.05), 0.0, 0.0, 0, 0, Vector2(0.5, 0.45), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 3
 
 [sub_resource type="Curve" id="Curve_xu4iw"]
-_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.65), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.7), 0.0, 0.0, 0, 0]
-point_count = 4
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.2, 0.1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.65), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.7), 0.0, 0.0, 0, 0]
+point_count = 5
 
 [sub_resource type="Curve" id="Curve_unadh"]
 _limits = [0.0, 1.0, 0.0, 0.1]
@@ -20,8 +21,13 @@ _data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.02, 0.7), 0.0, 0.0, 0, 0, Vect
 point_count = 4
 
 [sub_resource type="Curve" id="Curve_sdxwh"]
-_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.35, 0.5), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
-point_count = 5
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.3, 0), 0.0, 0.0, 0, 0, Vector2(-0.2, 0.25), 0.0, 0.0, 0, 0, Vector2(-0.12, 0.7), 0.0, 0.0, 0, 0, Vector2(-0.05, 1), 0.0, 0.0, 0, 0, Vector2(0.15, 1), 0.0, 0.0, 0, 0, Vector2(0.3, 0.6), 0.0, 0.0, 0, 0, Vector2(0.6, 0.2), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 9
+
+[sub_resource type="Curve" id="Curve_oakero"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.2, 0.35), 0.0, 0.0, 0, 0, Vector2(0.3, 0), 0.0, 0.0, 0, 0]
+point_count = 4
 
 [resource]
 script = ExtResource("1_n2fvo")
@@ -32,6 +38,7 @@ moisture_curve = SubResource("Curve_xu4iw")
 fertility_curve = SubResource("Curve_apdl1")
 elevation_curve = SubResource("Curve_n2fvo")
 slope_curve = SubResource("Curve_unadh")
+erosion_curve = SubResource("Curve_oakero")
 biome_weights = {
 "Forest": 1.0,
 "Grassland": 0.3,
@@ -54,6 +61,7 @@ water_body_weights = {
 "swamp": 0.3
 }
 river_affinity = 0.1
+shore_affinity = -0.6
 disturbance_affinity = -0.15
 cluster_scale = 48.0
 cluster_strength = 0.85
