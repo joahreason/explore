@@ -46,7 +46,13 @@ extends Resource
 @export var arid_wind_factor: float = 0.35
 # Water-body typing: elevation alone still decides what's wet: this just
 # labels the wet/waterlogged tiles as ocean/sea/lake/swamp for color+overlay.
-@export var ocean_depth_threshold: float = 0.25   # how far below sea_level on the CONTINENT-scale noise alone counts as ocean rather than a shallower sea
+# Ocean/sea/lake identity comes from its OWN dedicated, much-lower-frequency
+# noise rather than the terrain-shape elevation noise - reusing the terrain
+# noise meant the classification threshold crossed back and forth at the
+# same small scale as the coastline itself, so one connected body of water
+# could get patchily mislabeled ocean/sea/lake instead of one clean type.
+@export var water_region_frequency: float = 0.0006   # regional - stretched by world_scale
+@export var ocean_depth_threshold: float = 0.25   # how far below sea_level on the water-region noise counts as ocean rather than a shallower sea
 # Swamp is NOT "the strip right at the coast" - that's a beach. A swamp is a
 # warm, very wet, flat, low-lying spot, which can form far inland (a
 # floodplain, a low basin) just as easily as near a shore. Cold, steep, or
@@ -66,6 +72,20 @@ extends Resource
 @export var river_max_elevation: float = 0.55     # fades out above this - approximates a headwaters cutoff
 @export var river_threshold: float = 0.5          # river field above this = tile renders/classifies as river
 @export var riparian_moisture_boost: float = 0.35 # rivers locally raise moisture, feeding vegetation nearby
+# A "near zero" noise band traces both long winding lines AND small closed
+# loops around local extrema - loops read as stray blobs, not rivers. Require
+# a point further along the line's own tangent (in WORLD TILES, scaled by
+# world_scale - not a fraction of river_width, which is a threshold on the
+# noise VALUE, not a distance) to also be "on the line": a long river stays
+# elongated well past that check, a small loop's far side usually doesn't.
+@export var river_elongation_distance: float = 2.5  # tiles, multiplied by world_scale
+
+# --- Beaches ---
+@export_group("Beaches")
+# Shore proximity used to be pure elevation ("close to sea level"), which
+# sanded any low-lying inland spot even with no water anywhere nearby. Now it
+# also requires an actual sub-sea-level tile within this radius.
+@export var beach_search_radius: float = 25.0     # scales with world_scale
 
 # --- Wind / exposure ---
 @export_group("Wind")
@@ -130,6 +150,7 @@ var _resource_vein := FastNoiseLite.new()
 var _micro := FastNoiseLite.new()
 var _river_line := FastNoiseLite.new()
 var _river_warp := FastNoiseLite.new()
+var _water_region := FastNoiseLite.new()
 
 var _configured_seed: int = -1
 
@@ -150,6 +171,7 @@ func configure(world_seed: int) -> void:
 	_geology.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
 	_setup(_river_line, world_seed + 12, FastNoiseLite.TYPE_SIMPLEX, river_frequency / world_scale, 2)
 	_setup(_river_warp, world_seed + 13, FastNoiseLite.TYPE_SIMPLEX, river_frequency * 3.0 / world_scale, 2)
+	_setup(_water_region, world_seed + 14, FastNoiseLite.TYPE_SIMPLEX, water_region_frequency / world_scale, 2)
 
 	# Local features - intentionally NOT scaled by world_scale.
 	_setup(_disturbance, world_seed + 8, FastNoiseLite.TYPE_CELLULAR, disturbance_frequency, 1)
@@ -215,14 +237,56 @@ func sample(wx: int, wy: int) -> Dictionary:
 	# How close this tile is to sea level, purely geometric (not climate-
 	# driven) - used both as a small moisture bump and, separately, to give
 	# coastlines an actual sandy beach fringe regardless of local climate.
+	# Elevation alone isn't enough: a low inland plain can sit at the same
+	# elevation band with no water anywhere near it, so also require an
+	# actual sub-sea-level tile nearby before counting this as "shore."
 	var shore_proximity := clampf(1.0 - smoothstep(sea_level, sea_level + shore_band, e), 0.0, 1.0)
+	if shore_proximity > 0.0:
+		var search_radius := beach_search_radius * (world_scale / 8.0)
+		var near_water := false
+		var directions: Array[Vector2] = [Vector2(1.0, 0.0), Vector2(-1.0, 0.0), Vector2(0.0, 1.0), Vector2(0.0, -1.0)]
+		for dir in directions:
+			var probe: Vector2 = Vector2(fx, fy) + dir * search_radius
+			if elevation(probe.x, probe.y) < sea_level:
+				near_water = true
+				break
+		if not near_water:
+			shore_proximity = 0.0
 	var moisture01 := clampf(rainfall01 + orographic + shore_proximity * 0.4 - exposure01 * arid_wind_factor, 0.0, 1.0)
 
 	# --- rivers (approximated, not flow-simulated - see class doc) ---
 	var rwarp_x := _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
 	var rwarp_y := _river_warp.get_noise_2d(fx - 500.0, fy + 500.0) * (20.0 * world_scale)
-	var river_line := absf(_river_line.get_noise_2d(fx + rwarp_x, fy + rwarp_y))
+	var wfx := fx + rwarp_x
+	var wfy := fy + rwarp_y
+	var river_line := absf(_river_line.get_noise_2d(wfx, wfy))
 	var river_shape := 1.0 - smoothstep(0.0, river_width, river_line)
+
+	# A "near zero" band traces both long winding lines and small closed
+	# loops around local extrema - loops are stray blobs, not rivers. Probe a
+	# point further along this point's own tangent (perpendicular to the
+	# noise gradient, estimated via finite difference): a genuinely long
+	# river is elongated along that tangent and stays "on," while a small
+	# loop's far side usually falls outside its own thin ring.
+	if river_shape > 0.0:
+		var check_dist := river_elongation_distance * world_scale
+		# Estimate the gradient at roughly the same scale as the check itself
+		# (a 1-tile step is essentially measuring noise floor against an
+		# ~800-tile wavelength field, too unstable to give a real direction).
+		var grad_step := check_dist * 0.5
+		var line_x1 := absf(_river_line.get_noise_2d(wfx + grad_step, wfy))
+		var line_y1 := absf(_river_line.get_noise_2d(wfx, wfy + grad_step))
+		var grad := Vector2(line_x1 - river_line, line_y1 - river_line)
+		var tangent := Vector2(-grad.y, grad.x)
+		tangent = tangent.normalized() if tangent.length() > 0.0001 else Vector2(1.0, 0.0)
+		var ahead := absf(_river_line.get_noise_2d(wfx + tangent.x * check_dist, wfy + tangent.y * check_dist))
+		var behind := absf(_river_line.get_noise_2d(wfx - tangent.x * check_dist, wfy - tangent.y * check_dist))
+		var elongation_gate := minf(
+			1.0 - smoothstep(0.0, river_width * 1.5, ahead),
+			1.0 - smoothstep(0.0, river_width * 1.5, behind)
+		)
+		river_shape *= elongation_gate
+
 	# Only between the coast and a plausible headwaters elevation, widening
 	# toward the coast like a river mouth and tapering out upstream.
 	var river_lowland_gate := smoothstep(sea_level, sea_level + shore_band, e)
@@ -249,18 +313,22 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var soil_fertility := clampf((1.0 - hardness) * 0.5 + moisture01 * 0.5 + deposition01 * 0.3, 0.0, 1.0)
 
 	# --- water body typing (ocean/sea/lake/swamp/river) ---
-	# Ocean vs. sea vs. lake is read off the CONTINENT-scale noise alone
-	# (no ridge/detail): a true ocean basin is a large-scale feature, while a
-	# "lake" is a spot that's only underwater once the fine detail is added -
-	# i.e. a local dip in what is otherwise land at the continental scale.
-	# This needs no flood-fill/connectivity analysis, which an infinite
-	# streamed world can't cheaply do anyway.
+	# Ocean vs. sea vs. lake identity comes from its OWN dedicated, much
+	# lower-frequency noise - not the terrain-shape elevation noise. Reusing
+	# elevation meant the classification threshold crossed back and forth at
+	# the same small scale as the coastline itself, so a single connected
+	# body of water could get patchily mislabeled ocean/sea/lake in places
+	# instead of reading as one consistent type. This still needs no
+	# flood-fill/connectivity analysis (which an infinite streamed world
+	# can't cheaply do): a low-frequency field just changes slowly enough
+	# that neighboring wet tiles almost always land on the same side of a
+	# threshold, so type only changes at genuine large-scale transitions.
 	var water_body := "none"
 	if e < sea_level:
-		var base_only := _elev_base.get_noise_2d(fx, fy)
-		if base_only < sea_level - ocean_depth_threshold:
+		var region := _water_region.get_noise_2d(fx, fy)
+		if region < sea_level - ocean_depth_threshold:
 			water_body = "ocean"
-		elif base_only < sea_level:
+		elif region < sea_level:
 			water_body = "sea"
 		else:
 			water_body = "lake"
