@@ -37,6 +37,7 @@ static func color_for(s: Dictionary) -> Color:
 	var disturbance: float = s["disturbance"]
 	var resource: float = s["resource"]
 	var water_body: String = s["water_body"]
+	var shore_proximity: float = s["shore_proximity"]
 
 	var sea_level := -0.1
 
@@ -58,7 +59,9 @@ static func color_for(s: Dictionary) -> Color:
 
 	var w_snow := maxf(smoothstep(0.15, 0.55, -temperature), smoothstep(0.55, 0.85, elev01))
 	var w_rock := clampf(erosion * 1.3 + smoothstep(0.0045, 0.012, slope) * 0.7, 0.0, 1.0)
-	var w_sand := clampf((1.0 - moisture) * warm_trigger, 0.0, 1.0)
+	# Beach: sandy right at the coast regardless of climate (real beaches form
+	# from wave action, not aridity), on top of the climate-driven desert sand.
+	var w_sand := clampf((1.0 - moisture) * warm_trigger + shore_proximity * 0.9, 0.0, 1.0)
 	var w_mud := clampf(moisture * (1.0 - vegetation) * flat_trigger, 0.0, 1.0)
 	var w_soil := clampf((1.0 - vegetation) * (1.0 - w_mud) * 0.6, 0.0, 1.0)
 	var w_grass := clampf(vegetation * (1.0 - smoothstep(0.6, 1.0, vegetation)), 0.0, 1.0)

@@ -12,6 +12,7 @@ const BIOME_COLORS := {
 	"Lake": Color(0.25, 0.6, 0.65, 0.55),
 	"Swamp": Color(0.3, 0.34, 0.2, 0.55),
 	"River": Color(0.3, 0.58, 0.75, 0.55),
+	"Beach": Color(0.85, 0.75, 0.45, 0.55),
 	"Alpine Snow": Color(0.95, 0.95, 1.0, 0.55),
 	"Tundra": Color(0.7, 0.78, 0.72, 0.55),
 	"Badlands": Color(0.55, 0.42, 0.3, 0.55),
@@ -33,6 +34,7 @@ static func classify(s: Dictionary) -> String:
 	var erosion: float = s["erosion"]
 	var slope: float = s["slope"]
 	var water_body: String = s["water_body"]
+	var shore_proximity: float = s["shore_proximity"]
 
 	match water_body:
 		"ocean":
@@ -45,6 +47,9 @@ static func classify(s: Dictionary) -> String:
 			return "Swamp"
 		"river":
 			return "River"
+
+	if shore_proximity > 0.5:
+		return "Beach"
 
 	var elev01 := clampf((elevation + 1.0) * 0.5, 0.0, 1.0)
 	if elev01 > 0.75:

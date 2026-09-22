@@ -47,8 +47,13 @@ extends Resource
 # Water-body typing: elevation alone still decides what's wet: this just
 # labels the wet/waterlogged tiles as ocean/sea/lake/swamp for color+overlay.
 @export var ocean_depth_threshold: float = 0.25   # how far below sea_level on the CONTINENT-scale noise alone counts as ocean rather than a shallower sea
-@export var swamp_band: float = 0.05              # elevation band just above sea_level that can turn into swamp
-@export var swamp_moisture_threshold: float = 0.55
+# Swamp is NOT "the strip right at the coast" - that's a beach. A swamp is a
+# warm, very wet, flat, low-lying spot, which can form far inland (a
+# floodplain, a low basin) just as easily as near a shore. Cold, steep, or
+# dry ground never becomes a swamp no matter how low its elevation is.
+@export var swamp_max_elevation: float = 0.2      # swamp potential fades out above this elevation
+@export var swamp_min_temperature: float = -0.15  # colder than this and it won't support marsh/wetland ecology
+@export var swamp_threshold: float = 0.32         # combined moisture*lowland*warmth*flatness must clear this
 
 # --- Rivers ---
 # Approximated, not flow-simulated: a domain-warped noise field whose
@@ -207,8 +212,11 @@ func sample(wx: int, wy: int) -> Dictionary:
 	# --- moisture (rainfall + orographic lift/shadow + shoreline + wind aridity) ---
 	var rainfall01 := (_rainfall.get_noise_2d(fx, fy) + 1.0) * 0.5
 	var orographic := upslope_component * orographic_strength
-	var shore_bonus := clampf(1.0 - smoothstep(sea_level, sea_level + shore_band, e), 0.0, 1.0) * 0.4
-	var moisture01 := clampf(rainfall01 + orographic + shore_bonus - exposure01 * arid_wind_factor, 0.0, 1.0)
+	# How close this tile is to sea level, purely geometric (not climate-
+	# driven) - used both as a small moisture bump and, separately, to give
+	# coastlines an actual sandy beach fringe regardless of local climate.
+	var shore_proximity := clampf(1.0 - smoothstep(sea_level, sea_level + shore_band, e), 0.0, 1.0)
+	var moisture01 := clampf(rainfall01 + orographic + shore_proximity * 0.4 - exposure01 * arid_wind_factor, 0.0, 1.0)
 
 	# --- rivers (approximated, not flow-simulated - see class doc) ---
 	var rwarp_x := _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
@@ -258,8 +266,15 @@ func sample(wx: int, wy: int) -> Dictionary:
 			water_body = "lake"
 	elif river01 > river_threshold:
 		water_body = "river"
-	elif e < sea_level + swamp_band and moisture01 > swamp_moisture_threshold:
-		water_body = "swamp"
+	else:
+		# Swamp: warm + very wet + flat + low-lying, all at once - not just
+		# "close to the coast" (that's shore_proximity's job, for beaches).
+		var swamp_lowland := 1.0 - smoothstep(sea_level, swamp_max_elevation, e)
+		var swamp_warmth := smoothstep(swamp_min_temperature, swamp_min_temperature + 0.2, temperature)
+		var swamp_flatness := 1.0 - smoothstep(0.0013, 0.0065, slope)
+		var swampiness := moisture01 * swamp_lowland * swamp_warmth * swamp_flatness
+		if swampiness > swamp_threshold:
+			water_body = "swamp"
 
 	# --- disturbance (fire/flood/clearing scars with outward recovery) ---
 	# Domain-warp the sampling position first so blobs aren't perfect circles -
@@ -313,6 +328,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"resource": resource01,
 		"water_body": water_body,
 		"river": river01,
+		"shore_proximity": shore_proximity,
 	}
 
 
