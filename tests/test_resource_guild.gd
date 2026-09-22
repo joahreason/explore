@@ -5,7 +5,8 @@ extends SceneTree
 ## rolls, and - with the real guilds on a real world - no instances on water,
 ## every instance on a tile its species tolerates, pine on colder ground than
 ## oak, rock type following geology, berry bushes favoring river banks and
-## clustering more strongly than trees. Run via tests/run_tests.sh.
+## clustering more strongly than trees, and no footprint overlap between
+## guilds (per-chunk safe). Run via tests/run_tests.sh.
 
 const TREES := preload("res://resources/canopy_trees.tres")
 const ROCKS := preload("res://resources/surface_rocks.tres")
@@ -189,8 +190,73 @@ func _init() -> void:
 	var berries_d := dispersion(SHRUBS, seed)
 	check(berries_d > trees_d * 1.5, "berries cluster more strongly than trees: dispersion %.2f vs %.2f" % [berries_d, trees_d])
 
+	# 5. Cross-guild footprints (Phase 8 step 5): synthetic stack at full
+	# density, then the real rocks > trees > shrubs stack.
+	var top := ResourceGuild.new()
+	top.id = "top"
+	top.members = [a]
+	top.minimum_spacing = 2.0
+	top.footprint_radius = 0.9
+	var low := ResourceGuild.new()
+	low.id = "low"
+	low.members = [b]
+	low.minimum_spacing = 1.5
+	low.footprint_radius = 0.6
+	var syn := [top, low]
+	var full := [const_density(1.0), const_density(1.0)]
+	var one_share := [const_shares(PackedFloat32Array([1.0])), const_shares(PackedFloat32Array([1.0]))]
+	var syn_rect := Rect2i(0, 0, 96, 96)
+	var stacked := ResourcePlacement.place_stack_in_rect(syn, 42, syn_rect, full, one_share)
+	var unfiltered_low := ResourcePlacement.place_guild_in_rect(low, 42, syn_rect, full[1], one_share[1])
+	check(key_set(stacked[0]) == key_set(ResourcePlacement.place_guild_in_rect(top, 42, syn_rect, full[0], one_share[0])),
+		"stack: top guild unchanged (%d)" % stacked[0].size())
+	check(cross_min_dist(stacked[0], stacked[1]) >= 1.5 and stacked[1].size() < unfiltered_low.size() and not stacked[1].is_empty(),
+		"stack: lower guild kept >= 1.5 from the top (min %.3f), %d of %d kept" % [cross_min_dist(stacked[0], stacked[1]), stacked[1].size(), unfiltered_low.size()])
+	var chunk_union := [[], []]
+	for cy in range(0, 6):
+		for cx in range(0, 6):
+			var part := ResourcePlacement.place_stack_in_rect(syn, 42, Rect2i(cx * CHUNK, cy * CHUNK, CHUNK, CHUNK), full, one_share)
+			for i in 2:
+				chunk_union[i].append_array(part[i])
+	check(key_set(chunk_union[0]) == key_set(stacked[0]) and key_set(chunk_union[1]) == key_set(stacked[1])
+		and chunk_union[1].size() == stacked[1].size(),
+		"stack: per-chunk union == whole-rect for every guild (%d + %d)" % [chunk_union[0].size(), chunk_union[1].size()])
+
+	var real_stack := [ROCKS, TREES, SHRUBS]
+	var d_fns := []
+	var s_fns := []
+	for g in real_stack:
+		d_fns.append(func(x: int, y: int) -> float:
+			var s := wg.sample(x, y)
+			return ResourceManager.get_guild_density(EnvironmentalState.from_sample(s), g, seed, x, y, BiomeClassifier.classify_full(s)))
+		s_fns.append(func(x: int, y: int) -> PackedFloat32Array:
+			var s := wg.sample(x, y)
+			return ResourceManager.get_species_shares(ResourceManager.get_member_suitabilities(EnvironmentalState.from_sample(s), g, BiomeClassifier.classify_full(s)), g.species_sharpness))
+	var world_rect := Rect2i(area.position, Vector2i(160, 160))
+	t0 = Time.get_ticks_usec()
+	var real := ResourcePlacement.place_stack_in_rect(real_stack, seed, world_rect, d_fns, s_fns)
+	var stack_ms := (Time.get_ticks_usec() - t0) / 1000.0 / 100.0
+	var closest := INF
+	for i in 3:
+		for j in range(i + 1, 3):
+			closest = minf(closest, cross_min_dist(real[i], real[j]) - real_stack[i].footprint_radius - real_stack[j].footprint_radius)
+	var kept_line := ""
+	for i in 3:
+		var raw := ResourcePlacement.place_guild_in_rect(real_stack[i], seed, world_rect, d_fns[i], s_fns[i])
+		kept_line += " %s %d/%d" % [real_stack[i].id, real[i].size(), raw.size()]
+	check(closest >= 0.0 and not real[2].is_empty(), "real stack: no rock/tree/shrub footprints overlap (closest gap %.3f tiles)" % closest)
+	print("INFO real stack kept:%s; %.2f ms/chunk for all three guilds" % [kept_line, stack_ms])
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
+
+
+func cross_min_dist(a: Array, b: Array) -> float:
+	var best := INF
+	for p in a:
+		for q in b:
+			best = minf(best, (p["position"] as Vector2).distance_to(q["position"]))
+	return best
 
 
 func place_real(guild: ResourceGuild, wg: WorldGen, seed: int, rect: Rect2i) -> Array[Dictionary]:

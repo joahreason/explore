@@ -19,3 +19,4 @@ species_sharpness = 4.0
 cluster_scale = 48.0
 cluster_strength = 0.8
 minimum_spacing = 2.0
+footprint_radius = 0.7

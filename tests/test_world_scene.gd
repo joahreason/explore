@@ -101,9 +101,11 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
 		tree_count += m._positions.size()
+	# Cold: drop the per-chunk guild placement cache the views above filled.
+	world._raw_guild_chunks.clear()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.VEGETATION)
-	print("INFO switch to Vegetation (3 guilds): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	print("INFO switch to Vegetation (3 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	var shape_counts := {}
 	for m in world._loaded_placements.values():
 		for s in m._shapes:
@@ -127,7 +129,7 @@ func _init() -> void:
 
 ## Real _color_for() in the Vegetation view (Material) + every placement
 ## layer (rocks, berry bushes, trees) placed chunk by chunk through the real
-## _place_chunk(), in the view's shapes and colors, chunk grid drawn.
+## _place_stack_chunk(), in the view's shapes and colors, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
 	world.set_view_mode(CM.ViewMode.VEGETATION)
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
@@ -143,17 +145,20 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 	var markers = world.ResourceMarkerChunkScript
 	var outline: Color = markers.OUTLINE
 	var total := 0
+	var stacks := {}  # chunk base -> {guild: instances}
+	for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
+		for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
+			stacks[Vector2i(cx * 16, cy * 16)] = world._place_stack_chunk(Vector2i(cx * 16, cy * 16))
 	for layer in world._placement_layers():
 		var source: Resource = layer[0]
 		var radius: float = source.minimum_spacing * px * 0.35
-		for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
-			for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
-				var colors := {}
-				for inst in world._place_chunk(source, Vector2i(cx * 16, cy * 16), colors):
-					var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
-					_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
-					_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])
-					total += 1
+		var colors: Dictionary = world._marker_colors(source)
+		for base in stacks:
+			for inst in stacks[base][source]:
+				var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
+				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
+				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])
+				total += 1
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:

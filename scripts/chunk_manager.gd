@@ -18,6 +18,10 @@ const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
+## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
+## rocks are geology and were there first, then trees, then the shrubs
+## that fill in around both.
+const GUILD_STACK := [SURFACE_ROCKS, CANOPY_TREES, SHRUBS]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -93,6 +97,7 @@ var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
 var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource markers), only in a placement view
+var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -105,7 +110,7 @@ func _ready() -> void:
 	_world_gen.configure(world_seed)
 
 	# A guild's warnings include its members' (oak among them).
-	for guild in [CANOPY_TREES, SURFACE_ROCKS, SHRUBS]:
+	for guild in GUILD_STACK:
 		for warning in guild.get_curve_domain_warnings():
 			push_warning(warning)
 
@@ -506,30 +511,79 @@ func _refresh_placements() -> void:
 func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 	var base := chunk_coord * CHUNK_SIZE
 	var markers := ResourceMarkerChunkScript.new()
+	# A guild's instances depend only on the guilds above it in GUILD_STACK,
+	# so place the stack only down to the lowest guild this view draws.
+	var depth := 0
+	for layer in _placement_layers():
+		depth = maxi(depth, GUILD_STACK.find(layer[0]) + 1)
+	var stack := _place_stack_chunk(base, depth) if depth > 0 else {}
 	for layer in _placement_layers():
 		var source: Resource = layer[0]
-		var colors := {}
-		markers.add_instances(_place_chunk(source, base, colors), base, TILE_SIZE, source.minimum_spacing, colors, layer[1])
+		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
+		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source), layer[1])
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
 
 
-## One chunk's instances of a ResourceDefinition or ResourceGuild; fills
-## `colors` with each placed id's marker color.
-func _place_chunk(source: Resource, base: Vector2i, colors: Dictionary) -> Array:
+## Phase 8 step 5: the first `depth` guilds of GUILD_STACK for one chunk,
+## after the cross-guild footprint check -> {guild: instances}. A guild's
+## instances are the same whatever the depth (only higher guilds affect it),
+## so each guild's view shows exactly what the Vegetation view does.
+func _place_stack_chunk(base: Vector2i, depth: int = GUILD_STACK.size()) -> Dictionary:
+	var guilds := GUILD_STACK.slice(0, depth)
+	var raw_fn := func(i: int, rect: Rect2i) -> Array:
+		return _raw_guild_in_rect(guilds[i], rect)
 	var rect := Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
-	if source is ResourceGuild:
-		var guild: ResourceGuild = source
-		var density_fn := func(wx: int, wy: int) -> float:
-			return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
-		var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
-			return _species_shares(_world_gen.sample(wx, wy), guild)
-		for member in guild.members:
-			colors[member.id] = member.debug_color
-		return ResourcePlacementScript.place_guild_in_rect(guild, world_seed, rect, density_fn, shares_fn)
-	var definition: ResourceDefinition = source
+	var placed: Array = ResourcePlacementScript.place_stack_with(guilds, rect, raw_fn)
+	var result := {}
+	for i in guilds.size():
+		result[guilds[i]] = placed[i]
+	return result
+
+
+## place_guild_in_rect() for any rect, assembled from per-chunk placements
+## cached in _raw_guild_chunks - exact, since placement is chunk-independent.
+## The stack filter needs every guild but the lowest in a rect grown past the
+## chunk, so without the cache each chunk would re-place its neighbors' edges
+## (tree placement cost ~1.6x, rocks ~2.3x). Placement depends only on seed
+## and guild data, so entries stay valid across view changes; the cache is
+## just dropped when it grows well past the loaded area.
+func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
+	if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * maxi(_loaded_chunks.size(), 1):
+		_raw_guild_chunks.clear()
+	var c0 := Vector2i(floori(rect.position.x / float(CHUNK_SIZE)), floori(rect.position.y / float(CHUNK_SIZE)))
+	var c1 := Vector2i(floori((rect.end.x - 1) / float(CHUNK_SIZE)), floori((rect.end.y - 1) / float(CHUNK_SIZE)))
+	var result := []
+	for cy in range(c0.y, c1.y + 1):
+		for cx in range(c0.x, c1.x + 1):
+			var key := [guild.id, Vector2i(cx, cy)]
+			if not _raw_guild_chunks.has(key):
+				var density_fn := func(wx: int, wy: int) -> float:
+					return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
+				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
+					return _species_shares(_world_gen.sample(wx, wy), guild)
+				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
+				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn)
+			for inst in _raw_guild_chunks[key]:
+				var pos: Vector2 = inst["position"]
+				if rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
+					result.append(inst)
+	return result
+
+
+## A single ResourceDefinition placed on its own (Oak Placement).
+func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> Array:
 	var density_fn := func(wx: int, wy: int) -> float:
 		return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
-	colors[definition.id] = definition.debug_color
-	return ResourcePlacementScript.place_in_rect(definition, world_seed, rect, density_fn)
+	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn)
+
+
+## Instance id -> marker color for a ResourceDefinition or ResourceGuild.
+func _marker_colors(source: Resource) -> Dictionary:
+	if source is ResourceGuild:
+		var colors := {}
+		for member in source.members:
+			colors[member.id] = member.debug_color
+		return colors
+	return {source.id: source.debug_color}

@@ -33,7 +33,7 @@ extends RefCounted
 ## minimum_spacing is also the resource's footprint for collision avoidance
 ## between instances of the SAME resource - or, via place_guild_in_rect(),
 ## of the same guild. Collision between different guilds (e.g. a rock and a
-## tree) is not handled here yet.
+## tree) is place_stack_in_rect()'s job.
 ##
 ## Each instance is identified by (resource id, cell) - stable across
 ## sessions and chunk loads, which later phases (gameplay entities,
@@ -85,6 +85,78 @@ static func place_guild_in_rect(
 		inst["id"] = guild.members[member].id
 		result.append(inst)
 	return result
+
+
+## Phase 8 step 5: several guilds sharing the ground, e.g. [rocks, trees,
+## shrubs], in PRIORITY order. Each guild is placed with
+## place_guild_in_rect() on its own grid as usual, then an instance is
+## dropped if a surviving instance of any higher-priority guild lies closer
+## than the sum of the two guilds' footprint_radius. Returns one instance
+## Array per guild, in the same order. density_fns/shares_fns are per guild,
+## as for place_guild_in_rect().
+##
+## Chunk-safe like the rest of this file: to filter guild i inside the rect,
+## the higher guilds' survivors are needed out to i's collision reach, so
+## each guild is placed (once) in the rect grown by the reach of every guild
+## below it, and filtered only against instances inside that grown rect.
+## Every decision therefore still depends only on world coordinates.
+static func place_stack_in_rect(
+	guilds: Array, world_seed: int, tile_rect: Rect2i, density_fns: Array, shares_fns: Array
+) -> Array:
+	var raw_fn := func(i: int, rect: Rect2i) -> Array:
+		return place_guild_in_rect(guilds[i], world_seed, rect, density_fns[i], shares_fns[i])
+	return place_stack_with(guilds, tile_rect, raw_fn)
+
+
+## place_stack_in_rect() with the per-guild placement injected:
+## raw_fn(guild index, rect) must return exactly what place_guild_in_rect()
+## would for that guild and rect - e.g. assembled from cached per-chunk
+## placements, which is valid because placement is chunk-independent.
+static func place_stack_with(guilds: Array, tile_rect: Rect2i, raw_fn: Callable) -> Array:
+	var n := guilds.size()
+	# reach[i]: how far a guild-i instance can be blocked by a higher guild.
+	var reach := []
+	for i in n:
+		var r := 0.0
+		for j in i:
+			r = maxf(r, guilds[i].footprint_radius + guilds[j].footprint_radius)
+		reach.append(r)
+	# Tile margin each guild must be placed with, around tile_rect.
+	var margin := []
+	margin.resize(n)
+	margin.fill(0)
+	for i in range(n - 1, -1, -1):
+		for j in i:
+			margin[j] = maxi(margin[j], margin[i] + ceili(reach[i]))
+
+	var placed := []  # per guild, survivors inside tile_rect.grow(margin[i])
+	for i in n:
+		var rect := tile_rect.grow(margin[i])
+		var kept: Array[Dictionary] = []
+		for inst in raw_fn.call(i, rect):
+			if not _is_blocked(inst, i, guilds, placed):
+				kept.append(inst)
+		placed.append(kept)
+
+	var result := []
+	for i in n:
+		var inside: Array[Dictionary] = []
+		for inst in placed[i]:
+			var pos: Vector2 = inst["position"]
+			if tile_rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
+				inside.append(inst)
+		result.append(inside)
+	return result
+
+
+static func _is_blocked(inst: Dictionary, level: int, guilds: Array, placed: Array) -> bool:
+	var pos: Vector2 = inst["position"]
+	for j in level:
+		var min_dist: float = guilds[level].footprint_radius + guilds[j].footprint_radius
+		for other in placed[j]:
+			if pos.distance_squared_to(other["position"]) < min_dist * min_dist:
+				return true
+	return false
 
 
 ## Index whose cumulative share first exceeds roll (0..1); -1 if all zero.

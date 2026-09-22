@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. Steps 1-4 done: canopy-tree guild (oak + pine + palm), surface-rock guild (granite/sandstone/basalt by geology), shrub guild (berry bush), all drawn in the Vegetation view; plus a world-gen climate/vegetation/biome-balance pass. Remaining: step 5 cross-guild footprint check, step 6 sprites.
+Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. Steps 1-5 done: canopy-tree guild (oak + pine + palm), surface-rock guild (granite/sandstone/basalt by geology), shrub guild (berry bush), cross-guild footprint check (rocks > trees > shrubs), all drawn in the Vegetation view; plus a world-gen climate/vegetation/biome-balance pass. Remaining: step 6 sprites.
 
 ## Completed
 
@@ -51,14 +51,15 @@ Phase 8 — First Playable Resources (trees, rocks, berries), built around resou
   - Views: new "Rock Placement" and "Berry Placement" (guild density heatmap + member-colored markers). Vegetation now draws rocks (squares), berry bushes (circles) and trees (triangles, on top) - `resource_marker_chunk.gd` holds several layers (`add_instances()`, `Shape` enum, `shape_polygon()`; replaces `setup()`/the `triangles` flag), `chunk_manager.gd` has `_placement_layers()` (replaces `_placement_source()`) and `_place_chunk()`. Startup curve-domain warnings cover all three guilds; `ResourceGuild` also checks `cluster_curve`'s domain.
   - `tests/resource_by_biome.gd` now samples 4 regions (300x300) per seed spread up to 28k tiles apart instead of one 600x600 around the origin - the origin held no sedimentary rock on any seed, so sandstone showed 0 everywhere. Tree numbers there shifted with the coverage (Forest 4.17, Rainforest 4.72 now) without any tree change.
   - Tests: `test_resource_guild.gd` 12 -> 19 checks (both new guilds free of curve-domain warnings; real rocks and berries never on water or on a tile their species scores 0; rock type always matches geology, all 3 types present; berries 5.7 vs 3.2 per 100 on river banks vs other green land; berry patch dispersion 3.09 vs trees 0.57 in 16x16 blocks). `test_world_scene.gd` checks Rock/Berry Placement markers and that Vegetation = Tree Placement's trees + both new guilds; `OUT_PNG` renders all three layers. Region used: seed 4242 around (18000, 9000), which has sedimentary, metamorphic and volcanic ground.
+- Phase 8 step 5 (cross-guild footprints): `ResourcePlacement.place_stack_in_rect(guilds, seed, rect, density_fns, shares_fns)` / `place_stack_with(guilds, rect, raw_fn)` take guilds in priority order, place each as before, then drop an instance if a surviving higher-priority instance is closer than the sum of the two guilds' new `ResourceGuild.footprint_radius` (trees 0.7, rocks 0.5, shrubs 0.5 tiles; ~ the marker sizes). Chunk-safe: guild i is filtered against higher guilds placed in the rect grown by i's reach, and each guild is placed in a rect grown by the reach of everything below it. Order (`chunk_manager.gd` `GUILD_STACK`) = rocks > trees > shrubs - rocks are geology and were there first, shrubs fill in around both. This is a design choice, easy to flip. Every guild view uses the stack (placed only down to the lowest guild shown), so Rock/Berry/Tree Placement match the Vegetation view exactly. `chunk_manager.gd` caches each guild's raw per-chunk placement in `_raw_guild_chunks` (valid across view changes, cleared when it grows past 8x the loaded area) so the grown rects don't re-place neighbors. Effect (seed 4242, 160x160 around (17840, 8840)): rocks 869/869 kept, trees 642/707, berry bushes 649/814. Tests: `test_resource_guild.gd` 19 -> 23 (synthetic stack: top guild unchanged, lower guild kept >= sum of radii away, per-chunk union == whole rect for every level; real stack: no footprint overlaps). Render: no overlapping markers, no seams.
 
 ## In Progress
 
-- Phase 8: steps 5-6 (cross-guild footprint, sprites). Nothing half-done in the tree - step 4 is committed and tested on branch `phase8-rocks-berries`.
+- Phase 8: step 6 (sprites). Nothing half-done in the tree - steps 4 and 5 are committed and tested on branch `phase8-rocks-berries`.
 
 ## Next
 
-- Phase 8 step 5: cross-guild footprint check. The three guilds place on independent grids, so a rock, a berry bush and a tree can currently overlap (visible in the Vegetation view). It must stay chunk-safe and order-independent like Phase 7 placement: e.g. a fixed guild priority (trees > shrubs > rocks) where a lower-priority instance is dropped if a higher-priority one lies within the larger of their two spacings, evaluated from world coordinates only. Then step 6: sprites instead of debug markers.
+- Phase 8 step 6: sprites instead of debug markers for trees/rocks/berry bushes. The repo already has an unused one-bit tileset (`tileset.tres`, `urizen_onebit_tileset__v2d0*.png`, see `docs/architecture.md` §7). Keep drawing per chunk in one CanvasItem (`resource_marker_chunk.gd`, e.g. `draw_texture_rect_region` per instance) rather than one Node per object. Species -> sprite mapping belongs in data (e.g. a texture/region on `ResourceDefinition`, like `debug_color`). Then Phase 9 (geological deposits).
 
 ## Important Architecture
 
@@ -119,7 +120,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - Oak Suitability, Oak Density and Oak Placement views have not been checked inside the actual Godot editor/running game or web build (only headless PNG renders + scene-level scripts under the headless dummy renderer).
 - Tree Placement view: switching takes ~2.1s headless for 81 chunks (guild placement ~5 ms/chunk; every candidate evaluates both members' suitability).
-- Vegetation view now places three guilds per chunk: switching takes ~3.6s headless for 81 chunks (was ~2.6-2.9s with trees only). Rock suitability is evaluated for all three rock members even though geology zeroes two of them.
+- View-switch cost with the guild stack (headless, 81 chunks): Tree Placement ~4.9s, Vegetation ~4.9s from a cold cache (it was ~3.6s after step 4 and ~2.6-2.9s with trees only), and ~0.4s when another guild view already filled `_raw_guild_chunks`. The extra cost is the one-chunk ring the footprint filter needs, plus rocks now being placed for tree views. Cheap wins left for Phase 17: `place_guild_in_rect` re-samples and re-classifies every survivor in `shares_fn` after `density_fn` already did, and rock suitability is evaluated for all three rock members even though geology zeroes two of them. Likely a noticeable hitch on web.
 - Rock contrast is moderate: bare/rugged biomes get ~6-10 rocks per 100 tiles, forests ~2. Placement saturation (below) limits how far it can be pushed through curves alone.
 - Performance: switching to Oak Placement with 81 chunks loaded took ~1.8s headless (that includes re-baking every chunk's density image, ~256 samples+classifications per chunk, plus ~7ms/chunk of placement). Fine for a debug view on desktop; likely a noticeable hitch on web. Phase 17 territory unless it gets in the way sooner.
 - Placement count is concave in density (Matern thinning: density 0.25 already gives ~half the instances of density 1.0), which compresses mid vs. high density. The geometric-mean half of the old contrast problem is solved by `required_curves`; this half isn't. Guilds (Phase 8) change what density means (guild cover from `vegetation`), so revisit then - the plan's optional `density_curve` is the data-driven lever if still needed.
@@ -134,8 +135,8 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 8 step 5: cross-guild footprint check (see Next above), then step 6: sprites instead of debug markers. Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://resources/surface_rocks.tres` etc. for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
-- Still owed: a by-eye look at the deployed Vegetation view (and its ~3.6s view-switch hitch) in the web build. It was tried this session but the browser kept getting the previous build: GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
+- Phase 8 step 6: sprites instead of debug markers (see Next above). Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://resources/surface_rocks.tres` etc. for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
+- Still owed: a by-eye look at the deployed Vegetation view (and its view-switch hitch, ~4.9s headless when cold) in the web build. It was tried this session but the browser kept getting the previous build: GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
 - Biome-share numbers above came from ad hoc stride-sampling scripts (not committed). `tests/resource_by_biome.gd` now covers 4 spread-out 300x300 regions per seed, but that is still only 16 regions in total.
 
 ### Things To Watch Out For

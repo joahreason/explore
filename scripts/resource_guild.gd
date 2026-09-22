@@ -49,6 +49,11 @@ extends Resource
 ## between - the plan's "stronger clustering" for berry bushes.
 @export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
+## Radius (tiles) of one instance's physical footprint, for collisions with
+## OTHER guilds (ResourcePlacement.place_stack_in_rect()): two instances of
+## different guilds must be at least the sum of their radii apart. Within the
+## guild, minimum_spacing already keeps instances apart.
+@export var footprint_radius: float = 0.5
 
 
 ## Members' curve-domain warnings plus the guild's own cover_curve check.
