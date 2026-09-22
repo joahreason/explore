@@ -62,6 +62,13 @@ static func get_suitability(
 			var subtype_modifier: float = definition.subtype_weights.get(classified.get("subtype", ""), 1.0)
 			suitability *= subtype_modifier
 
+	# A zeroed true requirement (e.g. water_body weight 0.0 on a river tile)
+	# must stay excluded - otherwise oak's small positive river_affinity
+	# re-adds ~0.1 right on the river it was just excluded from, which
+	# Phase 7 placement turned into trees standing in rivers.
+	if suitability <= 0.0:
+		return 0.0
+
 	suitability += definition.river_affinity * state.river
 	suitability += definition.shore_affinity * state.shore_proximity
 	suitability += definition.disturbance_affinity * state.disturbance

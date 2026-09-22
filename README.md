@@ -25,6 +25,8 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 - **Material** - the default terrain look, a continuous color blend driven by climate/vegetation/geology (no hard biome edges)
 - **Subtype**, **Modifiers** - text-label overlays over the Material look, naming each region's biome subtype or independent tags (Cold, Wet, FireProne, etc.)
 - **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the Material look (not a full replacement) so terrain stays visible as context for how the field affects generation
+- **Oak Suitability, Oak Density** - resource-generation debug heatmaps: how much oak would like each tile, and how much should actually grow there (suitability x patch noise)
+- **Oak Placement** - the Oak Density heatmap plus a marker for every individually placed oak (deterministic, minimum-spaced; hidden when zoomed far out)
 
 (Base Biome - a region-outline overlay - is available via the `B` key but left out of the dropdown for now in favor of click-to-inspect.)
 

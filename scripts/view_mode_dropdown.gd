@@ -26,6 +26,7 @@ const ITEMS := [
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
 	{"label": "Oak Suitability", "mode": ChunkManagerScript.ViewMode.RESOURCE_SUITABILITY_OAK},
 	{"label": "Oak Density", "mode": ChunkManagerScript.ViewMode.RESOURCE_DENSITY_OAK},
+	{"label": "Oak Placement", "mode": ChunkManagerScript.ViewMode.RESOURCE_PLACEMENT_OAK},
 ]
 
 

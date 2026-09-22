@@ -12,6 +12,8 @@ const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
 const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
+const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
+const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 
 const TILE_SIZE := 12          # screen pixels per tile
@@ -33,6 +35,11 @@ const LOD_THRESHOLDS := [
 	{"zoom": 0.25, "step": 4},
 	{"zoom": 0.0, "step": 8},
 ]
+
+## Placed-instance markers are skipped at coarser LOD steps than this: a
+## marker would be a pixel or two wide, and zoomed out is exactly when the
+## most chunks are loaded (placement costs ~7ms/chunk for oak).
+const MAX_PLACEMENT_LOD_STEP := 2
 
 ## Render-method views swap what color a chunk's base image is built from
 ## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer.
@@ -57,6 +64,7 @@ enum ViewMode {
 	CLIFF_TENDENCY,
 	RESOURCE_SUITABILITY_OAK,
 	RESOURCE_DENSITY_OAK,
+	RESOURCE_PLACEMENT_OAK,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -67,6 +75,7 @@ enum ViewMode {
 
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
+@onready var resources_root: Node2D = $Resources
 @onready var _inspector_panel := $UI/TileInspector
 @onready var _seed_input: LineEdit = $UI/SeedInput
 
@@ -75,6 +84,7 @@ var _world_gen: WorldGen
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
+var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource markers), only in a placement view
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -164,6 +174,8 @@ func set_view_mode(mode: ViewMode) -> void:
 			overlay.queue_free()
 		_loaded_overlays.clear()
 
+	_refresh_placements()
+
 
 func _process(_delta: float) -> void:
 	if _target == null:
@@ -174,6 +186,7 @@ func _process(_delta: float) -> void:
 		_last_lod_step = lod_step
 		for chunk_coord in _loaded_chunks.keys():
 			_regenerate_chunk_image(chunk_coord)
+		_refresh_placements()
 
 	var center := _chunk_of(_target.global_position)
 	var load_radius := _current_load_radius()
@@ -286,7 +299,7 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.cliff_tendency(sample)
 		ViewMode.RESOURCE_SUITABILITY_OAK:
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
-		ViewMode.RESOURCE_DENSITY_OAK:
+		ViewMode.RESOURCE_DENSITY_OAK, ViewMode.RESOURCE_PLACEMENT_OAK:
 			return HeatmapColorizerScript.resource_density(_resource_density(sample, OAK_RESOURCE, wx, wy))
 		_:
 			return null
@@ -342,6 +355,9 @@ func _generate_chunk(chunk_coord: Vector2i) -> void:
 
 	if _is_label_view(_view_mode):
 		_generate_overlay_chunk(chunk_coord)
+
+	if _placements_visible():
+		_generate_placement_chunk(chunk_coord)
 
 
 func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
@@ -403,3 +419,52 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 	if _loaded_overlays.has(chunk_coord):
 		_loaded_overlays[chunk_coord].queue_free()
 		_loaded_overlays.erase(chunk_coord)
+
+	if _loaded_placements.has(chunk_coord):
+		_loaded_placements[chunk_coord].queue_free()
+		_loaded_placements.erase(chunk_coord)
+
+
+## Phase 7: which resource the current view places instances of (null = no
+## placement markers in this view). Placement views keep the matching
+## density heatmap as their base image, so each marker can be read against
+## the field it was drawn from.
+func _placement_definition() -> ResourceDefinition:
+	match _view_mode:
+		ViewMode.RESOURCE_PLACEMENT_OAK:
+			return OAK_RESOURCE
+		_:
+			return null
+
+
+func _placements_visible() -> bool:
+	return _placement_definition() != null and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
+
+
+## Drops every marker node and rebuilds them for all loaded chunks if the
+## current view/LOD shows placements - called on view or LOD change.
+func _refresh_placements() -> void:
+	for markers in _loaded_placements.values():
+		markers.queue_free()
+	_loaded_placements.clear()
+	if not _placements_visible():
+		return
+	for chunk_coord in _loaded_chunks.keys():
+		_generate_placement_chunk(chunk_coord)
+
+
+## ResourcePlacement decides instances purely from world coordinates, so
+## each chunk is placed on its own and neighbors agree at shared edges.
+func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
+	var definition := _placement_definition()
+	var base := chunk_coord * CHUNK_SIZE
+	var density_fn := func(wx: int, wy: int) -> float:
+		return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
+	var instances: Array = ResourcePlacementScript.place_in_rect(
+		definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn
+	)
+	var markers := ResourceMarkerChunkScript.new()
+	markers.setup(instances, base, TILE_SIZE, definition.minimum_spacing)
+	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
+	resources_root.add_child(markers)
+	_loaded_placements[chunk_coord] = markers

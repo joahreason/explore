@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 7 — Spatial Object Placement (about to start; see `docs/resource-generation-plan.md`).
+Phase 8 — First Playable Resources (trees, rocks, berries; not started - see `docs/resource-generation-plan.md`).
 
 ## Completed
 
@@ -27,13 +27,16 @@ Phase 7 — Spatial Object Placement (about to start; see `docs/resource-generat
 - Phase 5: added `ResourceManager.get_patch_modifier(definition, world_seed, wx, wy) -> float` (0..1 multiplier, applied on top of suitability in Phase 6, never replacing it). One `FastNoiseLite` per resource, seeded from `("<world_seed + 17>:<id>").hash()` - reserved `WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET = 17` in WorldGen's offset registry (next free now +18) but the noise itself lives in ResourceManager (Rule 4, layer separation), cached in a static Dictionary. Driven by the existing `ResourceDefinition.cluster_scale` (now defined as patch size in tiles, default changed 1.0 -> 32.0; nothing set it before) and `cluster_strength` (0 = uniform 1.0, 1 = full 0..1; modifier = lerp(1, patch, strength)). Simplex FBM output is contrast-stretched x1.8 then clamped so real clearings/dense groves appear (without it FBM rarely leaves ~0.3..0.7). Oak tuned to `cluster_scale = 48`, `cluster_strength = 0.85` after a visual check showed the old 0.5 only produced mottling with no clearings.
 - Phase 6: added `ResourceManager.get_density(state, definition, world_seed, wx, wy, classified={}) -> float` = `clamp(suitability * clamp(base_density, 0, 1) * get_patch_modifier(), 0, 1)` - "how much should exist here" vs. suitability's "would it like it here". `base_density` is now `@export_range(0, 1)` and documented as peak density; oak left at the default 1.0 (no tuning evidence to change it yet). The plan's `patch_scale`/`patch_strength` are the existing `cluster_scale`/`cluster_strength` (no duplicate fields); the optional `density_curve` was skipped as not needed. New "Oak Density" view (`RESOURCE_DENSITY_OAK`, amber palette, distinct from suitability's green); to feed patch noise, `chunk_manager.gd`'s `_color_for`/`_heatmap_color_for` now take `wx, wy` (single caller, `_build_chunk_image`). Tuning observation for Phase 7: with oak's suitability mostly 0.6-0.8 and patch strength 0.85, density rarely exceeds 0.6 (28 of 10,776 tiles with suitability > 0.6, seed 4242) - fine for a debug view, but Phase 7 should decide how density maps to placement probability rather than assume 1.0 is commonly reached.
 
+- Phase 7: added `scripts/resource_placement.gd` (`ResourcePlacement.place_in_rect(definition, world_seed, tile_rect, density_fn) -> Array[Dictionary]` of `{id, cell, position}`), a deterministic, chunk-independent Poisson-disc-style placement: world-aligned cells `minimum_spacing` tiles wide, one hash-jittered candidate per cell, accepted if a per-cell hash roll < density at its tile, then hard-core thinned (Matern type II: of two survivors closer than `minimum_spacing`, the higher hash priority wins; 3x3 cell neighborhood). Each instance's fate depends only on world coordinates within one cell, so chunks are placed independently with no duplicates/seams. Rolls are seeded per resource from `world_seed + WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET (18)` + id, using a 32-bit integer hash with a sub-2^31 multiplier (no int64 overflow, same on web). `density_fn` is injected (normally `get_density()`), keeping placement a separate layer (Rule 4). Render path (the §7 design decision): new `Resources` Node2D root in `world.tscn`; one `resource_marker_chunk.gd` node per loaded chunk draws all its instances in one `_draw()`; created/freed with chunk load/unload, view change and LOD change; hidden above `MAX_PLACEMENT_LOD_STEP = 2`. New "Oak Placement" view (`RESOURCE_PLACEMENT_OAK`) = Oak Density heatmap + markers.
+  - Bug fixed in `ResourceManager.get_suitability()` (found by Phase 7's placement test): the additive river/shore/disturbance affinities were applied even when a true requirement had zeroed the core score, so oak's `river_affinity = 0.1` put river tiles back at ~0.07-0.10 suitability (and 4 oaks in rivers in a 128x128 area). A zeroed core now returns 0 before affinities. Visually this only changes those previously-faint river tiles in the suitability/density views.
+
 ## In Progress
 
-- (none - Phase 6 complete, Phase 7 not yet started)
+- (none - Phase 7 complete, Phase 8 not yet started)
 
 ## Next
 
-- Phase 7: spatial placement (Poisson-disc/blue-noise) consuming `ResourceManager.get_density()`. Needs a new per-chunk object-instancing render path (`docs/architecture.md` §7) - treat that as its own design decision before coding.
+- Phase 8: first playable resources (trees, rocks, berries). Brings the second/third resource types, so it's also where cross-resource collision (tree vs. rock footprint) and real sprites/art instead of debug circles belong.
 
 ## Important Architecture
 
@@ -53,12 +56,13 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - `EnvironmentalState` (`scripts/environmental_state.gd`) is a typed, transient wrapper the new resource system should consume instead of raw Dictionary string keys. It does NOT replace `WorldGen.sample()`'s Dictionary return - both exist in parallel.
 - `ResourceDefinition` (`scripts/resource_definition.gd`, Resource + `@export`) is the per-resource-type data asset (curves + categorical weights + affinities + spatial params). `resources/oak.tres` is the first real instance.
+- `ResourcePlacement` (`scripts/resource_placement.gd`) turns a density field into instances; it only sees density through the `density_fn` Callable. `(id, cell)` is a stable per-instance key (intended for Phase 15/16 gameplay state/persistence).
 - `ResourceManager` (`scripts/resource_manager.gd`) implements `get_suitability(state, definition, classified={}) -> float` - consumed by `chunk_manager.gd`'s `RESOURCE_SUITABILITY_OAK` view mode the same way `BiomeClassifier`/`HeatmapColorizer` are.
 - Any land-vegetation `ResourceDefinition` MUST set `water_body_weights` to exclude actual water (`{"none": 1.0, "ocean": 0.0, "sea": 0.0, "lake": 0.0, "river": 0.0}`, swamp optional) - `elevation_curve` alone is not sufficient, since rivers can sit well above `sea_level`. See `resources/oak.tres` for a worked example.
 
 ### Determinism / Data Flow
 
-`WorldGen.configure(world_seed)` seeds 16 `FastNoiseLite` fields off `world_seed + <reserved offset>` (offsets +1..+16 in use; +17 reserved for per-resource distribution noise, owned by `ResourceManager.get_patch_modifier()`; next free +18). Any new noise must reserve a new offset the same way. Resource patch noise derives one seed per `ResourceDefinition.id`, so ids must be unique. `WaterTopology` is the only non-pure/cached piece of the existing pipeline; its cache is runtime-only, rebuilt lazily, never serialized.
+`WorldGen.configure(world_seed)` seeds 16 `FastNoiseLite` fields off `world_seed + <reserved offset>` (offsets +1..+16 in use; +17 reserved for per-resource distribution noise, owned by `ResourceManager.get_patch_modifier()`; +18 for per-resource placement rolls, owned by `ResourcePlacement`; next free +19). Any new noise must reserve a new offset the same way. Resource patch noise derives one seed per `ResourceDefinition.id`, so ids must be unique. `WaterTopology` is the only non-pure/cached piece of the existing pipeline; its cache is runtime-only, rebuilt lazily, never serialized.
 
 ## Important Decisions
 
@@ -84,25 +88,29 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Phase 3: `ResourceManager.get_suitability()` against the plan's own Oak/Iron worked examples (see Completed above), headless.
 - Phase 5: headless script (temp, in the job scratch dir, not committed): same seed -> identical patch field even after dropping the noise cache; different seed -> different; output in [0,1]; different ids decorrelated (|r| ~0.02 for oak/berry/rock); strength 0 -> exactly 1.0; oak's floor = 1 - strength; larger cluster_scale -> smoother field (lag-8 autocorr 0.00 at scale 8 vs 0.87 at 96). PASS. Plus a 384x384 seed-4242 render (suitability | patch | suitability x patch) inspected visually: groves/sparse woodland/clearings, water still excluded. Headless game boot exits cleanly.
 - Phase 6: headless script (temp, deleted, not committed), seed 4242: 14/14 PASS - empty definition -> 1.0; base_density scales linearly and clamps (>1, <0); over 384x384 oak tiles density is in [0,1], <= suitability, equals the formula exactly, is 0 wherever suitability is 0, and is repeatable; identical across two fresh WorldGen instances; the real `chunk_manager._color_for()` for `RESOURCE_DENSITY_OAK` matches `get_density()`, and the Material view is unchanged by the signature change. Side-by-side suitability | density render inspected visually: the uniform suitable region breaks into groves/clearings, water and the unsuitable pocket stay dark. Headless game boot exits cleanly.
+- Phase 7: headless script (temp, scratch dir, not committed), 14/14 PASS: zero density -> nothing; determinism; per-chunk union == one whole-rect call (no duplicates, nothing missing) for both a synthetic field and real oak; min pairwise spacing >= `minimum_spacing` including across chunk edges and for non-integer spacing (3.5); instances stay in their rect; count increases monotonically with density (873/1884/2939/3437/3626 per 200x200 at 0.1/0.25/0.5/0.75/1.0, spacing 2); different seed/id -> different/decorrelated positions; real oak (seed 4242, 128x128): 0 instances on water or zero-density tiles (this is the check that caught the affinity bug), identical from a fresh WorldGen. Scene-level script loading the real `world.tscn`, 8/8 PASS: no markers in Material; one marker node per loaded chunk in Oak Placement; markers follow chunk streaming after a pan; hidden when zoomed out past the LOD cap, rebuilt when zoomed back in; removed when switching back to Material. 160x160-tile render (real `_color_for()` + chunk-by-chunk placement, chunk grid drawn) inspected visually: denser in high-density patches, sparse in low, none on the river, no visible seams. Headless game boot clean (no errors/warnings).
 - Phase 4: headless PNG render of Oak Suitability (blended onto Material, 512x512, seed 4242) inspected visually twice (before/after the water-body fix); direct exercise of `chunk_manager.gd`'s real `_color_for()` for the new view mode via an off-tree instance, headless.
 
 ### Known Unverified Areas
 
-- Oak Suitability and Oak Density views have not been checked inside the actual Godot editor/running game (only headless PNG renders + direct code-path exercise) - worth a quick look in-editor before Phase 7 builds placement on top of density.
+- Oak Suitability, Oak Density and Oak Placement views have not been checked inside the actual Godot editor/running game or web build (only headless PNG renders + scene-level scripts under the headless dummy renderer).
+- Performance: switching to Oak Placement with 81 chunks loaded took ~1.8s headless (that includes re-baking every chunk's density image, ~256 samples+classifications per chunk, plus ~7ms/chunk of placement). Fine for a debug view on desktop; likely a noticeable hitch on web. Phase 17 territory unless it gets in the way sooner.
+- Tuning: groves vs. clearings read in the placement, but contrast is mild - oak density rarely exceeds ~0.6, and hard-core thinning saturates around 0.3 instances / spacing^2. Worth revisiting in Phase 8 (base_density / curves / spacing) rather than changing the algorithm.
 
 ## Session Handoff
 
 ### Last Completed Work
 
-- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 (`48f8665`), Phase 6 (`3fd943e`) committed and pushed on branch `resource-generation` (tracks `origin/resource-generation`; not merged to `main`, so the live deploy is untouched).
+- Phase 0 (`8a50906`), Phase 1 (`83646be`), Phase 2 (`9f8b67c`), Phase 3 (`4f019ad`), Phase 4 (`ac62173`), Phase 5 (`48f8665`), Phase 6 (`3fd943e`) on branch `resource-generation`. Phase 7 was built on top of it on branch `claude/phase-6-continuation-k99sqh` (a cloud session); not yet merged into `resource-generation` or `main`, so the live deploy is untouched.
 
 ### Next Action
 
-- Begin Phase 7 (spatial object placement) per `docs/resource-generation-plan.md`, consuming `ResourceManager.get_density()`. Start by designing the per-chunk instancing render path (`docs/architecture.md` §7).
+- Merge/fast-forward `claude/phase-6-continuation-k99sqh` into `resource-generation`, then begin Phase 8 (trees, rocks, berries) per `docs/resource-generation-plan.md`.
 
 ### Things To Watch Out For
 
 - Background-job worktrees (`EnterWorktree`) branch from `origin/main` by default, NOT `resource-generation` - immediately run `git checkout -B <worktree-branch> origin/resource-generation` before doing anything else, or none of the resource-generation files will exist. Also `git fetch` first: the local `resource-generation` can lag the remote (it did at the start of the Phase 6 session).
+- Cloud (Linux) sessions have no Godot installed: download the CI's version (`Godot_v4.7.2-stable_linux.x86_64.zip` from `godotengine/godot-builds` releases) into the scratch dir, then do the same `--headless --editor --quit-after 30` class-cache rebuild described below before running test scripts (a `--quit-after 3` was too short for a cold cache). Test scripts can live outside the repo (`--script /abs/path.gd`).
 - In a fresh worktree, the headless game boot prints `invalid UID: uid://hx4p5eruo1tv ... chunk_manager.gd` - that's the worktree's partial `.godot` UID cache (the `--quit-after 3` editor scan is cut short), not a real problem; the tracked `scripts/chunk_manager.gd.uid` is correct and Godot falls back to the path.
 - GDScript `class_name`-based global class resolution fails in headless `--script` runs for any script added since `.godot/global_script_class_cache.cfg` was last built (that cache is gitignored, local-only, and is normally only rebuilt by opening the editor). Fix for a fresh session/checkout: run `Godot.exe --headless --path . --editor --quit-after 3` once to force a rebuild before running any other headless test scripts - confirm with `grep <new_file> .godot/global_script_class_cache.cfg`. Not needed for the real game (editor/export always rebuilds it), only for this project's headless-script verification workflow.
 - `WorldGen.sample()`'s Dictionary keys don't always match the plan doc's conceptual field names 1:1 (e.g. actual key is `laplacian`, not `curvature`; actual key is `exposure`, not `wind_exposure`) - `docs/architecture.md` §2 has the verified real key table; use that, not the plan doc's conceptual sketch, when writing code.

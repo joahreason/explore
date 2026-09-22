@@ -221,9 +221,11 @@ var _configured_seed: int = -1
 # +14 water_region, +15 temp_variation, +16 precip_seasonality,
 # +17 per-resource distribution/patch noise (not owned here - see
 # ResourceManager.get_patch_modifier(), which derives one seed per
-# ResourceDefinition.id from world_seed + this offset).
-# Next free offset: +18.
+# ResourceDefinition.id from world_seed + this offset), +18 per-resource
+# placement rolls (likewise not owned here - see ResourcePlacement).
+# Next free offset: +19.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
+const RESOURCE_PLACEMENT_SEED_OFFSET := 18
 
 
 func configure(world_seed: int) -> void:

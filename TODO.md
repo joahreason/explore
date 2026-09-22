@@ -4,15 +4,16 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 7: spatial placement (Poisson-disc/blue-noise) from `ResourceManager.get_density()` - needs a new per-chunk object-instancing render path (`docs/architecture.md` §7 flags there is currently none); design that first
+- [ ] Phase 8: first playable resources (trees, rocks, berries) - includes cross-resource collision and sprites instead of debug circles
 
 ## Next
 
-- [ ] Look at Oak Suitability and Oak Density in the real editor/running game - so far only headless PNG renders
+- [ ] Look at Oak Suitability / Density / Placement in the real editor/running game - so far only headless renders
+- [ ] Merge `claude/phase-6-continuation-k99sqh` (Phase 7) into `resource-generation`
 
 ## Later
 
-- [ ] Phase 8: first playable resources (trees, rocks, berries)
+- [ ] Oak Placement view switch hitch (~1.8s for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 

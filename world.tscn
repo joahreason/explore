@@ -15,6 +15,8 @@ target_path = NodePath("CameraRig")
 
 [node name="Chunks" type="Node2D" parent="."]
 
+[node name="Resources" type="Node2D" parent="."]
+
 [node name="Overlay" type="Node2D" parent="."]
 
 [node name="CameraRig" type="Node2D" parent="."]
