@@ -8,6 +8,7 @@ Keep this list actionable and current.
 
 ## Next
 
+- [ ] Phase 17 performance (moved up, next after Phase 12): profile the Resources view switch (~11.2s cold headless, 81 chunks, 9 guilds) and chunk placement; fix the largest costs with output unchanged
 - [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 
 - [ ] Look at the deployed web build (sprites, coasts, Farming Potential, Deposits) - so far only headless renders
@@ -15,7 +16,6 @@ Keep this list actionable and current.
 
 ## Later
 
-- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~6.6s, Resources ~11.5s cold for 81 chunks headless, 8 guilds) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 

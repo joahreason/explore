@@ -122,7 +122,8 @@ Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11
 
 ## Next
 
-- Phase 11/12 open: by-eye check of scars and the new species in the running game; abundance tuning (pioneers/ground cover/deadwood are first pass). Next plan phase: 13 (Correlated Ecosystems).
+- NEXT: Phase 17 (Performance and Chunk Integration), moved ahead of Phases 13-16 at the user's request (plan amendment 2026-09-23). Profile the view switch and chunk placement first (baseline: Resources view ~11.2s cold headless, 81 chunks, 9 guilds), then fix the largest costs without changing output.
+- Phase 11/12 open: by-eye check of scars and the new species in the running game; abundance tuning (pioneers/ground cover/deadwood are first pass). After Phase 17: Phase 13 (Correlated Ecosystems).
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
 - Owed: a by-eye look at the deployed web build (sprites, coasts, Farming Potential, Deposits) and the Resources view switch time (~8.6s headless cold, 6 guilds) on web.
 
@@ -205,7 +206,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ### Next Action
 
 - Get the Phase 12 PR merged, then a by-eye look at the web build (Succession view + Resources).
-- Then Phase 13 (Correlated Ecosystems) per docs/resource-generation-plan.md.
+- Then Phase 17 (performance), moved up ahead of Phase 13 - see its plan amendment. Profile first; keep output identical (tests + same-seed instance comparison).
 
 ### Things To Watch Out For
 

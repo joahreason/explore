@@ -968,6 +968,8 @@ Nearby:
     gameplay entities
 ```
 
+> **Amendment (2026-09-23): moved up, runs next after Phase 12.** At the user's request, performance work comes before Phases 13-16. Measured baseline (headless, 81 loaded chunks, cold cache): switching to the Resources view with 9 guilds takes ~11.2s, Tree Placement ~6.3s, Oak Placement ~2.3s, and every added guild has made it slower. Known cheap wins recorded during Phases 8-12: `place_guild_in_rect` re-samples and re-classifies every surviving candidate in `shares_fn` after `density_fn` already did; each candidate evaluates every member's suitability even when geology or succession rules most of them out; lower guilds in the stack re-place the guilds above them. Profile first, then fix the largest costs, with the output unchanged (same seed gives the same instances) unless a change is agreed.
+
 ---
 
 # Phase 18 — Developer Tooling
