@@ -98,7 +98,7 @@ func _init() -> void:
 
 	# Resources view: Material base image; the same trees as Tree Placement
 	# as triangles, plus the same rocks (squares), berry bushes (circles) and
-	# wetland plants (diamonds).
+	# wetland plants (diamonds), and ore outcrops (hexagons).
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
@@ -107,18 +107,22 @@ func _init() -> void:
 	world._raw_guild_chunks.clear()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCES)
-	print("INFO switch to Resources (4 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	print("INFO switch to Resources (5 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	var shape_counts := {}
 	for m in world._loaded_placements.values():
 		for s in m._shapes:
 			shape_counts[s] = shape_counts.get(s, 0) + 1
 	var Shape = world.ResourceMarkerChunkScript.Shape
+	var outcrops_placed := 0
+	for c in world._loaded_chunks:
+		outcrops_placed += world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS].size()
 	check(shape_counts.get(Shape.TRIANGLE, 0) == tree_count and tree_count > 0
 		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
 		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"]
-		and shape_counts.get(Shape.DIAMOND, 0) == guild_counts["wetland_plants"],
-		"resources view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles, %d wetland diamonds" % [
-			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0)])
+		and shape_counts.get(Shape.DIAMOND, 0) == guild_counts["wetland_plants"]
+		and shape_counts.get(Shape.HEXAGON, 0) == outcrops_placed,
+		"resources view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles, %d wetland diamonds, %d ore hexagons" % [
+			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0), shape_counts.get(Shape.HEXAGON, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
@@ -148,8 +152,8 @@ func _init() -> void:
 	var probe: Dictionary = world._world_gen.sample(3, 5)
 	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
 
-	# Deposits view (Phase 9): a heatmap, no markers; clicking a tile with
-	# ore lists it in the inspector.
+	# Deposits view (Phase 9): a heatmap plus ore outcrop markers (step 2);
+	# clicking a tile with ore lists it in the inspector.
 	world.set_view_mode(CM.ViewMode.DEPOSITS)
 	var ore_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64):
@@ -161,10 +165,16 @@ func _init() -> void:
 			break
 	world._on_tile_clicked((Vector2(ore_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var ore_sample: Dictionary = world._world_gen.sample(ore_tile.x, ore_tile.y)
-	check(world._loaded_placements.is_empty() and ore_tile.x != 1 << 30
+	var outcrop_count := 0
+	var outcrops_ok := true
+	for m in world._loaded_placements.values():
+		outcrop_count += m._positions.size()
+		for sh in m._shapes:
+			outcrops_ok = outcrops_ok and sh == world.ResourceMarkerChunkScript.Shape.HEXAGON
+	check(outcrops_ok and ore_tile.x != 1 << 30
 		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != DebugColorizer.color_for(ore_sample)
 		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
-		"deposits view: no markers; ore tile %s tinted and listed under Deposits in the inspector" % ore_tile)
+		"deposits view: only outcrop hexagons (%d); ore tile %s tinted and listed under Deposits in the inspector" % [outcrop_count, ore_tile])
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 
 	var out := OS.get_environment("OUT_PNG")

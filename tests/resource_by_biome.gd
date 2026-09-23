@@ -40,7 +40,7 @@ func _init() -> void:
 				return ResourceManager.get_guild_density(EnvironmentalState.from_sample(s), guild, seed, x, y, BiomeClassifier.classify_full(s))
 			shares_fn = func(x: int, y: int) -> PackedFloat32Array:
 				var s := wg.sample(x, y)
-				return ResourceManager.get_species_shares(ResourceManager.get_member_suitabilities(EnvironmentalState.from_sample(s), guild, BiomeClassifier.classify_full(s)), guild.species_sharpness)
+				return ResourceManager.get_species_shares(ResourceManager.get_member_scores(EnvironmentalState.from_sample(s), guild, seed, x, y, BiomeClassifier.classify_full(s)), guild.species_sharpness)
 		else:
 			density_fn = func(x: int, y: int) -> float:
 				var s := wg.sample(x, y)

@@ -27,13 +27,19 @@ extends Resource
 @export var id: String
 @export var members: Array[ResourceDefinition] = []
 
-## EnvironmentalState field (by name) the guild's cover is driven by.
+## EnvironmentalState field (by name) the guild's cover is driven by; empty
+## = full cover everywhere (ore outcrops: the exposed deposit alone decides).
 @export var cover_field: String = "vegetation"
 ## Maps cover_field (0..1) to cover (0..1). Unset = the field is used as-is.
 ## Needed for vegetation, whose land values mostly sit around 0.05..0.3.
 @export var cover_curve: Curve
 ## Peak cover (0..1), same role as ResourceDefinition.base_density.
 @export_range(0.0, 1.0) var base_density: float = 1.0
+## Optional reshaping of the final 0..1 density (the plan's Phase 6
+## density_curve) - unset = as-is. Ore outcrops use it to drop trace
+## exposures and saturate rich ones, which as raw probabilities would give
+## only a handful of outcrops even on ore-rich bare rock.
+@export var density_curve: Curve
 ## Exponent in the species share - higher means the best-suited member takes
 ## more of the mix (1 = proportional to suitability, large = winner-takes-all).
 @export var species_sharpness: float = 4.0
@@ -62,6 +68,10 @@ func get_curve_domain_warnings() -> PackedStringArray:
 	if cover_curve != null and (cover_curve.min_domain > 0.0 or cover_curve.max_domain < 1.0):
 		warnings.append("ResourceGuild '%s': cover_curve domain [%s, %s] doesn't cover [0, 1]" % [
 			id, cover_curve.min_domain, cover_curve.max_domain
+		])
+	if density_curve != null and (density_curve.min_domain > 0.0 or density_curve.max_domain < 1.0):
+		warnings.append("ResourceGuild '%s': density_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, density_curve.min_domain, density_curve.max_domain
 		])
 	if cluster_curve != null and (cluster_curve.min_domain > 0.0 or cluster_curve.max_domain < 1.0):
 		warnings.append("ResourceGuild '%s': cluster_curve domain [%s, %s] doesn't cover [0, 1]" % [

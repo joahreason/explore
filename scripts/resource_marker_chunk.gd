@@ -9,7 +9,7 @@ extends Node2D
 ## pixel origin. Several layers (e.g. rocks, shrubs, trees in the Resources
 ## view) can be added to one node; they draw in the order added.
 
-enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND }
+enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND, HEXAGON }
 
 const DEFAULT_FILL := Color(0.10, 0.32, 0.10)
 const OUTLINE := Color(0.02, 0.06, 0.02)
@@ -24,7 +24,8 @@ var _shapes: PackedInt32Array = PackedInt32Array()
 ## origin_tile: this chunk's top-left tile, so positions can be drawn
 ## chunk-local. colors: instance "id" -> fill Color
 ## (ResourceDefinition.debug_color). shape: TRIANGLE reads as a tree,
-## SQUARE as a rock, DIAMOND as a wetland plant, CIRCLE is the plain marker.
+## SQUARE as a rock, DIAMOND as a wetland plant, HEXAGON as an ore outcrop,
+## CIRCLE is the plain marker.
 func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE) -> void:
 	# Kept under half the minimum spacing (+ outline), so markers of one
 	# layer never overlap.
@@ -58,6 +59,11 @@ static func shape_polygon(shape: Shape, p: Vector2, r: float) -> PackedVector2Ar
 			return PackedVector2Array([p + Vector2(-h, -h), p + Vector2(h, -h), p + Vector2(h, h), p + Vector2(-h, h)])
 		Shape.DIAMOND:
 			return PackedVector2Array([p + Vector2(0, -r), p + Vector2(r * 0.6, 0), p + Vector2(0, r), p + Vector2(-r * 0.6, 0)])
+		Shape.HEXAGON:
+			var hex := PackedVector2Array()
+			for k in 6:
+				hex.append(p + Vector2.from_angle(TAU * k / 6.0) * r)
+			return hex
 		_:
 			var poly := PackedVector2Array()
 			for k in 12:

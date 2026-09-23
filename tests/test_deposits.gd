@@ -5,12 +5,15 @@ extends SceneTree
 ## deterministic, in [0,1], zero on water, for zero-affinity geology and for
 ## non-deposit definitions; exposed <= potential and 0 where rock is buried;
 ## both hidden and exposed deposits occur; ores have decorrelated seams and
-## form districts rather than covering the map. Run via tests/run_tests.sh.
+## form districts rather than covering the map. Phase 9 step 2: placed ore
+## outcrops (the ore_outcrops guild) stand only where their own ore is
+## exposed, never on water or buried rock. Run via tests/run_tests.sh.
 
 const IRON := preload("res://resources/iron.tres")
 const COPPER := preload("res://resources/copper.tres")
 const COAL := preload("res://resources/coal.tres")
 const OAK := preload("res://resources/oak.tres")
+const OUTCROPS := preload("res://resources/ore_outcrops.tres")
 const ORES := [IRON, COPPER, COAL]
 const SEED := 4242
 
@@ -118,8 +121,63 @@ func _init() -> void:
 			differ += 1
 	check(differ > before.size() / 4, "different seed -> different veins (%d/%d tiles differ)" % [differ, before.size()])
 
+	_check_outcrops(wg, tiles)
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
+
+
+## Phase 9 step 2: member scores, the guild's density_curve, and real
+## outcrop placement.
+func _check_outcrops(wg: WorldGen, tiles: Array) -> void:
+	check(OUTCROPS.get_curve_domain_warnings().is_empty(), "ore_outcrops + members: no curve-domain warnings %s" % OUTCROPS.get_curve_domain_warnings())
+	var mixed := ResourceGuild.new()
+	mixed.id = "mixed"
+	mixed.members = [OAK, IRON]
+	var scores_ok := true
+	var exposed_tile := Vector2i(1 << 30, 0)
+	for t in tiles:
+		var s := wg.sample(t.x, t.y)
+		var state: EnvironmentalState = EnvironmentalState.from_sample(s)
+		var scores := ResourceManager.get_member_scores(state, mixed, SEED, t.x, t.y)
+		var e := ResourceManager.get_exposed_deposit(ResourceManager.get_deposit_potential(state, IRON, SEED, t.x, t.y), state)
+		# Scores come back as float32 (PackedFloat32Array).
+		scores_ok = scores_ok and absf(scores[0] - ResourceManager.get_suitability(state, OAK)) < 1e-6 and absf(scores[1] - e) < 1e-6
+		if e > 0.1 and exposed_tile.x == 1 << 30:
+			exposed_tile = t
+	check(scores_ok and exposed_tile.x != 1 << 30,
+		"member scores: suitability for oak, exposed deposit for iron (0 on buried rock)")
+
+	# density_curve reshapes the final density: a flat-zero curve empties it.
+	var st: EnvironmentalState = EnvironmentalState.from_sample(wg.sample(exposed_tile.x, exposed_tile.y))
+	var raw := ResourceManager.get_guild_density(st, OUTCROPS, SEED, exposed_tile.x, exposed_tile.y)
+	var off := OUTCROPS.duplicate()
+	off.density_curve = Curve.new()
+	off.density_curve.add_point(Vector2(0.0, 0.0))
+	off.density_curve.add_point(Vector2(1.0, 0.0))
+	check(raw > 0.0 and ResourceManager.get_guild_density(st, off, SEED, exposed_tile.x, exposed_tile.y) == 0.0,
+		"density_curve applies to guild density (%.2f -> 0 with a flat-zero curve)" % raw)
+
+	var density_fn := func(x: int, y: int) -> float:
+		return ResourceManager.get_guild_density(EnvironmentalState.from_sample(wg.sample(x, y)), OUTCROPS, SEED, x, y)
+	var shares_fn := func(x: int, y: int) -> PackedFloat32Array:
+		var scores := ResourceManager.get_member_scores(EnvironmentalState.from_sample(wg.sample(x, y)), OUTCROPS, SEED, x, y)
+		return ResourceManager.get_species_shares(scores, OUTCROPS.species_sharpness)
+	var outcrops := ResourcePlacement.place_guild_in_rect(OUTCROPS, SEED, Rect2i(-400, -400, 800, 800), density_fn, shares_fn)
+	var ids := {}
+	var bad := 0
+	for inst in outcrops:
+		var p: Vector2 = inst["position"]
+		var t := Vector2i(floori(p.x), floori(p.y))
+		var s := wg.sample(t.x, t.y)
+		var state: EnvironmentalState = EnvironmentalState.from_sample(s)
+		var ore: ResourceDefinition = ORES.filter(func(o): return o.id == inst["id"])[0]
+		var e := ResourceManager.get_exposed_deposit(ResourceManager.get_deposit_potential(state, ore, SEED, t.x, t.y), state)
+		ids[inst["id"]] = ids.get(inst["id"], 0) + 1
+		if s["water_body"] != "none" or s["rock_exposure"] <= 0.0 or e <= 0.0:
+			bad += 1
+	check(outcrops.size() >= 10 and bad == 0,
+		"real outcrops: %s in 800x800, 0 on water, buried rock or where their ore isn't exposed (%d)" % [ids, bad])
 
 
 ## ore id -> Vector2(rich tiles (potential > 0.3), land tiles on the ore's

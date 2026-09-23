@@ -19,6 +19,8 @@ const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
 const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
+## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
+const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
 ## Phase 9 ore deposits: per-tile fields (exists / exposed), not placed
 ## instances - see ResourceManager.get_deposit_potential().
 const ORE_DEPOSITS := [
@@ -27,10 +29,10 @@ const ORE_DEPOSITS := [
 	preload("res://resources/coal.tres"),
 ]
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
-## rocks are geology and were there first, then trees, then wetland plants
-## (Phase 10) that own the wet margins, then the shrubs that fill in around
-## all of them.
-const GUILD_STACK := [SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHRUBS]
+## ore outcrops and rocks are geology and were there first, then trees,
+## then wetland plants (Phase 10) that own the wet margins, then the shrubs
+## that fill in around all of them.
+const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHRUBS]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -403,11 +405,11 @@ func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
 	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, sample["rock_exposure"])
 
 
-func _species_shares(sample: Dictionary, guild: ResourceGuild) -> PackedFloat32Array:
+func _species_shares(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Array:
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	var suitabilities: PackedFloat32Array = ResourceManagerScript.get_member_suitabilities(state, guild, classified)
-	return ResourceManagerScript.get_species_shares(suitabilities, guild.species_sharpness)
+	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(state, guild, world_seed, wx, wy, classified)
+	return ResourceManagerScript.get_species_shares(scores, guild.species_sharpness)
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);
@@ -532,8 +534,11 @@ func _placement_layers() -> Array:
 			return [[SHRUBS, circle]]
 		ViewMode.WETLAND_PLACEMENT:
 			return [[WETLAND_PLANTS, circle]]
+		ViewMode.DEPOSITS:
+			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
 			return [
+				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON],
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHRUBS, circle],
@@ -642,7 +647,7 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 				var density_fn := func(wx: int, wy: int) -> float:
 					return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
 				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
-					return _species_shares(_world_gen.sample(wx, wy), guild)
+					return _species_shares(_world_gen.sample(wx, wy), guild, wx, wy)
 				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
 				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn)
 			for inst in _raw_guild_chunks[key]:

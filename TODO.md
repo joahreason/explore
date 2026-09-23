@@ -5,7 +5,6 @@ Keep this list actionable and current.
 ## Current Task
 
 - [ ] Phase 10: step 2 floodplains (farming potential view, clay), step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - step 1 rivers done
-- [ ] Phase 9 step 2: placed ore outcrops where deposits are exposed
 - [ ] Phase 8 step 6 (deferred): sprites instead of debug markers
 
 ## Next
@@ -18,7 +17,7 @@ Keep this list actionable and current.
 
 ## Later
 
-- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~5.7s, Resources ~6.6s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
+- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~5.7s, Resources ~7.0s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 
