@@ -24,6 +24,10 @@ point_count = 3
 _data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.12, 1), 0.0, 0.0, 0, 0, Vector2(0.22, 0.35), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_succ"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_palm")
 id = "palm"
@@ -33,7 +37,8 @@ moisture_curve = SubResource("Curve_palmmois")
 fertility_curve = SubResource("Curve_palmfert")
 elevation_curve = SubResource("Curve_palmelev")
 erosion_curve = SubResource("Curve_palmero")
-required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve")
+succession_curve = SubResource("Curve_succ")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve", "succession_curve")
 biome_weights = {
 "Beach": 0.3,
 "Desert": 0.1,

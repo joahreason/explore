@@ -50,6 +50,11 @@ extends Resource
 ## WorldGen's `shore_salinity`: 0 on a lake shore (or no shore) .. 1 on a sea
 ## shore. Salt, shells, mangroves and salt marsh require it.
 @export var salinity_curve: Curve
+## Phase 11: WorldGen's `succession` - 0 on a fresh disturbance scar .. 1 on
+## mature/undisturbed ground (a scar's age where it hit fully, 1 outside any
+## scar). Places a resource along bare -> grass/herbs -> shrubs -> young
+## trees -> mature forest; required = only at those stages.
+@export var succession_curve: Curve
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -74,6 +79,12 @@ extends Resource
 @export var subtype_weights: Dictionary = {}
 @export var geology_weights: Dictionary = {}
 @export var water_body_weights: Dictionary = {}
+## Keyed by WorldGen's disturbance_type ("fire"/"flood"/"storm"/"landslide").
+## Unlike the maps above, the weight is gated by how disturbed the tile still
+## is (1 - succession): full on a fresh scar, fading to neutral as it
+## recovers and outside scars - type is constant across a whole cellular
+## cell, so an ungated weight would leak into undisturbed land.
+@export var disturbance_type_weights: Dictionary = {}
 
 @export_group("Special Affinities")
 @export var river_affinity: float = 0.0
@@ -138,6 +149,7 @@ const CURVE_FIELD_RANGES := {
 	"shore_curve": Vector2(0.0, 1.0),
 	"deposition_curve": Vector2(0.0, 1.0),
 	"salinity_curve": Vector2(0.0, 1.0),
+	"succession_curve": Vector2(0.0, 1.0),
 }
 
 

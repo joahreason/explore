@@ -37,7 +37,9 @@ The returned Dictionary's exact keys, as currently returned (`world_gen.gd:526-5
 | `disturbance` | float, 0..1 | distance-and-age-faded scar intensity |
 | `disturbance_type` | String (`"fire"/"flood"/"storm"/"landslide"`) | per-blob, constant across the whole blob |
 | `disturbance_age` | float, 0..1 | per-blob, constant across the whole blob |
+| `succession` | float, 0..1 | Phase 11 recovery stage: 1 − footprint × (1 − `disturbance_age`), footprint = the scar's distance falloff before the age fade. 0 = fresh scar center, the blob's age where it hit fully, exactly 1 outside any scar (so type/age never leak into undisturbed land) |
 | `vegetation` | float, 0..1 | cold limit × (1 − heat × dryness) × (moisture × fertility)^`vegetation_water_exponent` (0.5), penalized by exposure/erosion/disturbance - heat only hurts where it is dry |
+| `vegetation_potential` | float, 0..1 | Phase 11: `vegetation` before the (1 − `disturbance`) scar penalty - what grows here undisturbed. Vegetation guilds take cover from it; members' `succession_curve` decides what grows on a scar |
 | `exposure` | float, 0..1 | wind exposure |
 | `resource` | float, 0..1 | ridged vein noise × geology resource bias × erosion-exposure gate |
 | `water_body` | String (`"none"/"ocean"/"sea"/"lake"/"swamp"/"river"`) | see §3 |

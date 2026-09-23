@@ -533,6 +533,12 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var disturbance_age := age_raw - floorf(age_raw)
 
 	var disturbance01 := clampf(1.0 - smoothstep(0.0, effective_radius, dist_norm), 0.0, 1.0)
+	# Phase 11 succession stage, 0 = freshly cleared .. 1 = mature/undisturbed:
+	# the blob's age where the scar's footprint is full, rising to 1 toward
+	# its edge (edges recover first) and exactly 1 outside it. Uses the
+	# footprint before the age fade below, so type/age - constant across the
+	# whole cellular cell - never leak into undisturbed land.
+	var succession := 1.0 - disturbance01 * (1.0 - disturbance_age)
 	# Ecological succession: an old scar fades even at its own epicenter, not
 	# just with distance - a young disturbance stays stark/bare, an old one
 	# has mostly recovered.
@@ -547,6 +553,10 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var vegetation01 := clampf(temp_suit * water, 0.0, 1.0)
 	vegetation01 *= 1.0 - exposure01 * vegetation_exposure_penalty
 	vegetation01 *= 1.0 - erosion01 * vegetation_erosion_penalty
+	# What would grow here undisturbed - Phase 11 vegetation guilds take their
+	# cover from this and let each species' succession_curve decide what grows
+	# on a scar, instead of the blanket scar penalty below.
+	var vegetation_potential := vegetation01
 	vegetation01 *= 1.0 - disturbance01
 
 	# --- fire propensity (dryness + heat + wind + accumulated fuel) ---
@@ -593,7 +603,9 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"disturbance": disturbance01,
 		"disturbance_type": disturbance_type,
 		"disturbance_age": disturbance_age,
+		"succession": succession,
 		"vegetation": vegetation01,
+		"vegetation_potential": vegetation_potential,
 		"exposure": exposure01,
 		"resource": resource01,
 		"water_body": water_body,

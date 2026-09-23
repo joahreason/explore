@@ -87,6 +87,12 @@ static func disturbance_age(s: Dictionary) -> Color:
 	return YOUNG_SCAR.lerp(OLD_SCAR, clampf(float(s["disturbance_age"]), 0.0, 1.0))
 
 
+## Phase 11 succession stage: fresh scar (YOUNG_SCAR) .. mature/undisturbed
+## (OLD_SCAR) - unlike disturbance_age, gated by the scar's footprint.
+static func succession(s: Dictionary) -> Color:
+	return YOUNG_SCAR.lerp(OLD_SCAR, clampf(float(s["succession"]), 0.0, 1.0))
+
+
 static func disturbance_type(s: Dictionary) -> Color:
 	match String(s["disturbance_type"]):
 		"fire":
