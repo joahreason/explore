@@ -140,6 +140,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Phases 0-7 plus Phase 8 so far (canopy-tree guild: oak/pine/palm, Tree Cover / Tree Placement / Vegetation views) and the world-gen balance pass (temperature contrast/offset, heat-x-dryness vegetation, even land-biome shares, Wetland = waterlogged, cold-only Alpine Snow) are on `main`, fast-forwarded from `claude/phase-8-continuation-xk9cwo` (cloud session) and deployed by the push. `main` is the integration branch - branch new work from `main`.
 - World-gen changes shifted every biome view; land-only biome shares (4 seeds, 60k-tile sample) are now Forest 21.5, Grassland 18.4, Plains 11.4, Tundra 10.6, Desert 9.2, Rainforest 8.0, Wetland 5.8, Savanna 5.4, Badlands 4.9, Alpine Snow 4.9 %. None of this has been looked at in the running game/web build yet - only headless renders.
 - Phase 8 step 4 (`0fa7ec7`, surface-rock + shrub guilds) and step 5 (`38c65fb`, cross-guild footprint stack), plus handoff commit `2c35dba`, were fast-forwarded into `main` and pushed with the user's go-ahead (this deploys the web build). Branch `phase8-rocks-berries` is now identical to `main` and can be deleted. Phase 8 step 6 (sprites) is deferred.
+- Forest species fix (`7d1a39c`, on `main`, pushed): no more label-based subtype weights, tropical-only palm, Montane = real high ground (see Completed).
 
 ### Next Action
 
