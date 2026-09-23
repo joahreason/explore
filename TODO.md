@@ -4,12 +4,14 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 17: merge PR #8 (steps 1-4); agree the next direction (progressive per-frame chunk work, LOD/aggregation, cheaper heatmap bakes) or move on to Phase 13
+- [ ] Phase 17 step 5: pan-test threaded chunk streaming in the desktop game, then merge `claude/phase-17-chunk-streaming`
+- [ ] Phase 17: agree the next direction (web Resources smoothness: split chunk jobs or threaded web; multi-worker throughput; LOD/aggregation) or move on to Phase 13
 
 ## Next
 
+- [ ] Placement snapshot golden is Linux-recorded and fails on Windows at HEAD (9 guild hashes) - re-record or make the species-share math platform-independent
 - [ ] Phase 11/12: check scars and new species by eye in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
-- [ ] Measure the Resources view switch on the web build (only headless timings so far)
+- [ ] Measure panning and the Resources view switch on the web build (no threads there since step 5's fallback; only desktop timings so far)
 - [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 
 - [ ] Look at the deployed web build (sprites, coasts, Farming Potential, Deposits) - so far only headless renders

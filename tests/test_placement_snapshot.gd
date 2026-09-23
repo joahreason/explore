@@ -35,6 +35,9 @@ func _init() -> void:
 	world.world_seed = SEED
 	root.add_child(world)
 	await process_frame
+	# The startup chunks stream in on a worker thread; finish them so it is
+	# idle while this calls the generation functions directly.
+	world.flush_chunk_work()
 
 	var CM = world.get_script()
 	var lines := {}  # layer name -> Array of lines

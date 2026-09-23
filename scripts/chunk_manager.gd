@@ -5,6 +5,19 @@ extends Node2D
 ## WorldGen field sample) - the art tileset is intentionally not used yet;
 ## see scripts/world_gen.gd and scripts/debug_colorizer.gd for the actual
 ## generation/coloring logic. This file just handles chunk streaming.
+##
+## Phase 17 streaming: a chunk's content (image, markers, labels) is built by
+## a job, nearest chunk first, and shown by the main thread a few per frame,
+## so crossing a chunk boundary never stalls a frame on a whole row of
+## chunks. On desktop the jobs run on one worker thread; where threads are
+## unavailable (the web export has thread_support off) they run on the main
+## thread within INLINE_BUDGET_USEC per frame. Threading rule: everything
+## generation touches - _world_gen (and its water topology cache), the
+## generation caches, _view_mode, ResourceManager's static noise caches,
+## ResourceDefinition.curve_plan - is only used while holding _gen_mutex
+## (the worker holds it per chunk), and the scene tree only on the main
+## thread. Tests that call generation functions directly do it after
+## flush_chunk_work(), which leaves the worker idle.
 
 const DebugColorizerScript := preload("res://scripts/debug_colorizer.gd")
 const HeatmapColorizerScript := preload("res://scripts/heatmap_colorizer.gd")
@@ -73,8 +86,9 @@ const LOD_THRESHOLDS := [
 
 ## Phase 17: how many chunks of per-tile EnvironmentalState + classify_full()
 ## results _tile_env() keeps (FIFO). Placing one chunk's guild stack reads
-## tiles up to about one chunk around it, and chunks are processed row by
-## row, so a few rows of the loaded area catch nearly every reuse. One tile
+## tiles up to about one chunk around it, and chunks are processed nearest
+## first, ring by ring, so a few rings of the loaded area catch nearly every
+## reuse. One tile
 ## costs ~5 KB (state ~3 KB, classification ~2 KB), so the whole ~121-chunk
 ## footprint of the Resources view (~150 MB) is deliberately not kept.
 const ENV_CACHE_CHUNKS := 48
@@ -83,6 +97,12 @@ const ENV_CACHE_CHUNKS := 48
 ## marker would be a pixel or two wide, and zoomed out is exactly when the
 ## most chunks are loaded (placement costs ~7ms/chunk for oak).
 const MAX_PLACEMENT_LOD_STEP := 2
+
+## Without a worker thread: time per frame spent generating chunks on the
+## main thread (at least one chunk per frame while any are queued).
+const INLINE_BUDGET_USEC := 5000
+## Time per frame spent turning finished chunk jobs into nodes (at least one).
+const APPLY_BUDGET_USEC := 3000
 
 ## Render-method views swap what color a chunk's base image is built from
 ## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer.
@@ -127,6 +147,9 @@ enum ViewMode {
 @export var world_gen_params: WorldGen
 @export var world_seed: int = 1337
 @export var target_path: NodePath
+## Generate chunks on a worker thread where threads exist; off = always on
+## the main thread (the web fallback), e.g. for debugging.
+@export var threaded_generation: bool = true
 
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
@@ -148,6 +171,25 @@ var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
 var _last_lod_step: int = -1
 
+# Chunk jobs (see the streaming note at the top). _epoch is bumped by a view
+# or LOD change; a loaded chunk whose _shown_epoch differs is stale and gets
+# rebuilt. Only the main thread writes _epoch (under _queue_mutex).
+var _epoch: int = 0
+var _shown_epoch: Dictionary = {}   # Vector2i chunk -> epoch its content was built for
+var _jobs_dirty: bool = false       # rebuild the job list on the next _refresh_streaming()
+var _jobs: Array = []               # [chunk, epoch, lod step, area], nearest last (popped from the back)
+var _in_flight: Dictionary = {}     # chunk -> epoch of a job taken but not yet applied
+var _results: Array = []            # finished job data for the main thread
+var _ready_results: Array = []      # main thread: taken from _results, not yet applied
+var _queue_mutex := Mutex.new()     # guards _jobs, _in_flight, _results, _epoch writes, _stop_worker
+var _gen_mutex := Mutex.new()       # held while generating
+var _semaphore := Semaphore.new()
+var _worker: Thread
+var _stop_worker: bool = false
+## Chunks in play (the load square) as of the job being generated - bounds
+## the generation caches without reading _loaded_chunks off the main thread.
+var _gen_area: int = (2 * MIN_LOAD_RADIUS + 1) * (2 * MIN_LOAD_RADIUS + 1)
+
 
 func _ready() -> void:
 	world_seed = _resolve_world_seed()
@@ -166,7 +208,21 @@ func _ready() -> void:
 		_target = get_node(target_path)
 		_target.connect("clicked", _on_tile_clicked)
 
-	_update_chunks(_chunk_of(_target.global_position if _target else Vector2.ZERO), _current_load_radius())
+	if threaded_generation and (not OS.has_feature("web") or OS.has_feature("threads")):
+		_worker = Thread.new()
+		_worker.start(_worker_loop)
+	_refresh_streaming()
+
+
+func _exit_tree() -> void:
+	if _worker == null:
+		return
+	_queue_mutex.lock()
+	_stop_worker = true
+	_queue_mutex.unlock()
+	_semaphore.post()
+	_worker.wait_to_finish()
+	_worker = null
 
 
 ## Web only: a "?seed=" query param overrides the exported world_seed - set
@@ -210,49 +266,79 @@ func _is_label_view(mode: ViewMode) -> bool:
 	return mode == ViewMode.BASE_BIOME or mode == ViewMode.SUBTYPE or mode == ViewMode.MODIFIERS
 
 
-## Public entry point for the view-mode dropdown. Regenerates every currently
-## loaded chunk's image in place (swap Sprite2D.texture) rather than adding a
-## second layer - see plan doc §7 for why heatmap views are render methods,
-## not overlays.
+## Public entry point for the view-mode dropdown. Rebuilds every currently
+## loaded chunk's content in place (swap Sprite2D.texture, replace its label
+## overlay and markers) rather than adding a second layer - see plan doc §7
+## for why heatmap views are render methods, not overlays. The rebuilds are
+## queued nearest first like any chunk job; each chunk shows the old view
+## until its own rebuild arrives.
 func set_view_mode(mode: ViewMode) -> void:
 	if mode == _view_mode:
 		return
-	var was_label := _is_label_view(_view_mode)
+	# Generation reads _view_mode: wait out the chunk being generated.
+	_gen_mutex.lock()
 	_view_mode = mode
-	var now_label := _is_label_view(_view_mode)
-
-	_rebuild_loaded_chunks()
-
-	if now_label:
-		# Also covers switching BASE_BIOME <-> SUBTYPE directly - labels
-		# differ, so existing overlays need rebuilding either way.
-		for overlay in _loaded_overlays.values():
-			overlay.queue_free()
-		_loaded_overlays.clear()
-		for chunk_coord in _loaded_chunks.keys():
-			_generate_overlay_chunk(chunk_coord)
-	elif was_label:
-		for overlay in _loaded_overlays.values():
-			overlay.queue_free()
-		_loaded_overlays.clear()
+	_gen_mutex.unlock()
+	_invalidate_chunks()
 
 
+## Without a target (target_path unset) the area around the origin stays
+## loaded, as the initial load always did.
 func _process(_delta: float) -> void:
-	if _target == null:
-		return
+	_refresh_streaming()
+	if _worker == null:
+		var deadline := Time.get_ticks_usec() + INLINE_BUDGET_USEC
+		while _run_next_job() and Time.get_ticks_usec() < deadline:
+			pass
+	_apply_results(APPLY_BUDGET_USEC)
 
+
+## Keeps the job list in step with the camera: a LOD change makes every
+## loaded chunk stale, a new center or radius changes which chunks are wanted.
+func _refresh_streaming() -> void:
 	var lod_step := _current_lod_step()
 	if lod_step != _last_lod_step:
 		_last_lod_step = lod_step
-		_rebuild_loaded_chunks()
+		_invalidate_chunks()
 
-	var center := _chunk_of(_target.global_position)
+	var center := _chunk_of(_target.global_position if _target else Vector2.ZERO)
 	var load_radius := _current_load_radius()
-	if center == _last_center and load_radius == _last_load_radius:
+	if center == _last_center and load_radius == _last_load_radius and not _jobs_dirty:
 		return
 	_last_center = center
 	_last_load_radius = load_radius
 	_update_chunks(center, load_radius)
+
+
+## View or LOD changed: every loaded chunk is stale. It keeps showing its old
+## content until its rebuild (queued with the missing chunks) replaces it.
+func _invalidate_chunks() -> void:
+	_queue_mutex.lock()
+	_epoch += 1
+	_queue_mutex.unlock()
+	_jobs_dirty = true
+
+
+## Tests and benchmarks: finishes every chunk job for the current camera,
+## view and LOD now (on this thread, alongside the worker) and applies the
+## results, as if enough frames had passed. Afterwards the worker is idle
+## until something changes, so generation functions are safe to call.
+func flush_chunk_work() -> void:
+	while true:
+		_refresh_streaming()
+		while _run_next_job():
+			pass
+		_apply_results(-1)
+		if not has_pending_chunks():
+			return
+		OS.delay_usec(200)  # the worker is finishing a chunk
+
+
+func has_pending_chunks() -> bool:
+	_queue_mutex.lock()
+	var busy := not (_jobs.is_empty() and _in_flight.is_empty() and _results.is_empty())
+	_queue_mutex.unlock()
+	return busy or not _ready_results.is_empty() or _jobs_dirty
 
 
 func _current_zoom() -> float:
@@ -292,6 +378,7 @@ func _chunk_of(world_pos: Vector2) -> Vector2i:
 ## any) under the exact click point.
 func _on_tile_clicked(world_pos: Vector2) -> void:
 	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
+	_gen_mutex.lock()  # the worker may be generating a chunk
 	var sample := _world_gen.sample(tile.x, tile.y)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	var deposits := {}
@@ -300,20 +387,115 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	for ore in potentials:
 		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
 	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
-	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits, farming)
+	var resource := _resource_at(world_pos / TILE_SIZE)
+	_gen_mutex.unlock()
+	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming)
 
 
+## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
+## a job for every chunk within load_radius that is missing or stale, nearest
+## first. A chunk whose job for the current epoch is already running isn't
+## queued again.
 func _update_chunks(center: Vector2i, load_radius: int) -> void:
-	for cy in range(center.y - load_radius, center.y + load_radius + 1):
-		for cx in range(center.x - load_radius, center.x + load_radius + 1):
-			var c := Vector2i(cx, cy)
-			if not _loaded_chunks.has(c):
-				_generate_chunk(c)
-
+	_jobs_dirty = false
 	var unload_radius := load_radius + UNLOAD_BUFFER
 	for c in _loaded_chunks.keys():
 		if Vector2(c - center).length() > unload_radius:
 			_unload_chunk(c)
+
+	var wanted: Array[Vector2i] = []
+	for cy in range(center.y - load_radius, center.y + load_radius + 1):
+		for cx in range(center.x - load_radius, center.x + load_radius + 1):
+			var c := Vector2i(cx, cy)
+			if _shown_epoch.get(c, -1) != _epoch:
+				wanted.append(c)
+	wanted.sort_custom(_farther_first.bind(center))
+	var area := (2 * load_radius + 1) * (2 * load_radius + 1)
+
+	_queue_mutex.lock()
+	_jobs.clear()
+	for c in wanted:
+		if _in_flight.get(c, -1) != _epoch:
+			_jobs.append([c, _epoch, _last_lod_step, area])
+	var has_jobs := not _jobs.is_empty()
+	_queue_mutex.unlock()
+	if has_jobs and _worker != null:
+		_semaphore.post()
+
+
+## Job order: farthest from center first (jobs are popped from the back), ties
+## by position so the order is deterministic.
+static func _farther_first(a: Vector2i, b: Vector2i, center: Vector2i) -> bool:
+	var da := (a - center).length_squared()
+	var db := (b - center).length_squared()
+	if da != db:
+		return da > db
+	return a.y > b.y or (a.y == b.y and a.x > b.x)
+
+
+## Takes the nearest queued chunk and builds its content (holding
+## _gen_mutex), leaving the data in _results for _apply_results(). Returns
+## false when there was nothing to take (or the worker is stopping).
+func _run_next_job() -> bool:
+	_queue_mutex.lock()
+	if _jobs.is_empty() or _stop_worker:
+		_queue_mutex.unlock()
+		return false
+	var job: Array = _jobs.pop_back()
+	var current: bool = job[1] == _epoch
+	if current:
+		_in_flight[job[0]] = job[1]
+	_queue_mutex.unlock()
+	if not current:
+		return true  # queued before a view/LOD change; its rebuild is queued too
+
+	_gen_mutex.lock()
+	var data := _build_chunk_data(job[0], job[2], job[3])
+	_gen_mutex.unlock()
+	data["epoch"] = job[1]
+	_queue_mutex.lock()
+	_results.append(data)
+	_queue_mutex.unlock()
+	return true
+
+
+func _worker_loop() -> void:
+	while true:
+		_semaphore.wait()
+		_queue_mutex.lock()
+		var stop := _stop_worker
+		_queue_mutex.unlock()
+		if stop:
+			return
+		while _run_next_job():
+			pass
+
+
+## Main thread: shows finished jobs until budget_usec is spent (at least one;
+## negative = no limit). A result built for an older view/LOD, or for a chunk
+## that has since left the unload radius, is dropped.
+func _apply_results(budget_usec: int) -> void:
+	_queue_mutex.lock()
+	_ready_results.append_array(_results)
+	_results.clear()
+	_queue_mutex.unlock()
+
+	var deadline := Time.get_ticks_usec() + budget_usec
+	var i := 0
+	while i < _ready_results.size():
+		var data: Dictionary = _ready_results[i]
+		i += 1
+		var chunk_coord: Vector2i = data["chunk"]
+		_queue_mutex.lock()
+		if _in_flight.get(chunk_coord, -1) == data["epoch"]:
+			_in_flight.erase(chunk_coord)
+		_queue_mutex.unlock()
+		if data["epoch"] != _epoch or Vector2(chunk_coord - _last_center).length() > _last_load_radius + UNLOAD_BUFFER:
+			continue
+		_apply_chunk_data(data)
+		if budget_usec >= 0 and Time.get_ticks_usec() >= deadline:
+			break
+	_ready_results = _ready_results.slice(i)
 
 
 ## Heatmap views are blended on top of the Material look rather than
@@ -452,9 +634,11 @@ func _tile_env(wx: int, wy: int, sample: Dictionary = {}) -> Array:
 ## Drops every per-seed generation cache (placements, densities, tile
 ## environments) - for cold-cache timings in tests; nothing else needs it.
 func clear_generation_caches() -> void:
+	_gen_mutex.lock()
 	_raw_guild_chunks.clear()
 	_density_chunks.clear()
 	_env_chunks.clear()
+	_gen_mutex.unlock()
 
 
 ## Phase 17: the density memo of one guild (or single resource) for one
@@ -462,14 +646,14 @@ func clear_generation_caches() -> void:
 ## the placement callbacks (a chunk's one-cell ring is its neighbor's
 ## interior) and the density heatmaps. Written through by the caller. Valid
 ## for the seed like _raw_guild_chunks; an id's chunks are dropped once they
-## grow well past the loaded area (~2 KB each).
+## grow well past the loaded area (_gen_area; ~2 KB each).
 func _density_memo(id: String, chunk: Vector2i) -> PackedFloat64Array:
 	var by_chunk: Dictionary = _density_chunks.get(id, {})
 	if not _density_chunks.has(id):
 		_density_chunks[id] = by_chunk
 	var densities: PackedFloat64Array = by_chunk.get(chunk, PackedFloat64Array())
 	if densities.is_empty():
-		if by_chunk.size() > 8 * maxi(_loaded_chunks.size(), 1):
+		if by_chunk.size() > 8 * _gen_area:
 			by_chunk.clear()
 		densities.resize(CHUNK_SIZE * CHUNK_SIZE)
 		densities.fill(NAN)
@@ -528,32 +712,56 @@ func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
 	return img
 
 
-func _generate_chunk(chunk_coord: Vector2i) -> void:
-	var base := chunk_coord * CHUNK_SIZE
-	var lod_step := _current_lod_step()
-	var texture := ImageTexture.create_from_image(_build_chunk_image(chunk_coord, lod_step))
-	var sprite := Sprite2D.new()
-	sprite.texture = texture
-	sprite.centered = false
-	sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
-	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	chunks_root.add_child(sprite)
-
-	_loaded_chunks[chunk_coord] = sprite
-
+## A chunk job's work: the chunk's content for the current view at lod_step,
+## as plain data - no nodes (runs on the worker; the caller holds
+## _gen_mutex). area = chunks in play, for the generation caches' bounds.
+func _build_chunk_data(chunk_coord: Vector2i, lod_step: int, area: int) -> Dictionary:
+	_gen_area = area
+	var data := {"chunk": chunk_coord, "lod": lod_step, "image": _build_chunk_image(chunk_coord, lod_step)}
 	if _is_label_view(_view_mode):
-		_generate_overlay_chunk(chunk_coord)
+		data["overlay"] = _overlay_grids(chunk_coord)
+	if _placements_visible_at(lod_step):
+		data["placements"] = _placement_chunk(chunk_coord)
+	return data
 
-	if _placements_visible():
-		_generate_placement_chunk(chunk_coord)
 
-
-func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
-	var sprite: Sprite2D = _loaded_chunks[chunk_coord]
-	var lod_step := _current_lod_step()
-	sprite.texture = ImageTexture.create_from_image(_build_chunk_image(chunk_coord, lod_step))
+## Main thread: shows one finished job - creates the chunk's Sprite2D or
+## swaps its texture, and replaces its label overlay and marker node.
+func _apply_chunk_data(data: Dictionary) -> void:
+	var chunk_coord: Vector2i = data["chunk"]
+	var lod_step: int = data["lod"]
+	var base := chunk_coord * CHUNK_SIZE
+	var sprite: Sprite2D = _loaded_chunks.get(chunk_coord)
+	if sprite == null:
+		sprite = Sprite2D.new()
+		sprite.centered = false
+		sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		chunks_root.add_child(sprite)
+		_loaded_chunks[chunk_coord] = sprite
+	sprite.texture = ImageTexture.create_from_image(data["image"])
 	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
+	_shown_epoch[chunk_coord] = data["epoch"]
+
+	_free_chunk_node(_loaded_overlays, chunk_coord)
+	if data.has("overlay"):
+		var overlay := BiomeOverlayChunkScript.new()
+		overlay.setup(data["overlay"][0], CHUNK_SIZE, TILE_SIZE, data["overlay"][1])
+		overlay.position = sprite.position
+		overlay_root.add_child(overlay)
+		_loaded_overlays[chunk_coord] = overlay
+
+	_free_chunk_node(_loaded_placements, chunk_coord)
+	if data.has("placements"):
+		var markers := _marker_node(base, data["placements"])
+		resources_root.add_child(markers)
+		_loaded_placements[chunk_coord] = markers
+
+
+func _free_chunk_node(nodes: Dictionary, chunk_coord: Vector2i) -> void:
+	if nodes.has(chunk_coord):
+		nodes[chunk_coord].queue_free()
+		nodes.erase(chunk_coord)
 
 
 ## Biome labels are derived from the same WorldGen fields but sampled on a
@@ -561,8 +769,8 @@ func _regenerate_chunk_image(chunk_coord: Vector2i) -> void:
 ## into the neighboring chunk, without that chunk needing to be loaded.
 ## Fill/outlines always key on base biome; SUBTYPE/MODIFIERS views only
 ## change the drawn label text ("Forest (Montane)", "Cold, Windy" etc.), not
-## the region shapes.
-func _generate_overlay_chunk(chunk_coord: Vector2i) -> void:
+## the region shapes. -> [biome grid, label grid] for the overlay node.
+func _overlay_grids(chunk_coord: Vector2i) -> Array:
 	var base := chunk_coord * CHUNK_SIZE
 	var stride := CHUNK_SIZE + 1
 	var show_subtype := _view_mode == ViewMode.SUBTYPE
@@ -592,26 +800,14 @@ func _generate_overlay_chunk(chunk_coord: Vector2i) -> void:
 				var base_biome: String = BiomeClassifierScript.classify(sample)
 				biome_grid[i] = base_biome
 				label_grid[i] = base_biome
-
-	var overlay := BiomeOverlayChunkScript.new()
-	overlay.setup(biome_grid, CHUNK_SIZE, TILE_SIZE, label_grid)
-	overlay.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	overlay_root.add_child(overlay)
-	_loaded_overlays[chunk_coord] = overlay
+	return [biome_grid, label_grid]
 
 
 func _unload_chunk(chunk_coord: Vector2i) -> void:
-	var sprite: Sprite2D = _loaded_chunks[chunk_coord]
-	sprite.queue_free()
-	_loaded_chunks.erase(chunk_coord)
-
-	if _loaded_overlays.has(chunk_coord):
-		_loaded_overlays[chunk_coord].queue_free()
-		_loaded_overlays.erase(chunk_coord)
-
-	if _loaded_placements.has(chunk_coord):
-		_loaded_placements[chunk_coord].queue_free()
-		_loaded_placements.erase(chunk_coord)
+	_free_chunk_node(_loaded_chunks, chunk_coord)
+	_shown_epoch.erase(chunk_coord)
+	_free_chunk_node(_loaded_overlays, chunk_coord)
+	_free_chunk_node(_loaded_placements, chunk_coord)
 
 
 ## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
@@ -657,54 +853,40 @@ func _placement_layers() -> Array:
 			return []
 
 
-func _placements_visible() -> bool:
-	return not _placement_layers().is_empty() and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
-
-
-## On view or LOD change: re-bakes every loaded chunk's image and drops and
-## rebuilds its marker node if the current view/LOD shows placements - image
-## and markers chunk by chunk, row-major, so both read a chunk's tiles while
-## _tile_env()'s bounded window still holds them (baking every image first
-## evicted them before placement got there).
-func _rebuild_loaded_chunks() -> void:
-	for markers in _loaded_placements.values():
-		markers.queue_free()
-	_loaded_placements.clear()
-	var place := _placements_visible()
-	for chunk_coord in _chunks_row_major():
-		_regenerate_chunk_image(chunk_coord)
-		if place:
-			_generate_placement_chunk(chunk_coord)
-
-
-## Loaded chunks sorted by row, then column: neighbors are processed close
-## together, so _tile_env()'s bounded cache still catches their shared tiles.
-func _chunks_row_major() -> Array:
-	var chunks := _loaded_chunks.keys()
-	chunks.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
-	return chunks
+func _placements_visible_at(lod_step: int) -> bool:
+	return not _placement_layers().is_empty() and lod_step <= MAX_PLACEMENT_LOD_STEP
 
 
 ## ResourcePlacement decides instances purely from world coordinates, so
 ## each chunk is placed on its own and neighbors agree at shared edges.
-func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
+## -> [[layer (a _placement_layers() entry), instances], ...] in draw order.
+func _placement_chunk(chunk_coord: Vector2i) -> Array:
 	var base := chunk_coord * CHUNK_SIZE
-	var markers := ResourceMarkerChunkScript.new()
+	var layers := _placement_layers()
 	# A guild's instances depend only on the guilds above it in GUILD_STACK,
 	# so place the stack only down to the lowest guild this view draws.
 	var depth := 0
-	for layer in _placement_layers():
+	for layer in layers:
 		depth = maxi(depth, GUILD_STACK.find(layer[0]) + 1)
 	var stack := _place_stack_chunk(base, depth) if depth > 0 else {}
-	for layer in _placement_layers():
+	var result := []
+	for layer in layers:
 		var source: Resource = layer[0]
-		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
+		result.append([layer, stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)])
+	return result
+
+
+## Main thread: one marker node drawing a chunk's _placement_chunk() layers.
+func _marker_node(base: Vector2i, placements: Array) -> Node2D:
+	var markers := ResourceMarkerChunkScript.new()
+	for entry in placements:
+		var layer: Array = entry[0]
+		var source: Resource = layer[0]
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
-		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		markers.add_instances(entry[1], base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	resources_root.add_child(markers)
-	_loaded_placements[chunk_coord] = markers
+	return markers
 
 
 ## Phase 8 step 5: the first `depth` guilds of GUILD_STACK for one chunk,
@@ -758,7 +940,7 @@ func _resource_at(point: Vector2) -> Dictionary:
 ## and guild data, so entries stay valid across view changes; the cache is
 ## just dropped when it grows well past the loaded area.
 func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
-	if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * maxi(_loaded_chunks.size(), 1):
+	if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * _gen_area:
 		_raw_guild_chunks.clear()
 	var c0 := Vector2i(floori(rect.position.x / float(CHUNK_SIZE)), floori(rect.position.y / float(CHUNK_SIZE)))
 	var c1 := Vector2i(floori((rect.end.x - 1) / float(CHUNK_SIZE)), floori((rect.end.y - 1) / float(CHUNK_SIZE)))

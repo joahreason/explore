@@ -26,9 +26,15 @@ func _init() -> void:
 	await process_frame
 
 	var CM = world.get_script()
+	# Phase 17 streaming: chunks come from queued jobs (on a worker thread
+	# here), so a test settles them with flush_chunk_work() after each change.
+	check(world._worker != null, "chunk jobs run on a worker thread")
+	world.flush_chunk_work()
+	check(world._loaded_chunks.size() == 81 and _all_current(world), "startup: %d chunks loaded, all built for the current view" % world._loaded_chunks.size())
 	check(world._loaded_placements.is_empty(), "Material view: no placement markers")
 	var t0 := Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCE_PLACEMENT_OAK)
+	world.flush_chunk_work()
 	print("INFO switch to Oak Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	await process_frame
 	check(world._loaded_placements.size() == world._loaded_chunks.size(), "placement view: one marker node per loaded chunk (%d)" % world._loaded_placements.size())
@@ -40,8 +46,24 @@ func _init() -> void:
 	# Pan far away: new chunks get markers, unloaded chunks' markers are freed.
 	var cam: Node2D = world.get_node("CameraRig")
 	cam.global_position = Vector2(5000, 3000)
-	await process_frame
-	await process_frame
+	# After a jump to new ground chunks stream in over frames instead of all
+	# inside one, and those shown so far are the nearest ones.
+	await process_frame  # its _process unloads the old area and queues the new
+	var frames := 1
+	while world._loaded_chunks.size() < 3 and frames < 500:
+		await process_frame
+		frames += 1
+	var center: Vector2i = world._chunk_of(cam.global_position)
+	var nearest_first := true
+	for cy in range(center.y - 4, center.y + 5):
+		for cx in range(center.x - 4, center.x + 5):
+			var missing := Vector2i(cx, cy)
+			if world._loaded_chunks.has(missing):
+				continue
+			for c in world._loaded_chunks:
+				nearest_first = nearest_first and (c - center).length_squared() <= (missing - center).length_squared()
+	check(world.has_pending_chunks() and world._loaded_chunks.size() < 81 and nearest_first, "after a jump: %d of 81 chunks shown after %d frames, nearest first" % [world._loaded_chunks.size(), frames])
+	world.flush_chunk_work()
 	var match_keys := true
 	for c in world._loaded_chunks.keys():
 		match_keys = match_keys and world._loaded_placements.has(c)
@@ -51,22 +73,22 @@ func _init() -> void:
 	# Zoom out past MAX_PLACEMENT_LOD_STEP: markers removed; back in: rebuilt.
 	var camera: Camera2D = world.get_viewport().get_camera_2d()
 	camera.zoom = Vector2(0.3, 0.3)
-	await process_frame
+	world.flush_chunk_work()
 	check(world._loaded_placements.is_empty(), "zoomed out (lod %d): markers hidden" % world._current_lod_step())
 	camera.zoom = Vector2(4, 4)
-	await process_frame
-	await process_frame
-	check(world._loaded_placements.size() == world._loaded_chunks.size(), "zoomed back in: markers rebuilt")
+	world.flush_chunk_work()
+	check(world._loaded_placements.size() == world._loaded_chunks.size() and _all_current(world), "zoomed back in: markers rebuilt")
 
 	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world.flush_chunk_work()
 	check(world._loaded_placements.is_empty(), "back to Material: markers removed")
 
 	# Guild view: one marker node per chunk, markers in both species' colors.
 	cam.global_position = Vector2.ZERO
-	await process_frame
-	await process_frame
+	world.flush_chunk_work()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
+	world.flush_chunk_work()
 	print("INFO switch to Tree Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	check(world._loaded_placements.size() == world._loaded_chunks.size(), "tree view: one marker node per loaded chunk")
 	var fills := {}
@@ -87,6 +109,7 @@ func _init() -> void:
 	var guild_counts := {}
 	for mode in [CM.ViewMode.ROCK_PLACEMENT, CM.ViewMode.BERRY_PLACEMENT, CM.ViewMode.WETLAND_PLACEMENT, CM.ViewMode.SHORE_PLACEMENT]:
 		world.set_view_mode(mode)
+		world.flush_chunk_work()
 		var guild: ResourceGuild = world._placement_layers()[0][0]
 		var ok: bool = world._loaded_placements.size() == world._loaded_chunks.size()
 		var n := 0
@@ -104,6 +127,7 @@ func _init() -> void:
 	# sprites.
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
+	world.flush_chunk_work()
 	for m in world._loaded_placements.values():
 		tree_count += m._positions.size()
 	# Cold: drop the per-chunk placement/density/environment caches the views
@@ -111,6 +135,7 @@ func _init() -> void:
 	world.clear_generation_caches()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCES)
+	world.flush_chunk_work()
 	print("INFO switch to Resources (9 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	var shape_counts := {}
 	for m in world._loaded_placements.values():
@@ -148,6 +173,7 @@ func _init() -> void:
 			break
 	var tree_pos: Vector2 = some_tree["position"]
 	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world.flush_chunk_work()
 	world._on_tile_clicked(tree_pos * world.TILE_SIZE)
 	var panel_text: String = world._inspector_panel.label.text
 	var expected := "[b]Resource:[/b] %s (Canopy Trees)" % String(some_tree["id"]).capitalize()
@@ -164,6 +190,7 @@ func _init() -> void:
 	check(panel_text.contains(expected) and world._inspector_panel.label.text.contains("[b]Resource:[/b] -"),
 		"click inspector: tree at %s shows '%s'; bare ground at %s shows '-'" % [tree_pos, expected, bare])
 	world.set_view_mode(CM.ViewMode.RESOURCES)
+	world.flush_chunk_work()
 
 	var probe: Dictionary = world._world_gen.sample(3, 5)
 	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
@@ -171,6 +198,7 @@ func _init() -> void:
 	# Deposits view (Phase 9): a heatmap plus ore outcrop markers (step 2);
 	# clicking a tile with ore lists it in the inspector.
 	world.set_view_mode(CM.ViewMode.DEPOSITS)
+	world.flush_chunk_work()
 	var ore_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64):
 		for x in range(-64, 64):
@@ -195,6 +223,7 @@ func _init() -> void:
 	# Farming Potential (Phase 10): a heatmap, no markers; the inspector
 	# shows the tile's value.
 	world.set_view_mode(CM.ViewMode.FARMING_POTENTIAL)
+	world.flush_chunk_work()
 	var farm_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64, 2):
 		for x in range(-64, 64, 2):
@@ -211,13 +240,38 @@ func _init() -> void:
 		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
 		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
 	world.set_view_mode(CM.ViewMode.RESOURCES)
+	world.flush_chunk_work()
 
 	var out := OS.get_environment("OUT_PNG")
 	if out != "":
 		_render_png(world, CM, out)
 
+	# Without a worker (the web export has no threads) the jobs run on the
+	# main thread within a per-frame budget: a few chunks per frame, not the
+	# whole load square in one.
+	world.queue_free()
+	await process_frame
+	var inline_world: Node2D = load("res://world.tscn").instantiate()
+	inline_world.world_seed = 4242
+	inline_world.threaded_generation = false
+	root.add_child(inline_world)
+	await process_frame
+	await process_frame
+	var early: int = inline_world._loaded_chunks.size()
+	inline_world.flush_chunk_work()
+	check(inline_world._worker == null and early > 0 and early < 81 and inline_world._loaded_chunks.size() == 81 and _all_current(inline_world),
+		"no worker: %d chunks after two frames, all 81 once flushed" % early)
+
 	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
 	quit(1 if _fails > 0 else 0)
+
+
+## Every loaded chunk shows content built for the current view and LOD.
+func _all_current(world: Node2D) -> bool:
+	for c in world._loaded_chunks:
+		if world._shown_epoch.get(c, -1) != world._epoch:
+			return false
+	return true
 
 
 ## Real _color_for() in the Resources view (Material) + every placement
@@ -225,6 +279,7 @@ func _init() -> void:
 ## _place_stack_chunk(), in the view's shapes and colors, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
 	world.set_view_mode(CM.ViewMode.RESOURCES)
+	world.flush_chunk_work()
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
 	var px := int(OS.get_environment("OUT_PX")) if OS.get_environment("OUT_PX") != "" else 5
 	var center := Vector2i.ZERO

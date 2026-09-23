@@ -3,7 +3,10 @@ extends SceneTree
 ## Phase 17 benchmark: cold view-switch times with the real world.tscn
 ## (seed 4242, default camera = 81 loaded chunks), each from Material with
 ## the per-chunk guild placement cache dropped first - the numbers quoted in
-## PROJECT_STATE.md. Not a pass/fail suite (run_tests.sh only runs test_*):
+## PROJECT_STATE.md. Since chunk jobs stream in over frames, a switch is timed
+## until flush_chunk_work() has built and shown every chunk (the total work,
+## no longer a single frame's freeze). Not a pass/fail suite (run_tests.sh
+## only runs test_*):
 ##
 ##   $GODOT --headless --path . --script res://tests/bench_views.gd
 ##
@@ -23,6 +26,8 @@ func _init() -> void:
 		var best := INF
 		for r in repeat:
 			world.set_view_mode(CM.ViewMode.MATERIAL if mode != CM.ViewMode.MATERIAL else CM.ViewMode.TEMPERATURE)
+			if world.has_method("flush_chunk_work"):
+				world.flush_chunk_work()
 			if world.has_method("clear_generation_caches"):
 				world.clear_generation_caches()
 			else:  # before Phase 17
@@ -30,6 +35,8 @@ func _init() -> void:
 			await process_frame
 			var t0 := Time.get_ticks_usec()
 			world.set_view_mode(mode)
+			if world.has_method("flush_chunk_work"):
+				world.flush_chunk_work()
 			best = minf(best, (Time.get_ticks_usec() - t0) / 1000.0)
 			await process_frame
 		print("BENCH %s: %.0f ms (%d chunks, cold)" % [CM.ViewMode.keys()[mode], best, world._loaded_chunks.size()])
