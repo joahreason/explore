@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 17 step 2: cut member-suitability cost in `ResourceManager.get_suitability()` (precomputed curve list per definition, invalidated on reassignment) with `test_placement_snapshot` unchanged; then re-profile and pick the next cost (raw `_place` candidates/hashing; Tree view's image pass evicting the env window)
+- [ ] Phase 17 step 3: image + placement per chunk in one row-major pass (keeps the env window warm for Tree/Oak); then profile and trim `ResourcePlacement._place` overhead - `test_placement_snapshot` unchanged
 
 ## Next
 
