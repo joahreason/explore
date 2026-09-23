@@ -15,9 +15,11 @@ func _ready() -> void:
 
 
 ## resource: the placed instance under the click (ChunkManager._resource_at()),
-## or {} when the click hit bare ground. deposits: ore name -> potential (how
-## much exists here); sample["rock_exposure"] says whether it shows.
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}) -> void:
+## or {} when the click hit bare ground. deposits: deposit name ->
+## Vector2(potential (how much exists here), exposure (how much of it shows,
+## ResourceManager.get_exposure())). farming: Phase 10 farming potential
+## (0..1), or < 0 to leave the line out.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0) -> void:
 	visible = true
 
 	var lines: Array[String] = []
@@ -30,9 +32,11 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 	if not deposits.is_empty():
 		var parts: Array[String] = []
 		for ore_name in deposits:
-			parts.append("%s %.2f" % [ore_name, float(deposits[ore_name])])
-		var shown := "exposed" if float(sample["rock_exposure"]) >= 0.5 else "hidden"
-		lines.append("[b]Deposits:[/b] %s (%s)" % [", ".join(parts), shown])
+			var d: Vector2 = deposits[ore_name]
+			parts.append("%s %.2f (%s)" % [ore_name, d.x, "exposed" if d.y >= 0.5 else "hidden"])
+		lines.append("[b]Deposits:[/b] %s" % ", ".join(parts))
+	if farming >= 0.0:
+		lines.append("[b]Farming potential:[/b] %.2f" % farming)
 	lines.append("[b]Biome:[/b] %s" % classified["base_biome"])
 
 	var subtype: String = classified["subtype"]

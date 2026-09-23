@@ -144,7 +144,8 @@ static func rock_exposure(s: Dictionary) -> Color:
 
 ## Phase 9 Deposits view: one ore's potential (how much exists) in its
 ## debug color, dimmed where it's buried and full brightness where the
-## tile's rock_exposure shows it at the surface, so hidden and visible
+## deposit's exposure (ResourceManager.get_exposure(): rock_exposure for
+## ores, river banks for clay) shows it at the surface, so hidden and visible
 ## deposits read apart at a glance.
 static func deposit(ore_color: Color, potential: float, rock_exposure: float) -> Color:
 	var hidden := ore_color.darkened(0.55)

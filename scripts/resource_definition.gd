@@ -112,6 +112,12 @@ extends Resource
 @export_group("Deposit")
 @export var vein_scale: float = 0.0
 @export var vein_sharpness: float = 4.0
+## What makes the deposit visible (ResourceManager.get_exposure()): an
+## EnvironmentalState field, optionally remapped by exposure_curve. Bedrock
+## ores use rock_exposure (eroded ground, cliffs); clay (Phase 10) uses
+## `river`, since river banks cut into floodplain clay beds.
+@export var exposure_field: String = "rock_exposure"
+@export var exposure_curve: Curve
 
 
 ## Real value range of the EnvironmentalState field each curve samples
@@ -153,6 +159,10 @@ func get_curve_domain_warnings() -> PackedStringArray:
 	if cluster_curve != null and (cluster_curve.min_domain > 0.0 or cluster_curve.max_domain < 1.0):
 		warnings.append("ResourceDefinition '%s': cluster_curve domain [%s, %s] doesn't cover [0, 1]" % [
 			id, cluster_curve.min_domain, cluster_curve.max_domain
+		])
+	if exposure_curve != null and (exposure_curve.min_domain > 0.0 or exposure_curve.max_domain < 1.0):
+		warnings.append("ResourceDefinition '%s': exposure_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, exposure_curve.min_domain, exposure_curve.max_domain
 		])
 	for curve_name in required_curves:
 		if not CURVE_FIELD_RANGES.has(curve_name):

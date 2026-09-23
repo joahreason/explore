@@ -17,6 +17,7 @@ const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
 	{"label": "Resources", "mode": ChunkManagerScript.ViewMode.RESOURCES},
 	{"label": "Deposits", "mode": ChunkManagerScript.ViewMode.DEPOSITS},
+	{"label": "Farming Potential", "mode": ChunkManagerScript.ViewMode.FARMING_POTENTIAL},
 	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
 	{"label": "Modifiers", "mode": ChunkManagerScript.ViewMode.MODIFIERS},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},

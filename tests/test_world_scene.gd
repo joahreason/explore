@@ -98,8 +98,8 @@ func _init() -> void:
 		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
 	# Resources view: Material base image; the same trees as Tree Placement,
-	# rocks, ore outcrops, berry bushes and cattails, all as tinted sheet
-	# sprites; reeds (no sprite yet) as diamonds.
+	# rocks, ore outcrops, berry bushes, reeds and cattails, all as tinted
+	# sheet sprites; clay outcrops (no sprite) as hexagons.
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
@@ -126,19 +126,19 @@ func _init() -> void:
 		for i in m._shapes.size():
 			if m._shapes[i] == Shape.SPRITE:
 				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
-	# Reeds have no sprite yet: they stay diamonds, everything else is a sprite.
-	var reeds := 0
+	# Clay has no sprite: its outcrops stay hexagons, everything else is a sprite.
+	var clay_outcrops := 0
 	for c in world._loaded_chunks:
-		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 4)[world.WETLAND_PLANTS]:
-			if inst["id"] == "reed":
-				reeds += 1
+		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS]:
+			if inst["id"] == "clay":
+				clay_outcrops += 1
 	var all_placed: int = tree_count + guild_counts["surface_rocks"] + outcrops_placed + guild_counts["shrubs"] + guild_counts["wetland_plants"]
-	check(sprites_ok and tree_count > 0 and guild_counts["shrubs"] > 0
-		and shape_counts.get(Shape.SPRITE, 0) == all_placed - reeds
-		and shape_counts.get(Shape.DIAMOND, 0) == reeds
-		and shape_counts.get(Shape.CIRCLE, 0) == 0,
-		"resources view: %d sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants less %d reeds; textured, sprite colors), %d reed diamonds" % [
-			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, guild_counts["shrubs"], guild_counts["wetland_plants"], reeds, shape_counts.get(Shape.DIAMOND, 0)])
+	check(sprites_ok and tree_count > 0 and guild_counts["shrubs"] > 0 and guild_counts["wetland_plants"] > 0
+		and shape_counts.get(Shape.SPRITE, 0) == all_placed - clay_outcrops
+		and shape_counts.get(Shape.HEXAGON, 0) == clay_outcrops
+		and shape_counts.get(Shape.DIAMOND, 0) == 0 and shape_counts.get(Shape.CIRCLE, 0) == 0,
+		"resources view: %d sprites (%d trees, %d rocks, %d outcrops less %d clay, %d berry bushes, %d wetland plants; textured, sprite colors), %d clay hexagons" % [
+			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, clay_outcrops, guild_counts["shrubs"], guild_counts["wetland_plants"], shape_counts.get(Shape.HEXAGON, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
@@ -191,6 +191,25 @@ func _init() -> void:
 		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != DebugColorizer.color_for(ore_sample)
 		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
 		"deposits view: only outcrop hexagons (%d); ore tile %s tinted and listed under Deposits in the inspector" % [outcrop_count, ore_tile])
+
+	# Farming Potential (Phase 10): a heatmap, no markers; the inspector
+	# shows the tile's value.
+	world.set_view_mode(CM.ViewMode.FARMING_POTENTIAL)
+	var farm_tile := Vector2i(1 << 30, 0)
+	for y in range(-64, 64, 2):
+		for x in range(-64, 64, 2):
+			var st = EnvironmentalState.from_sample(world._world_gen.sample(x, y))
+			if ResourceManager.get_suitability(st, world.FARMLAND, BiomeClassifier.classify_full(world._world_gen.sample(x, y))) > 0.5:
+				farm_tile = Vector2i(x, y)
+				break
+		if farm_tile.x != 1 << 30:
+			break
+	world._on_tile_clicked((Vector2(farm_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var farm_sample: Dictionary = world._world_gen.sample(farm_tile.x, farm_tile.y)
+	check(world._loaded_placements.is_empty() and farm_tile.x != 1 << 30
+		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != DebugColorizer.color_for(farm_sample)
+		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
+		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 
 	var out := OS.get_environment("OUT_PNG")

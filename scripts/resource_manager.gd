@@ -224,7 +224,8 @@ static func get_member_suitabilities(
 ## What each member competes with in a guild, in guild.members order: its
 ## get_suitability(), except for a deposit (vein_scale > 0), which scores its
 ## EXPOSED deposit (Phase 9 step 2: an ore outcrop only appears where ore
-## exists and bedrock shows). Buried rock skips the deposit math entirely.
+## exists and bedrock shows - or, for clay, where a river bank cuts into
+## it). Unexposed tiles skip the deposit math entirely.
 static func get_member_scores(
 	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
 ) -> PackedFloat32Array:
@@ -232,11 +233,11 @@ static func get_member_scores(
 	for member in guild.members:
 		if member.vein_scale <= 0.0:
 			result.append(get_suitability(state, member, classified))
-		elif state.rock_exposure <= 0.0:
+		elif get_exposure(state, member) <= 0.0:
 			result.append(0.0)
 		else:
 			var potential := get_deposit_potential(state, member, world_seed, wx, wy, classified)
-			result.append(get_exposed_deposit(potential, state))
+			result.append(get_exposed_deposit(potential, state, member))
 	return result
 
 
@@ -310,10 +311,21 @@ static func get_deposit_potential(
 
 
 ## The part of get_deposit_potential() visible at the surface: potential x
-## the tile's rock_exposure (eroded ground, cliffs). The rest is hidden -
-## "resource exists" and "resource is exposed" stay separate fields.
-static func get_exposed_deposit(potential: float, state: EnvironmentalState) -> float:
-	return clampf(potential * state.rock_exposure, 0.0, 1.0)
+## the deposit's exposure at the tile (get_exposure(); rock_exposure when no
+## definition is given). The rest is hidden - "resource exists" and
+## "resource is exposed" stay separate fields.
+static func get_exposed_deposit(potential: float, state: EnvironmentalState, definition: ResourceDefinition = null) -> float:
+	var exposure := get_exposure(state, definition) if definition != null else state.rock_exposure
+	return clampf(potential * exposure, 0.0, 1.0)
+
+
+## 0..1: how much of a deposit shows at this tile - its exposure_field
+## (rock_exposure for bedrock ores), through exposure_curve if set.
+static func get_exposure(state: EnvironmentalState, definition: ResourceDefinition) -> float:
+	var field := clampf(float(state.get(definition.exposure_field)), 0.0, 1.0)
+	if definition.exposure_curve != null:
+		return clampf(definition.exposure_curve.sample(field), 0.0, 1.0)
+	return field
 
 
 ## Ridged vein noise, pow(1 - |n|, vein_sharpness): 1 along a seam's center

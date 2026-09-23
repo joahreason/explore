@@ -171,13 +171,13 @@ func _check_outcrops(wg: WorldGen, tiles: Array) -> void:
 		var t := Vector2i(floori(p.x), floori(p.y))
 		var s := wg.sample(t.x, t.y)
 		var state: EnvironmentalState = EnvironmentalState.from_sample(s)
-		var ore: ResourceDefinition = ORES.filter(func(o): return o.id == inst["id"])[0]
-		var e := ResourceManager.get_exposed_deposit(ResourceManager.get_deposit_potential(state, ore, SEED, t.x, t.y), state)
+		var ore: ResourceDefinition = OUTCROPS.members.filter(func(o): return o.id == inst["id"])[0]
+		var e := ResourceManager.get_exposed_deposit(ResourceManager.get_deposit_potential(state, ore, SEED, t.x, t.y), state, ore)
 		ids[inst["id"]] = ids.get(inst["id"], 0) + 1
-		if s["water_body"] != "none" or s["rock_exposure"] <= 0.0 or e <= 0.0:
+		if s["water_body"] in ["ocean", "sea", "lake", "river"] or ResourceManager.get_exposure(state, ore) <= 0.0 or e <= 0.0:
 			bad += 1
 	check(outcrops.size() >= 10 and bad == 0,
-		"real outcrops: %s in 800x800, 0 on water, buried rock or where their ore isn't exposed (%d)" % [ids, bad])
+		"real outcrops: %s in 800x800, 0 on water, unexposed ground or where their deposit isn't exposed (%d)" % [ids, bad])
 
 
 ## ore id -> Vector2(rich tiles (potential > 0.3), land tiles on the ore's

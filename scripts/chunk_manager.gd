@@ -21,13 +21,18 @@ const SHRUBS := preload("res://resources/shrubs.tres")
 const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
 const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
-## Phase 9 ore deposits: per-tile fields (exists / exposed), not placed
-## instances - see ResourceManager.get_deposit_potential().
+## Phase 9 ore deposits (and Phase 10 clay): per-tile fields (exists /
+## exposed) - see ResourceManager.get_deposit_potential(); ORE_OUTCROPS
+## places the exposed part.
 const ORE_DEPOSITS := [
 	preload("res://resources/iron.tres"),
 	preload("res://resources/copper.tres"),
 	preload("res://resources/coal.tres"),
+	preload("res://resources/clay.tres"),
 ]
+## Phase 10 floodplains: a suitability field only (Farming Potential view,
+## inspector), nothing placed.
+const FARMLAND := preload("res://resources/farmland.tres")
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
 ## ore outcrops and rocks are geology and were there first, then trees,
 ## then wetland plants (Phase 10) that own the wet margins, then the shrubs
@@ -91,6 +96,7 @@ enum ViewMode {
 	ROCK_EXPOSURE,
 	DEPOSITS,
 	WETLAND_PLACEMENT,
+	FARMING_POTENTIAL,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -124,7 +130,7 @@ func _ready() -> void:
 	_world_gen.configure(world_seed)
 
 	# A guild's warnings include its members' (oak among them).
-	for source in GUILD_STACK + ORE_DEPOSITS:
+	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
 		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
 
@@ -269,10 +275,12 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var sample := _world_gen.sample(tile.x, tile.y)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	var deposits := {}
+	var state = EnvironmentalStateScript.from_sample(sample)
 	var potentials := _deposit_potentials(sample, tile.x, tile.y)
 	for ore in potentials:
-		deposits[String(ore.id).capitalize()] = potentials[ore]
-	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits)
+		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
+	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
+	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits, farming)
 
 
 func _update_chunks(center: Vector2i, load_radius: int) -> void:
@@ -350,6 +358,8 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
 			return _deposit_color(sample, wx, wy)
+		ViewMode.FARMING_POTENTIAL:
+			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, FARMLAND))
 		_:
 			return null
 
@@ -402,7 +412,8 @@ func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
 			best_potential = potentials[ore]
 	if best == null:
 		return HeatmapColorizerScript.NO_DEPOSIT
-	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, sample["rock_exposure"])
+	var exposure: float = ResourceManagerScript.get_exposure(EnvironmentalStateScript.from_sample(sample), best)
+	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, exposure)
 
 
 func _species_shares(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Array:
@@ -540,7 +551,7 @@ func _placement_layers() -> Array:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
 			return [
-				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE],
+				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.HEXAGON],
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],

@@ -4,8 +4,9 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 10: step 2 floodplains (farming potential view, clay), step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - step 1 rivers done
-- [ ] Phase 8 step 6: a sprite for reeds (everything else done)
+- [ ] Phase 10: step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - steps 1 rivers, 2 floodplains done
+- [ ] Sprite for clay outcrops (hexagon fallback now)
+- [ ] Deploy: fast-forward `main` to the phase-10 branch (blocked by session permissions; user to push or allow)
 
 ## Next
 
