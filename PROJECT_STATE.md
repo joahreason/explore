@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 8 — First Playable Resources (trees, rocks, berries), built around resource guilds per the Phase 8 **Amendment** in `docs/resource-generation-plan.md`. Steps 1-5 done: canopy-tree guild (oak + pine + palm), surface-rock guild (granite/sandstone/basalt by geology), shrub guild (berry bush), cross-guild footprint check (rocks > trees > shrubs), all drawn in the Vegetation view; plus a world-gen climate/vegetation/biome-balance pass. Remaining: step 6 sprites.
+Phase 9 — Geological Resources (about to start; see `docs/resource-generation-plan.md` Phase 9 and the design notes under Next below). Phase 8 (First Playable Resources, built around resource guilds) is done except step 6, sprites instead of debug markers, which was deferred by the user in favor of starting Phase 9.
 
 ## Completed
 
@@ -55,11 +55,17 @@ Phase 8 — First Playable Resources (trees, rocks, berries), built around resou
 
 ## In Progress
 
-- Phase 8: step 6 (sprites). Nothing half-done in the tree - steps 4 and 5 are committed and tested on branch `phase8-rocks-berries`.
+- (none - Phase 8 steps 1-5 are on `main`; Phase 9 not started. Phase 8 step 6, sprites, is deferred, not in progress.)
 
 ## Next
 
-- Phase 8 step 6: sprites instead of debug markers for trees/rocks/berry bushes. The repo already has an unused one-bit tileset (`tileset.tres`, `urizen_onebit_tileset__v2d0*.png`, see `docs/architecture.md` §7). Keep drawing per chunk in one CanvasItem (`resource_marker_chunk.gd`, e.g. `draw_texture_rect_region` per instance) rather than one Node per object. Species -> sprite mapping belongs in data (e.g. a texture/region on `ResourceDefinition`, like `debug_color`). Then Phase 9 (geological deposits).
+- Phase 9: geological deposits (iron, copper, coal, stone variants). The plan's model is deposit potential = geological affinity x resource vein noise x exposure, with **"resource exists" kept separate from "resource is exposed"** (hidden underground deposits vs. visible ones on cliffs/eroded ground). Findings from reading the code, to design around:
+  - `WorldGen.sample()` already has a `resource` key (`world_gen.gd` ~line 553): `pow(1 - |vein noise|, 4)` (ridged, narrow seams) x `GEOLOGY_RESOURCE_BIAS` (sedimentary 0.4, metamorphic 0.8, igneous 1.0, volcanic 1.2) x an erosion-based `exposure_gate` (smoothstep from `resource_exposure_requirement` 0.15 to 0.4). The exposure gate is already folded into that value, so it can't express "exists but hidden". Likely fix, per Rule 2 (no duplicated environmental logic): have `sample()` also return the ungated vein strength and/or the gate as separate keys (new keys only, existing ones unchanged), then add matching `EnvironmentalState` fields.
+  - There is only ONE vein noise field (`_resource_vein`, seed offset +9, frequency 0.02), so every ore would sit in the same seams. Per-ore deposits probably need their own vein/deposit noise, seeded per ore id the way patch noise is (`ResourceManager._patch_noise`) or from a newly reserved WorldGen offset (next free is +19; +17/+18 are resource patch/placement).
+  - Existing exposure-related fields: `erosion`, `slope`, `cliff_tendency` (hardness x steep slope), `cave_potential` (geology cave bias x moisture), `exposure` (that one is WIND exposure, not rock exposure - don't confuse them). `hardness` is a pure function of `geology`.
+  - Existing machinery that should carry over: `ResourceDefinition` (`geology_weights`, curves, `required_curves`), `ResourceManager.get_density()`, `ResourcePlacement`. Ores are probably not a guild: different ores don't compete for one slot, and a deposit is a region more than a scattered object. So decide early whether a deposit is a placed instance (Phase 7 placement at low density with large spacing), a per-tile field shown as a heatmap, or both (field = underground truth, placed nodes only where exposed). Also decide whether exposed ore nodes join `GUILD_STACK` for footprint collisions with rocks/trees/shrubs.
+  - Rule 5: build the debug views first (e.g. "Iron Deposit" heatmap = exists, plus an exposed-only view or overlay) before adding all four ores.
+- Deferred (user decision this session): Phase 8 step 6, sprites instead of debug markers for trees/rocks/berry bushes. Notes for whenever it's picked up: the repo already has an unused one-bit tileset (`tileset.tres`, `urizen_onebit_tileset__v2d0*.png`, see `docs/architecture.md` §7). Keep drawing per chunk in one CanvasItem (`resource_marker_chunk.gd`, e.g. `draw_texture_rect_region` per instance) rather than one Node per object. The species -> sprite mapping belongs in data (e.g. a texture/region on `ResourceDefinition`, like `debug_color`).
 
 ## Important Architecture
 
@@ -132,12 +138,12 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - Phases 0-7 plus Phase 8 so far (canopy-tree guild: oak/pine/palm, Tree Cover / Tree Placement / Vegetation views) and the world-gen balance pass (temperature contrast/offset, heat-x-dryness vegetation, even land-biome shares, Wetland = waterlogged, cold-only Alpine Snow) are on `main`, fast-forwarded from `claude/phase-8-continuation-xk9cwo` (cloud session) and deployed by the push. `main` is the integration branch - branch new work from `main`.
 - World-gen changes shifted every biome view; land-only biome shares (4 seeds, 60k-tile sample) are now Forest 21.5, Grassland 18.4, Plains 11.4, Tundra 10.6, Desert 9.2, Rainforest 8.0, Wetland 5.8, Savanna 5.4, Badlands 4.9, Alpine Snow 4.9 %. None of this has been looked at in the running game/web build yet - only headless renders.
-- Phase 8 step 4 (`0fa7ec7`, surface-rock + shrub guilds) and step 5 (`38c65fb`, cross-guild footprint stack) are committed and pushed on branch `phase8-rocks-berries` (branched from `main` at `249a414`). NOT merged to `main`, so the live web build doesn't have them yet: merging (fast-forward) deploys them, so do that only with the user's go-ahead.
+- Phase 8 step 4 (`0fa7ec7`, surface-rock + shrub guilds) and step 5 (`38c65fb`, cross-guild footprint stack), plus handoff commit `2c35dba`, were fast-forwarded into `main` and pushed with the user's go-ahead (this deploys the web build). Branch `phase8-rocks-berries` is now identical to `main` and can be deleted. Phase 8 step 6 (sprites) is deferred.
 
 ### Next Action
 
-- Phase 8 step 6: sprites instead of debug markers (see Next above). Use `tests/run_tests.sh --by-biome` (`RESOURCE=res://resources/surface_rocks.tres` etc. for another guild/definition) to check where each species lands. Run `tests/run_tests.sh` before every commit.
-- Still owed: a by-eye look at the deployed Vegetation view (and its view-switch hitch, ~4.9s headless when cold) in the web build. It was tried this session but the browser kept getting the previous build: GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
+- Start Phase 9 (geological deposits) from `main`: read the Phase 9 notes under Next above and `docs/resource-generation-plan.md` Phase 9 first. The first design decision is how "exists" vs. "exposed" is represented (new `sample()` keys vs. per-ore noise, field vs. placed instances); it's a real architectural choice, so present the options to the user before building. Build debug views before adding all four ores (Rule 5). Run `tests/run_tests.sh` before every commit (on Windows set `GODOT`, see below).
+- Still owed: a by-eye look at the deployed Vegetation view (and its view-switch hitch, ~4.9s headless when cold) in the web build. It was tried this session, but the browser kept getting the previous build: GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
 - Biome-share numbers above came from ad hoc stride-sampling scripts (not committed). `tests/resource_by_biome.gd` now covers 4 spread-out 300x300 regions per seed, but that is still only 16 regions in total.
 
 ### Things To Watch Out For
