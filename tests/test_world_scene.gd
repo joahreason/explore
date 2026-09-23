@@ -97,9 +97,9 @@ func _init() -> void:
 		guild_counts[guild.id] = n
 		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
-	# Resources view: Material base image; the same trees as Tree Placement
-	# as tinted sheet sprites, plus the same rocks (squares), berry bushes (circles) and
-	# wetland plants (diamonds), and ore outcrops (hexagons).
+	# Resources view: Material base image; the same trees as Tree Placement,
+	# rocks and ore outcrops, all as tinted sheet sprites, plus berry bushes
+	# (circles) and wetland plants (diamonds).
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
@@ -118,17 +118,20 @@ func _init() -> void:
 	for c in world._loaded_chunks:
 		outcrops_placed += world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS].size()
 	var sprites_ok := true
+	var sprite_colors := {}
+	for g in [world.CANOPY_TREES, world.SURFACE_ROCKS, world.ORE_OUTCROPS]:
+		for member in g.members:
+			sprite_colors[member.sprite_color] = true
 	for m in world._loaded_placements.values():
 		for i in m._shapes.size():
 			if m._shapes[i] == Shape.SPRITE:
-				sprites_ok = sprites_ok and m._textures[i] != null and world.CANOPY_TREES.members.any(func(t): return t.sprite_color == m._fills[i])
-	check(sprites_ok and shape_counts.get(Shape.SPRITE, 0) == tree_count and tree_count > 0
-		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
+				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
+	check(sprites_ok and tree_count > 0
+		and shape_counts.get(Shape.SPRITE, 0) == tree_count + guild_counts["surface_rocks"] + outcrops_placed
 		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"]
-		and shape_counts.get(Shape.DIAMOND, 0) == guild_counts["wetland_plants"]
-		and shape_counts.get(Shape.HEXAGON, 0) == outcrops_placed,
-		"resources view: %d tree sprites (= Tree Placement, textured, sprite colors), %d rock squares, %d berry circles, %d wetland diamonds, %d ore hexagons" % [
-			shape_counts.get(Shape.SPRITE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0), shape_counts.get(Shape.HEXAGON, 0)])
+		and shape_counts.get(Shape.DIAMOND, 0) == guild_counts["wetland_plants"],
+		"resources view: %d sprites (= %d trees + %d rocks + %d outcrops, textured, sprite colors), %d berry circles, %d wetland diamonds" % [
+			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
@@ -228,7 +231,7 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 				var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
 				total += 1
 				if as_sprites and sprite_tiles.has(inst["id"]):
-					_blit_sprite(img, markers.sprite_image(sprite_tiles[inst["id"]]), p, roundi(source.minimum_spacing * px), colors[inst["id"]], outline)
+					_blit_sprite(img, markers.sprite_image(sprite_tiles[inst["id"]]["tile"]), p, roundi(sprite_tiles[inst["id"]]["size"] * px), colors[inst["id"]], outline)
 					continue
 				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
 				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])

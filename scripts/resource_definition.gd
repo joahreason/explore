@@ -98,6 +98,8 @@ extends Resource
 ## sheet's white pixels are tinted by sprite_color.
 @export var sprite_tile: Vector2i = Vector2i(-1, -1)
 @export var sprite_color: Color = Color(1, 1, 1)
+## Drawn width in tiles. Whole multiples of 1 keep the 12 px art crisp.
+@export var sprite_size: float = 1.0
 
 ## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
 ## body rather than a surface object. ResourceManager.get_deposit_potential()

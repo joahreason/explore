@@ -28,7 +28,7 @@ var _fills: PackedColorArray = PackedColorArray()
 var _radii: PackedFloat32Array = PackedFloat32Array()
 var _shapes: PackedInt32Array = PackedInt32Array()
 var _textures: Array[Texture2D] = []  # per instance; null unless drawn as a sprite
-var _sprite_size: float = 0.0
+var _sprite_sizes: PackedFloat32Array = PackedFloat32Array()  # per instance, pixels
 
 static var _sheet: Image
 static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
@@ -39,20 +39,21 @@ static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
 ## chunk-local. colors: instance "id" -> fill Color
 ## (ResourceDefinition.debug_color). shape: TRIANGLE reads as a tree,
 ## SQUARE as a rock, DIAMOND as a wetland plant, HEXAGON as an ore outcrop,
-## CIRCLE is the plain marker. SPRITE draws sprites[id] (a sheet tile,
-## Vector2i) footprint_tiles wide (the guild spacing: 2 tiles = an exact 2x
-## pixel scale for trees); an id without a tile falls back to TRIANGLE.
+## CIRCLE is the plain marker. SPRITE draws sprites[id] = {"tile": sheet
+## tile (Vector2i), "size": width in tiles}; an id without an entry falls
+## back to TRIANGLE.
 func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE, sprites: Dictionary = {}) -> void:
 	# Kept under half the minimum spacing (+ outline), so markers of one
 	# layer never overlap.
 	var radius := maxf(footprint_tiles * tile_size * 0.35, 2.0)
-	_sprite_size = footprint_tiles * tile_size
 	for inst in instances:
 		var texture: Texture2D = null
+		var sprite_px := 0.0
 		var inst_shape := shape
 		if shape == Shape.SPRITE:
 			if sprites.has(inst["id"]):
-				texture = sprite_texture(sprites[inst["id"]])
+				texture = sprite_texture(sprites[inst["id"]]["tile"])
+				sprite_px = float(sprites[inst["id"]]["size"]) * tile_size
 			else:
 				inst_shape = Shape.TRIANGLE
 		_positions.append(((inst["position"] as Vector2) - Vector2(origin_tile)) * tile_size)
@@ -60,6 +61,7 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 		_radii.append(radius)
 		_shapes.append(inst_shape)
 		_textures.append(texture)
+		_sprite_sizes.append(sprite_px)
 	queue_redraw()
 
 
@@ -67,8 +69,9 @@ func _draw() -> void:
 	for i in _positions.size():
 		if _shapes[i] == Shape.SPRITE:
 			# 1 px dark outline (four offset copies), then the tinted sprite.
-			var rect := Rect2(_positions[i] - Vector2.ONE * _sprite_size * 0.5, Vector2.ONE * _sprite_size)
-			var px := _sprite_size / SPRITE_SIZE
+			var size := _sprite_sizes[i]
+			var rect := Rect2(_positions[i] - Vector2.ONE * size * 0.5, Vector2.ONE * size)
+			var px := size / SPRITE_SIZE
 			for offset in [Vector2(px, 0), Vector2(-px, 0), Vector2(0, px), Vector2(0, -px)]:
 				draw_texture_rect(_textures[i], Rect2(rect.position + offset, rect.size), false, OUTLINE)
 			draw_texture_rect(_textures[i], rect, false, _fills[i])

@@ -539,8 +539,8 @@ func _placement_layers() -> Array:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
 			return [
-				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON],
-				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
+				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE],
+				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHRUBS, circle],
 				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
@@ -675,10 +675,11 @@ func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
 	return colors
 
 
-## Instance id -> sheet tile, for members that have a sprite.
+## Instance id -> {"tile", "size"} (resource_marker_chunk.gd), for members
+## that have a sprite.
 func _sprite_tiles(source: Resource) -> Dictionary:
 	var tiles := {}
 	for member in (source.members if source is ResourceGuild else [source]):
 		if member.sprite_tile.x >= 0:
-			tiles[member.id] = member.sprite_tile
+			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size}
 	return tiles
