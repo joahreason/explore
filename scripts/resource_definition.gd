@@ -40,6 +40,13 @@ extends Resource
 @export var slope_curve: Curve
 @export var drainage_curve: Curve
 @export var erosion_curve: Curve
+## Phase 10 water-edge inputs: WorldGen's `river` (0 away from a river, rising
+## toward its line; >= river_threshold is the river itself), `shore_proximity`
+## and `deposition` (sediment on concave ground - floodplains). Listing
+## river_curve in required_curves confines a resource to river banks.
+@export var river_curve: Curve
+@export var shore_curve: Curve
+@export var deposition_curve: Curve
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -110,6 +117,9 @@ const CURVE_FIELD_RANGES := {
 	"slope_curve": Vector2(0.0, INF),
 	"drainage_curve": Vector2(0.0, 1.0),
 	"erosion_curve": Vector2(0.0, 1.0),
+	"river_curve": Vector2(0.0, 1.0),
+	"shore_curve": Vector2(0.0, 1.0),
+	"deposition_curve": Vector2(0.0, 1.0),
 }
 
 

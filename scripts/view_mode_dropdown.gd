@@ -9,8 +9,8 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 ## reachable via the "B" keyboard shortcut (see ChunkManager.toggle_biome_overlay),
 ## but click-to-inspect (see tile_inspector_panel.gd) now covers per-tile biome
 ## info without needing a dedicated full-map overlay view. The per-resource
-## debug views (Oak Suitability/Density/Placement, Tree Cover, Tree/Rock/Berry
-## Placement) are left out too: Resources shows every placed object, and
+## debug views (Oak Suitability/Density/Placement, Tree Cover, Tree/Rock/Berry/
+## Wetland Placement) are left out too: Resources shows every placed object, and
 ## clicking one names it in the inspector. They still exist in ChunkManager
 ## (tests use them) for re-adding here while tuning a resource.
 const ITEMS := [

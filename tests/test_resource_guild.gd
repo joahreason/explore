@@ -5,12 +5,14 @@ extends SceneTree
 ## rolls, and - with the real guilds on a real world - no instances on water,
 ## every instance on a tile its species tolerates, pine on colder ground than
 ## oak, rock type following geology, berry bushes favoring river banks and
-## clustering more strongly than trees, and no footprint overlap between
-## guilds (per-chunk safe). Run via tests/run_tests.sh.
+## clustering more strongly than trees, no footprint overlap between guilds
+## (per-chunk safe), and the Phase 10 water-edge species: reeds and willows
+## only on river banks, cattails only on flat, wet ground, mostly in marshes. Run via tests/run_tests.sh.
 
 const TREES := preload("res://resources/canopy_trees.tres")
 const ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
+const WETLAND := preload("res://resources/wetland_plants.tres")
 const CHUNK := 16
 
 var _fails := 0
@@ -222,7 +224,7 @@ func _init() -> void:
 		and chunk_union[1].size() == stacked[1].size(),
 		"stack: per-chunk union == whole-rect for every guild (%d + %d)" % [chunk_union[0].size(), chunk_union[1].size()])
 
-	var real_stack := [ROCKS, TREES, SHRUBS]
+	var real_stack := [ROCKS, TREES, WETLAND, SHRUBS]
 	var d_fns := []
 	var s_fns := []
 	for g in real_stack:
@@ -237,15 +239,66 @@ func _init() -> void:
 	var real := ResourcePlacement.place_stack_in_rect(real_stack, seed, world_rect, d_fns, s_fns)
 	var stack_ms := (Time.get_ticks_usec() - t0) / 1000.0 / 100.0
 	var closest := INF
-	for i in 3:
-		for j in range(i + 1, 3):
+	for i in real_stack.size():
+		for j in range(i + 1, real_stack.size()):
 			closest = minf(closest, cross_min_dist(real[i], real[j]) - real_stack[i].footprint_radius - real_stack[j].footprint_radius)
 	var kept_line := ""
-	for i in 3:
+	for i in real_stack.size():
 		var raw := ResourcePlacement.place_guild_in_rect(real_stack[i], seed, world_rect, d_fns[i], s_fns[i])
 		kept_line += " %s %d/%d" % [real_stack[i].id, real[i].size(), raw.size()]
-	check(closest >= 0.0 and not real[2].is_empty(), "real stack: no rock/tree/shrub footprints overlap (closest gap %.3f tiles)" % closest)
-	print("INFO real stack kept:%s; %.2f ms/chunk for all three guilds" % [kept_line, stack_ms])
+	check(closest >= 0.0 and not real[2].is_empty() and not real[3].is_empty(), "real stack: no rock/tree/wetland/shrub footprints overlap (closest gap %.3f tiles)" % closest)
+	print("INFO real stack kept:%s; %.2f ms/chunk for all four guilds" % [kept_line, stack_ms])
+
+	# 6. Phase 10 water-edge inputs and species.
+	var river_only := ResourceDefinition.new()
+	river_only.id = "river_only"
+	river_only.river_curve = Curve.new()
+	river_only.river_curve.add_point(Vector2(0.0, 0.0))
+	river_only.river_curve.add_point(Vector2(0.3, 1.0))
+	river_only.required_curves = PackedStringArray(["river_curve"])
+	var st := EnvironmentalState.new()
+	st.water_body = "none"
+	var dry_s := ResourceManager.get_suitability(st, river_only)
+	st.river = 0.3
+	var bank_s := ResourceManager.get_suitability(st, river_only)
+	check(dry_s == 0.0 and is_equal_approx(bank_s, 1.0) and ResourceManager.get_suitability(st, a) == 1.0,
+		"river_curve as a requirement: %.2f away from a river, %.2f on a bank; unset shore/deposition curves stay neutral" % [dry_s, bank_s])
+
+	check(WETLAND.get_curve_domain_warnings().is_empty(), "wetland_plants + members: no curve-domain warnings %s" % WETLAND.get_curve_domain_warnings())
+	var wet := place_real(WETLAND, wg, seed, area)
+	bad = violations(WETLAND, wg, wet)
+	var ids := {}
+	var reed_off_bank := 0
+	var cattail_bad := 0
+	for inst in wet:
+		var p: Vector2 = inst["position"]
+		var s := wg.sample(floori(p.x), floori(p.y))
+		ids[inst["id"]] = ids.get(inst["id"], 0) + 1
+		if inst["id"] == "reed" and s["river"] <= 0.05:
+			reed_off_bank += 1
+		if inst["id"] == "cattail" and (s["moisture"] < 0.45 or s["slope"] > 0.006):
+			cattail_bad += 1
+	check(bad == [0, 0] and ids.get("reed", 0) > 30 and ids.get("cattail", 0) > 30,
+		"real wetland plants: %s, 0 on open water (%d), 0 where their species scores 0 (%d)" % [ids, bad[0], bad[1]])
+	check(reed_off_bank == 0 and cattail_bad == 0,
+		"reeds only on river banks (%d off), cattails only on flat wet ground (%d off)" % [reed_off_bank, cattail_bad])
+	var willows := 0
+	var willow_off_bank := 0
+	var bank_trees := 0
+	var bank_willows := 0
+	for inst in place_real(TREES, wg, seed, area):
+		var p: Vector2 = inst["position"]
+		var river: float = wg.sample(floori(p.x), floori(p.y))["river"]
+		if inst["id"] == "willow":
+			willows += 1
+			if river <= 0.03:
+				willow_off_bank += 1
+		if river > 0.1:
+			bank_trees += 1
+			if inst["id"] == "willow":
+				bank_willows += 1
+	check(willows > 20 and willow_off_bank == 0 and bank_willows > bank_trees / 3,
+		"willows only by rivers: %d willows, %d off the banks; %d of %d bank trees are willows" % [willows, willow_off_bank, bank_willows, bank_trees])
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

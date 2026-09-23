@@ -10,9 +10,9 @@ extends RefCounted
 ##
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
-## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion)
-## not listed in required_curves, plus geology/water_body weights, are
-## combined via GEOMETRIC MEAN: still
+## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
+## plus river/shore/deposition since Phase 10) not listed in required_curves,
+## plus geology/water_body weights, are combined via GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
 ## multiplicatively compounding the penalty the way straight multiplication
@@ -47,6 +47,20 @@ const PATCH_CONTRAST := 1.8
 ## the leading biome dominant while staying continuous.
 const BIOME_MEMBERSHIP_SHARPNESS := 4.0
 
+## ResourceDefinition curve -> the EnvironmentalState field it samples.
+const CURVE_STATE_FIELDS := {
+	"temperature_curve": "temperature",
+	"moisture_curve": "moisture",
+	"fertility_curve": "soil_fertility",
+	"elevation_curve": "elevation",
+	"slope_curve": "slope",
+	"drainage_curve": "drainage",
+	"erosion_curve": "erosion",
+	"river_curve": "river",
+	"shore_curve": "shore_proximity",
+	"deposition_curve": "deposition",
+}
+
 static var _patch_noise_cache: Dictionary = {}
 static var _vein_noise_cache: Dictionary = {}
 
@@ -56,20 +70,11 @@ static func get_suitability(
 ) -> float:
 	var core_factors: Array[float] = []
 	var requirement := 1.0
-	var curve_inputs := {
-		"temperature_curve": state.temperature,
-		"moisture_curve": state.moisture,
-		"fertility_curve": state.soil_fertility,
-		"elevation_curve": state.elevation,
-		"slope_curve": state.slope,
-		"drainage_curve": state.drainage,
-		"erosion_curve": state.erosion,
-	}
-	for curve_name in curve_inputs:
+	for curve_name in CURVE_STATE_FIELDS:
 		var curve: Curve = definition.get(curve_name)
 		if curve == null:
 			continue
-		var factor := clampf(curve.sample(curve_inputs[curve_name]), 0.0, 1.0)
+		var factor := clampf(curve.sample(state.get(CURVE_STATE_FIELDS[curve_name])), 0.0, 1.0)
 		if definition.required_curves.has(curve_name):
 			requirement = minf(requirement, factor)
 		else:
@@ -239,14 +244,16 @@ static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: flo
 static func get_guild_density(
 	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
 ) -> float:
-	var best := 0.0
-	for s in get_member_suitabilities(state, guild, classified):
-		best = maxf(best, s)
-	if best <= 0.0:
-		return 0.0
 	var field := clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
 	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
 	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
+	# Cheap factors first: member suitabilities are the costly part, and most
+	# tiles have no cover for guilds like wetland plants (dry ground).
+	if cover <= 0.0 or patch <= 0.0:
+		return 0.0
+	var best := 0.0
+	for s in get_member_suitabilities(state, guild, classified):
+		best = maxf(best, s)
 	return clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)
 
 

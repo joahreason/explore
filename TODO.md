@@ -4,19 +4,21 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 8: rocks + berry bushes (as guild members), cross-guild footprint check, sprites instead of debug markers (canopy-tree guild with oak/pine/palm + Vegetation view done)
+- [ ] Phase 10: step 2 floodplains (farming potential view, clay), step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - step 1 rivers done
+- [ ] Phase 9 step 2: placed ore outcrops where deposits are exposed
+- [ ] Phase 8 step 6 (deferred): sprites instead of debug markers
 
 ## Next
 
 - [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 
-- [ ] Look at the Vegetation / Tree Placement views and the rebalanced biomes in the real game / web build - so far only headless renders
+- [ ] Look at the Resources view (incl. Phase 10 wetland plants / willows) and the rebalanced biomes in the real game / web build - so far only headless renders
 - [ ] `tests/resource_by_biome.gd` samples one climate zone per seed (600x600 around origin) - widen to a stride-sampled large area
 - [ ] Subtype weights are still label-based - expose BiomeSubtype scores when a resource leans on subtypes (plan Phase 3 amendment)
 
 ## Later
 
-- [ ] Placement view switch hitch (Oak ~1.8s, Tree/Vegetation ~2.6s for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
+- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~5.7s, Resources ~6.6s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 

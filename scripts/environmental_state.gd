@@ -56,9 +56,16 @@ var disturbance_age: float
 
 ## Uses load() on its own path rather than the bare class_name so this
 ## works even when the global script-class cache hasn't indexed this file
-## yet (e.g. a headless --script run that never opened the editor).
+## yet (e.g. a headless --script run that never opened the editor). The
+## script is kept in a static var and the local is typed: a load() per call
+## plus untyped field stores cost ~40us, three times WorldGen.sample()
+## itself, on every placement candidate (now ~9us).
+static var _script: GDScript
+
 static func from_sample(s: Dictionary):
-	var state = load("res://scripts/environmental_state.gd").new()
+	if _script == null:
+		_script = load("res://scripts/environmental_state.gd")
+	var state: EnvironmentalState = _script.new()
 
 	state.elevation = s["elevation"]
 	state.slope = s["slope"]

@@ -18,6 +18,7 @@ const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
+const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
 ## Phase 9 ore deposits: per-tile fields (exists / exposed), not placed
 ## instances - see ResourceManager.get_deposit_potential().
 const ORE_DEPOSITS := [
@@ -26,9 +27,10 @@ const ORE_DEPOSITS := [
 	preload("res://resources/coal.tres"),
 ]
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
-## rocks are geology and were there first, then trees, then the shrubs
-## that fill in around both.
-const GUILD_STACK := [SURFACE_ROCKS, CANOPY_TREES, SHRUBS]
+## rocks are geology and were there first, then trees, then wetland plants
+## (Phase 10) that own the wet margins, then the shrubs that fill in around
+## all of them.
+const GUILD_STACK := [SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHRUBS]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -86,6 +88,7 @@ enum ViewMode {
 	BERRY_PLACEMENT,
 	ROCK_EXPOSURE,
 	DEPOSITS,
+	WETLAND_PLACEMENT,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -339,6 +342,8 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SURFACE_ROCKS, wx, wy))
 		ViewMode.BERRY_PLACEMENT:
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHRUBS, wx, wy))
+		ViewMode.WETLAND_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_guild_density(sample, WETLAND_PLANTS, wx, wy))
 		ViewMode.ROCK_EXPOSURE:
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
@@ -525,9 +530,12 @@ func _placement_layers() -> Array:
 			return [[SURFACE_ROCKS, circle]]
 		ViewMode.BERRY_PLACEMENT:
 			return [[SHRUBS, circle]]
+		ViewMode.WETLAND_PLACEMENT:
+			return [[WETLAND_PLANTS, circle]]
 		ViewMode.RESOURCES:
 			return [
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
+				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHRUBS, circle],
 				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.TRIANGLE],
 			]
