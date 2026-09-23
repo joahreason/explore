@@ -14,12 +14,18 @@ func _ready() -> void:
 	close_button.pressed.connect(func(): visible = false)
 
 
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary) -> void:
+## resource: the placed instance under the click (ChunkManager._resource_at()),
+## or {} when the click hit bare ground.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}) -> void:
 	visible = true
 
 	var lines: Array[String] = []
 	lines.append("[b]Tile (%d, %d)[/b]" % [tile.x, tile.y])
 	lines.append("")
+	if resource.is_empty():
+		lines.append("[b]Resource:[/b] -")
+	else:
+		lines.append("[b]Resource:[/b] %s (%s)" % [resource["name"], resource["guild_name"]])
 	lines.append("[b]Biome:[/b] %s" % classified["base_biome"])
 
 	var subtype: String = classified["subtype"]

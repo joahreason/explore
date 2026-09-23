@@ -2,8 +2,8 @@ extends SceneTree
 
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
 ## marker layer follows view/LOD/chunk streaming, then that the guild views
-## (Tree/Rock/Berry Placement, Vegetation) draw their members. If OUT_PNG is
-## set, also renders the real _color_for() base + chunk-by-chunk Vegetation
+## (Tree/Rock/Berry Placement, Resources) draw their members. If OUT_PNG is
+## set, also renders the real _color_for() base + chunk-by-chunk Resources
 ## view (every guild, in its marker shapes; chunk grid drawn) to that path
 ## for visual inspection. Run via tests/run_tests.sh.
 
@@ -95,7 +95,7 @@ func _init() -> void:
 		guild_counts[guild.id] = n
 		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
-	# Vegetation view: Material base image; the same trees as Tree Placement
+	# Resources view: Material base image; the same trees as Tree Placement
 	# as triangles, plus the same rocks (squares) and berry bushes (circles).
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
@@ -104,8 +104,8 @@ func _init() -> void:
 	# Cold: drop the per-chunk guild placement cache the views above filled.
 	world._raw_guild_chunks.clear()
 	t0 = Time.get_ticks_msec()
-	world.set_view_mode(CM.ViewMode.VEGETATION)
-	print("INFO switch to Vegetation (3 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	world.set_view_mode(CM.ViewMode.RESOURCES)
+	print("INFO switch to Resources (3 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	var shape_counts := {}
 	for m in world._loaded_placements.values():
 		for s in m._shapes:
@@ -114,10 +114,36 @@ func _init() -> void:
 	check(shape_counts.get(Shape.TRIANGLE, 0) == tree_count and tree_count > 0
 		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
 		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"],
-		"vegetation view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles" % [
+		"resources view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles" % [
 			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0)])
+	# Click-to-inspect names the placed resource under the click, in any view.
+	var some_tree: Dictionary = {}
+	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
+		var trees: Array = world._place_stack_chunk(base)[world.CANOPY_TREES]
+		if not trees.is_empty():
+			some_tree = trees[0]
+			break
+	var tree_pos: Vector2 = some_tree["position"]
+	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world._on_tile_clicked(tree_pos * world.TILE_SIZE)
+	var panel_text: String = world._inspector_panel.label.text
+	var expected := "[b]Resource:[/b] %s (Canopy Trees)" % String(some_tree["id"]).capitalize()
+	var bare := Vector2.INF
+	for y in range(-40, 40):
+		for x in range(-40, 40):
+			var p := Vector2(x + 0.5, y + 0.5)
+			if world._resource_at(p).is_empty():
+				bare = p
+				break
+		if bare != Vector2.INF:
+			break
+	world._on_tile_clicked(bare * world.TILE_SIZE)
+	check(panel_text.contains(expected) and world._inspector_panel.label.text.contains("[b]Resource:[/b] -"),
+		"click inspector: tree at %s shows '%s'; bare ground at %s shows '-'" % [tree_pos, expected, bare])
+	world.set_view_mode(CM.ViewMode.RESOURCES)
+
 	var probe: Dictionary = world._world_gen.sample(3, 5)
-	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "vegetation view: base image is the Material color")
+	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
 
 	var out := OS.get_environment("OUT_PNG")
 	if out != "":
@@ -127,11 +153,11 @@ func _init() -> void:
 	quit(1 if _fails > 0 else 0)
 
 
-## Real _color_for() in the Vegetation view (Material) + every placement
+## Real _color_for() in the Resources view (Material) + every placement
 ## layer (rocks, berry bushes, trees) placed chunk by chunk through the real
 ## _place_stack_chunk(), in the view's shapes and colors, chunk grid drawn.
 func _render_png(world: Node2D, CM, out: String) -> void:
-	world.set_view_mode(CM.ViewMode.VEGETATION)
+	world.set_view_mode(CM.ViewMode.RESOURCES)
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
 	var px := 5
 	var origin := Vector2i(-tiles / 2, -tiles / 2)

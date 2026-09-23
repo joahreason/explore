@@ -74,7 +74,7 @@ enum ViewMode {
 	RESOURCE_PLACEMENT_OAK,
 	TREE_COVER,
 	TREE_PLACEMENT,
-	VEGETATION,
+	RESOURCES,
 	ROCK_PLACEMENT,
 	BERRY_PLACEMENT,
 }
@@ -248,12 +248,13 @@ func _chunk_of(world_pos: Vector2) -> Vector2i:
 ## Driven by CameraRig's "clicked" signal (a left click/tap that wasn't a
 ## drag) - samples the single clicked tile fresh (bypassing the topology
 ## cache is unnecessary here, it's one tile) and hands the full sample +
-## classification to the inspector panel.
+## classification to the inspector panel, plus the placed resource (if
+## any) under the exact click point.
 func _on_tile_clicked(world_pos: Vector2) -> void:
 	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
 	var sample := _world_gen.sample(tile.x, tile.y)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	_inspector_panel.show_info(tile, sample, classified)
+	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE))
 
 
 func _update_chunks(center: Vector2i, load_radius: int) -> void:
@@ -467,7 +468,7 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 ## instances of, as [source, marker shape] pairs in draw order (empty = no
 ## placement markers in this view). Placement views keep the matching
 ## density heatmap as their base image, so each marker can be read against
-## the field it was drawn from; the Vegetation view draws every guild over
+## the field it was drawn from; the Resources view draws every guild over
 ## the Material image, trees last so they sit on top.
 func _placement_layers() -> Array:
 	var circle := ResourceMarkerChunkScript.Shape.CIRCLE
@@ -480,7 +481,7 @@ func _placement_layers() -> Array:
 			return [[SURFACE_ROCKS, circle]]
 		ViewMode.BERRY_PLACEMENT:
 			return [[SHRUBS, circle]]
-		ViewMode.VEGETATION:
+		ViewMode.RESOURCES:
 			return [
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
 				[SHRUBS, circle],
@@ -529,17 +530,44 @@ func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 ## Phase 8 step 5: the first `depth` guilds of GUILD_STACK for one chunk,
 ## after the cross-guild footprint check -> {guild: instances}. A guild's
 ## instances are the same whatever the depth (only higher guilds affect it),
-## so each guild's view shows exactly what the Vegetation view does.
+## so each guild's view shows exactly what the Resources view does.
 func _place_stack_chunk(base: Vector2i, depth: int = GUILD_STACK.size()) -> Dictionary:
+	return _place_stack(Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), depth)
+
+
+## Same as _place_stack_chunk() for any tile rect.
+func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 	var guilds := GUILD_STACK.slice(0, depth)
-	var raw_fn := func(i: int, rect: Rect2i) -> Array:
-		return _raw_guild_in_rect(guilds[i], rect)
-	var rect := Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
+	var raw_fn := func(i: int, r: Rect2i) -> Array:
+		return _raw_guild_in_rect(guilds[i], r)
 	var placed: Array = ResourcePlacementScript.place_stack_with(guilds, rect, raw_fn)
 	var result := {}
 	for i in guilds.size():
 		result[guilds[i]] = placed[i]
 	return result
+
+
+## The placed resource instance under a click (tile units), or {} if none:
+## the nearest instance whose drawn marker covers the point (marker radius =
+## 0.35 x its guild's spacing, as in resource_marker_chunk.gd). Works in any
+## view - instances exist whether or not their markers are drawn. Adds
+## "guild_name" and "name" for display.
+func _resource_at(point: Vector2) -> Dictionary:
+	var tile := Vector2i(floori(point.x), floori(point.y))
+	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
+	var best := {}
+	var best_dist := INF
+	for guild in GUILD_STACK:
+		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
+		for inst in stack[guild]:
+			var dist := point.distance_to(inst["position"])
+			if dist <= reach and dist < best_dist:
+				best = inst.duplicate()
+				best_dist = dist
+	if not best.is_empty():
+		best["name"] = String(best["id"]).capitalize()
+		best["guild_name"] = String(best["guild"]).capitalize()
+	return best
 
 
 ## place_guild_in_rect() for any rect, assembled from per-chunk placements

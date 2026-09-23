@@ -6,7 +6,7 @@ extends Node2D
 ## renderer: the instance data comes from ResourcePlacement.place_in_rect()
 ## (or place_guild_in_rect()) and is never modified here. Positions are in
 ## tile units, relative to the world origin; this node sits at the chunk's
-## pixel origin. Several layers (e.g. rocks, shrubs, trees in the Vegetation
+## pixel origin. Several layers (e.g. rocks, shrubs, trees in the Resources
 ## view) can be added to one node; they draw in the order added.
 
 enum Shape { CIRCLE, TRIANGLE, SQUARE }

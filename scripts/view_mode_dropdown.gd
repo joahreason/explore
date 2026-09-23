@@ -8,10 +8,14 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 ## Base Biome is deliberately left out of this list for now - it's still
 ## reachable via the "B" keyboard shortcut (see ChunkManager.toggle_biome_overlay),
 ## but click-to-inspect (see tile_inspector_panel.gd) now covers per-tile biome
-## info without needing a dedicated full-map overlay view.
+## info without needing a dedicated full-map overlay view. The per-resource
+## debug views (Oak Suitability/Density/Placement, Tree Cover, Tree/Rock/Berry
+## Placement) are left out too: Resources shows every placed object, and
+## clicking one names it in the inspector. They still exist in ChunkManager
+## (tests use them) for re-adding here while tuning a resource.
 const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
-	{"label": "Vegetation", "mode": ChunkManagerScript.ViewMode.VEGETATION},
+	{"label": "Resources", "mode": ChunkManagerScript.ViewMode.RESOURCES},
 	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
 	{"label": "Modifiers", "mode": ChunkManagerScript.ViewMode.MODIFIERS},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},
@@ -25,13 +29,6 @@ const ITEMS := [
 	{"label": "Fire Risk", "mode": ChunkManagerScript.ViewMode.FIRE_RISK},
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
-	{"label": "Oak Suitability", "mode": ChunkManagerScript.ViewMode.RESOURCE_SUITABILITY_OAK},
-	{"label": "Oak Density", "mode": ChunkManagerScript.ViewMode.RESOURCE_DENSITY_OAK},
-	{"label": "Oak Placement", "mode": ChunkManagerScript.ViewMode.RESOURCE_PLACEMENT_OAK},
-	{"label": "Tree Cover", "mode": ChunkManagerScript.ViewMode.TREE_COVER},
-	{"label": "Tree Placement", "mode": ChunkManagerScript.ViewMode.TREE_PLACEMENT},
-	{"label": "Rock Placement", "mode": ChunkManagerScript.ViewMode.ROCK_PLACEMENT},
-	{"label": "Berry Placement", "mode": ChunkManagerScript.ViewMode.BERRY_PLACEMENT},
 ]
 
 

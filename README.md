@@ -8,7 +8,7 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 
 - **Pan**: click-and-drag (mouse), one-finger drag (touch)
 - **Zoom**: scroll wheel (mouse), pinch (touch)
-- **Inspect a tile**: click/tap it (without dragging) to open a panel showing its full generated field data plus classified biome/subtype/modifiers
+- **Inspect a tile**: click/tap it (without dragging) to open a panel showing the placed resource under the click (e.g. "Oak (Canopy Trees)"), its full generated field data plus classified biome/subtype/modifiers
 - **B**: toggle the Base Biome overlay (region outlines + labels)
 
 ## UI panel (top-right)
@@ -25,12 +25,9 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 - **Material** - the default terrain look, a continuous color blend driven by climate/vegetation/geology (no hard biome edges)
 - **Subtype**, **Modifiers** - text-label overlays over the Material look, naming each region's biome subtype or independent tags (Cold, Wet, FireProne, etc.)
 - **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the Material look (not a full replacement) so terrain stays visible as context for how the field affects generation
-- **Oak Suitability, Oak Density** - resource-generation debug heatmaps: how much oak would like each tile, and how much should actually grow there (suitability x patch noise)
-- **Oak Placement** - the Oak Density heatmap plus a marker for every individually placed oak (deterministic, minimum-spaced; hidden when zoomed far out)
-- **Vegetation** - the Material look with every placed natural object: trees (triangles; oak/pine/palm colors), rocks (squares; granite/sandstone/basalt by geology) and berry bushes (circles)
-- **Tree Cover, Tree Placement, Rock Placement, Berry Placement** - per-guild debug views: the guild's density heatmap, plus species-colored markers for the placement views
+- **Resources** - the Material look with every placed natural object: trees as triangles (oak green, pine blue, palm orange, olive yellow), rocks as squares (granite light grey, sandstone tan, basalt charcoal - by bedrock) and berry bushes as magenta circles. Hidden when zoomed far out.
 
-(Base Biome - a region-outline overlay - is available via the `B` key but left out of the dropdown for now in favor of click-to-inspect.)
+(Base Biome - a region-outline overlay - is available via the `B` key but left out of the dropdown for now in favor of click-to-inspect. The per-resource debug views - Oak Suitability/Density/Placement, Tree Cover, Tree/Rock/Berry Placement - still exist in `chunk_manager.gd` but are left out of the dropdown; re-add them in `view_mode_dropdown.gd` when tuning a resource.)
 
 ## Architecture
 
