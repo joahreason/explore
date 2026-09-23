@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11-start-5kl6xx` (branch name kept from Phase 11), tests pass, not yet merged. Phases 0-11 are merged to `main` (PRs #1-#5); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 17 — Performance and Chunk Integration is NEXT (not started), moved ahead of Phases 13-16 at the user's request (see the Phase 17 amendment in the plan). Phases 0-12 are complete and merged to `main` (PRs #1-#6). Phase 11/12 scars and species have only been checked in headless renders, not in the running game or web build.
 
 ## Completed
 
@@ -108,10 +108,7 @@ Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11
     - GUILD_STACK: ... SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS (pioneers last, on whatever ground remains). Resources view draws both; new debug views `SUCCESSION` (heatmap, in the dropdown) and `SUCCESSION_PLACEMENT` (deadwood + pioneers over it, not in the dropdown).
     - Tests: new `tests/test_succession.gd` (12): no curve-domain warnings; succession in [0,1], exactly 1 wherever disturbance is 0; vegetation_potential >= vegetation and equal outside scars; determinism; type weights neutral at succession 1; deadwood/pioneers/young trees never on undisturbed land; stage order by mean succession of placed instances (4 regions, seed 4242): dead trees 0.24 < pioneers 0.43 < young trees 0.69 < oak/pine 0.98, berries 0.91. test_world_scene counts deadwood/pioneers in the Resources view (none in its origin area).
     - Renders (OUT_PNG, seed 4242) of a fresh storm scar (-540,-2060) and fire scar (1760,-870) inspected: bare center with snags/logs/rocks, pioneer ring, then young and mature trees outward.
-
-## In Progress
-
-- Phase 12 first pass (branch `claude/phase-11-start-5kl6xx`, PR pending). Every category in plan Phase 12 now has a data-driven definition (checked by test_ecological_profiles). New in this phase, all data except one curve field:
+- Phase 12 (merged, PR #6). Every category in plan Phase 12 now has a data-driven definition (checked by test_ecological_profiles). New in this phase, all data except one curve field:
   - `ResourceDefinition.rock_exposure_curve` (WorldGen's `rock_exposure`, in CURVE_STATE_FIELDS / CURVE_FIELD_RANGES).
   - New guild `ground_cover` (cover from vegetation_potential 0.05 -> 1 at 0.25; base 0.35, spacing 2, patch 20/1.0 with a steep cluster curve; last in GUILD_STACK, in the Resources view). Members all require succession 0 at 0.45 -> 1 at 0.7 (pioneers own younger scars): `meadow_grass` (15,5) open country, `wild_herbs` (12,9) moist fertile woodland, `wildflowers` (13,9) temperate meadows. Per 100 tiles (resource_by_biome, 4 seeds): Savanna/Grassland ~3, Forest/Plains 2.4, Desert 0.07; grass 93% open, herbs 93% wooded.
   - `birch` (1,34), size 2: canopy member, cool (-0.6..0.1) and moist, succession 1 at 0.6..0.85 falling to 0.6 at 1 (a pioneer tree that persists). ~0.75/100 tiles in Forest and Wetland; pine unchanged.
@@ -120,10 +117,20 @@ Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11
   - Tests: new `tests/test_ecological_profiles.gd` (14): every plan category has a definition; no curve warnings; nothing on water; each new species placed; ground cover only at succession >= 0.45; grass open / herbs wooded; birch only where temperature <= 0.1; forest-floor mushrooms; sedimentary rocks only on sedimentary geology; exposed stone only at rock_exposure >= 0.5; gravel on eroded ground or banks. test_succession no longer requires mushrooms to be scar-only; test_resource_guild accepts the new rock types (limestone/shale sedimentary-only, gravel/exposed stone any geology); test_world_scene counts ground cover.
   - Render (seed 4242, 8000,-12000, sedimentary Wetland) inspected: birch/pine forest, shale/limestone boulders, fireweed on a scar. Cattails dominate that area (existing Phase 10 behavior, Wetland biome).
 
+## In Progress
+
+- (none - Phase 12 is merged; Phase 17 has not started.)
+
 ## Next
 
-- NEXT: Phase 17 (Performance and Chunk Integration), moved ahead of Phases 13-16 at the user's request (plan amendment 2026-09-23). Profile the view switch and chunk placement first (baseline: Resources view ~11.2s cold headless, 81 chunks, 9 guilds), then fix the largest costs without changing output.
-- Phase 11/12 open: by-eye check of scars and the new species in the running game; abundance tuning (pioneers/ground cover/deadwood are first pass). After Phase 17: Phase 13 (Correlated Ecosystems).
+- **Phase 17 prep (NEXT; moved ahead of Phases 13-16 at the user's request, plan amendment 2026-09-23):**
+  - Goal: profile first, then fix the largest costs with output unchanged (same seed -> identical instances in every guild).
+  - Baseline (test_world_scene INFO lines, headless, 81 chunks, cold `_raw_guild_chunks`): Oak Placement ~2.3s, Tree Placement ~6.3s, Resources (9 guilds) ~11.2s. Each guild added since Phase 8 made it slower (3 guilds ~5.2s, 6 ~9.1s).
+  - Where the time goes (per the code, not yet profiled): `ChunkManager._raw_guild_in_rect()` -> `ResourcePlacement.place_guild_in_rect()` calls `density_fn` per candidate and `shares_fn` per survivor; both call `WorldGen.sample()` + `BiomeClassifier.classify_full()` + `EnvironmentalState.from_sample()` again for the same tile, and every guild re-samples the same tiles. The stack filter needs every guild but the lowest in a rect grown by one chunk ring. `get_member_scores()` evaluates every member even when geology/succession zero most (get_suitability() already returns early on a zero required curve).
+  - Likely wins, in order to try: (1) a per-chunk cache of sample/state/classification shared by all guilds and both callbacks; (2) compute shares in the same pass as density (member scores are computed once in get_guild_density() already); (3) only then consider LOD/aggregation per the plan's Phase 17 text.
+  - Safety net: add a test/diagnostic that dumps every guild's instances (id, cell, position) for a fixed seed and rect before the first change, and compare after each change - plus `tests/run_tests.sh`.
+  - Also watch the chunk image bake (`_color_for()` per tile per chunk) and the web build, where the hitch is likely worse than headless.
+- Phase 11/12 open: by-eye check of scars and the new species in the running game (Succession + Resources views); abundance tuning (pioneers/ground cover/deadwood are first pass; cattails dominate Wetland, from Phase 10). After Phase 17: Phase 13 (Correlated Ecosystems).
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
 - Owed: a by-eye look at the deployed web build (sprites, coasts, Farming Potential, Deposits) and the Resources view switch time (~8.6s headless cold, 6 guilds) on web.
 
@@ -200,13 +207,14 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (cloud, branch `claude/phase-11-start-5kl6xx`): Phase 11 (merged, PR #5), then Phase 12 first pass - see In Progress. `tests/run_tests.sh` now runs 8 suites (test_succession, test_ecological_profiles added), all pass.
-- Earlier (merged to `main` via PRs #1-#4): Phase 10, Phase 9 step 2, Phase 8 step 6 sprites.
+- Session of 2026-09-23 (cloud, branch `claude/phase-11-start-5kl6xx`, reused for every PR): Phase 11 (PR #5) and Phase 12 (PR #6), both merged; Phase 17 moved up in the plan. Details under Completed.
+- Test suites (`tests/run_tests.sh`, ~3 min in a cloud session): test_deposits (24), test_ecological_profiles (14), test_floodplains (9), test_resource_guild (28), test_resource_placement (14), test_shores (12), test_succession (12), test_world_scene - all pass on `main`.
+- Earlier (PRs #1-#4): Phases 8-10, sprites for every placed resource.
 
 ### Next Action
 
-- Get the Phase 12 PR merged, then a by-eye look at the web build (Succession view + Resources).
-- Then Phase 17 (performance), moved up ahead of Phase 13 - see its plan amendment. Profile first; keep output identical (tests + same-seed instance comparison).
+- Start Phase 17 from `main` (see "Phase 17 prep" under Next): write the same-seed instance snapshot first, then profile, then fix.
+- Ask the user for a by-eye check of the web build (Succession + Resources views) when convenient.
 
 ### Things To Watch Out For
 
@@ -217,6 +225,9 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Background-job worktrees (`EnterWorktree`) branch from `origin/main`, which is now the right base (`main` is the integration branch; `resource-generation` is stale). Still `git fetch` first: local branches can lag the remote (local `main` was 20 commits behind at the start of the step-4 session).
 - Local Windows runs: `tests/run_tests.sh` only auto-downloads the Linux Godot. Set `GODOT=~/.cache/godot/Godot_v4.7.2-stable_win64_console.exe` (extracted there from `~/Downloads/Godot_v4.7.2-stable_win64.exe.zip`; use the `_console` exe so output reaches the shell). `python3` on this machine is the Microsoft Store stub and hangs - do scripted edits with sed or the Edit tool.
 - Cloud (Linux) sessions have no Godot installed: `tests/run_tests.sh` handles it (downloads the CI's 4.7.2 into `~/.cache/godot` and rebuilds the class cache - a `--quit-after 3` editor run was too short for a cold cache, the script uses 30). For ad hoc scripts, point `$GODOT` at that binary.
+- Diagnostics: `RESOURCE=res://resources/<guild>.tres tests/run_tests.sh --by-biome` (or run `tests/resource_by_biome.gd` directly) prints instances per 100 tiles per biome and species - the quickest way to see what a data change did. For before/after, `git stash` (tracked files only; new untracked .tres stay) -> run -> `git stash pop`, and don't edit files meanwhile.
+- Sedimentary geology is absent near the origin; seed 4242 regions (8000,-12000) and (-16000,-8000) are almost all sedimentary (used by test_ecological_profiles). Fresh scars on seed 4242: storm (-560,-2100), fire (1760,-870) - good OUT_CENTER values for renders.
+- New .tres files were written by small Python generators in the session scratchpad (not in the repo); editing the .tres text directly works the same - the format is plain Godot text resources (curves as `_data` point lists).
 - Never `pkill -f <script name>` from a shell whose own command line contains that name - it kills the shell too. A headless script that errors before `quit()` hangs until its `timeout`; always wrap runs in `timeout`.
 - In a fresh worktree, the headless game boot prints `invalid UID: uid://hx4p5eruo1tv ... chunk_manager.gd` - that's the worktree's partial `.godot` UID cache (the `--quit-after 3` editor scan is cut short), not a real problem; the tracked `scripts/chunk_manager.gd.uid` is correct and Godot falls back to the path.
 - GDScript `class_name`-based global class resolution fails in headless `--script` runs for any script added since `.godot/global_script_class_cache.cfg` was last built (that cache is gitignored, local-only, and is normally only rebuilt by opening the editor). Fix for a fresh session/checkout: run `Godot.exe --headless --path . --editor --quit-after 3` once to force a rebuild before running any other headless test scripts - confirm with `grep <new_file> .godot/global_script_class_cache.cfg`. Not needed for the real game (editor/export always rebuilds it), only for this project's headless-script verification workflow.
