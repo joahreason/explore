@@ -1,10 +1,11 @@
 extends LineEdit
 
 ## Restricts input to letters, numbers, and spaces - anything else typed or
-## pasted is silently stripped. Pressing Enter reloads immediately with
-## whatever seed is currently typed (see SeedReload). ChunkManager sets this
-## field's text to the seed actually in effect on load (see
-## chunk_manager.gd's _seed_text), so it always reflects the current world.
+## pasted is silently stripped. Pressing Enter applies whatever seed is
+## currently typed (see SeedReload.apply_seed: a page reload on web, an
+## in-place regenerate on desktop). ChunkManager sets this field's text to
+## the seed actually in effect (see chunk_manager.gd's _seed_text), so it
+## always reflects the current world.
 
 const SeedReloadScript := preload("res://scripts/seed_reload.gd")
 
@@ -12,9 +13,6 @@ var _regex := RegEx.new()
 
 
 func _ready() -> void:
-	if not OS.has_feature("web"):
-		visible = false
-		return
 	_regex.compile("[^A-Za-z0-9 ]")
 	text_changed.connect(_on_text_changed)
 	text_submitted.connect(_on_text_submitted)
@@ -30,4 +28,7 @@ func _on_text_changed(new_text: String) -> void:
 
 
 func _on_text_submitted(new_text: String) -> void:
-	SeedReloadScript.reload_with_seed(new_text)
+	# Hand the keyboard back to the map (e.g. the B shortcut) on desktop,
+	# where the page doesn't reload.
+	release_focus()
+	SeedReloadScript.apply_seed(get_node("../.."), new_text)

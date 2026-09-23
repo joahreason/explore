@@ -1,11 +1,21 @@
 class_name SeedReload
 extends RefCounted
 
-## Shared by ReloadButton, RandomizeButton, and SeedInput's Enter/submit -
-## all three ultimately do the same thing: force a fresh page navigation
+## Shared by ReloadButton, RandomizeButton, and SeedInput's Enter/submit.
+## On web all three do the same thing: force a fresh page navigation
 ## carrying the given seed as a ?seed= query param, which ChunkManager reads
-## on the next load (see chunk_manager.gd's _resolve_world_seed). Web only -
-## a no-op elsewhere, since the whole seed UI is hidden outside Web anyway.
+## on the next load (see chunk_manager.gd's _resolve_world_seed). On desktop
+## RandomizeButton and SeedInput regenerate the world in place instead (see
+## apply_seed); ReloadButton is web-only.
+
+
+## A seed from the seed UI: on web, reload_with_seed(); elsewhere, regenerate
+## the world in place. world: the ChunkManager (World) node.
+static func apply_seed(world: Node, seed_text: String) -> void:
+	if OS.has_feature("web"):
+		reload_with_seed(seed_text)
+	else:
+		world.regenerate(seed_text)
 
 
 static func reload_with_seed(seed_text: String) -> void:

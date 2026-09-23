@@ -213,6 +213,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 ### Last Completed Work
 
 - This session (local Windows, branch `claude/phase-17-chunk-streaming`, not pushed): Phase 17 step 5 - threaded, nearest-first chunk streaming with a main-thread fallback; view/LOD rebuilds through the same queue; `tests/bench_pan.gd`. Commit d311baa (not pushed). All suites pass except the pre-existing Windows snapshot-hash mismatch (see Things To Watch Out For).
+- Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
 - Earlier: Phase 17 guard + steps 1-4 (PR #8, merged to `main` as a22a1eb); Phases 0-12 (PRs #1-#6).
 
 ### Next Action

@@ -227,16 +227,15 @@ func _exit_tree() -> void:
 
 ## Web only: a "?seed=" query param overrides the exported world_seed - set
 ## by ReloadButton/RandomizeButton/SeedInput's Enter from whatever's in the
-## seed field. A purely numeric seed is used directly (matches the exported
-## int seed behavior everywhere else in this project); anything else
-## (letters/spaces) is hashed to a deterministic int, so the same text
-## always regenerates the same world. If no param was given at all, a fresh
+## seed field (see _seed_from_text). If no param was given at all, a fresh
 ## random seed is generated instead of falling back to the fixed exported
-## default, so every plain visit gets a different world. Either way,
-## _seed_text is left holding whatever seed ended up in effect, so _ready()
-## can show it in the seed field.
+## default, so every plain visit gets a different world. Elsewhere the
+## exported world_seed is used (the seed UI regenerates in place instead -
+## see regenerate()). Either way, _seed_text is left holding whatever seed
+## ended up in effect, so _ready() can show it in the seed field.
 func _resolve_world_seed() -> int:
 	if not OS.has_feature("web"):
+		_seed_text = str(world_seed)
 		return world_seed
 
 	var raw = JavaScriptBridge.eval(
@@ -246,9 +245,39 @@ func _resolve_world_seed() -> int:
 	if raw_str == "":
 		raw_str = str(randi())
 	_seed_text = raw_str
-	if raw_str.is_valid_int():
-		return int(raw_str)
-	return raw_str.hash()
+	return _seed_from_text(raw_str)
+
+
+## A purely numeric seed is used directly (matches the exported int seed
+## behavior everywhere else in this project); anything else (letters/spaces)
+## is hashed to a deterministic int, so the same text always regenerates the
+## same world.
+static func _seed_from_text(text: String) -> int:
+	return int(text) if text.is_valid_int() else text.hash()
+
+
+## Desktop seed UI (SeedInput's Enter, RandomizeButton - via
+## SeedReload.apply_seed()): switches to the seed in seed_text in place, empty
+## = a fresh random one. Web reloads the page with ?seed= instead. Every
+## loaded chunk belongs to the old world, so they are all dropped and stream
+## back in nearest first; the per-seed generation caches are dropped too.
+func regenerate(seed_text: String) -> void:
+	var text := seed_text.strip_edges()
+	if text == "":
+		text = str(randi())
+	_seed_text = text
+	_seed_input.text = text
+	_inspector_panel.visible = false  # it describes a tile of the old world
+
+	_gen_mutex.lock()  # generation reads world_seed and the caches
+	world_seed = _seed_from_text(text)
+	_world_gen.configure(world_seed)
+	clear_generation_caches()
+	_gen_mutex.unlock()
+
+	for c in _loaded_chunks.keys():
+		_unload_chunk(c)
+	_invalidate_chunks()
 
 
 func _unhandled_input(event: InputEvent) -> void:

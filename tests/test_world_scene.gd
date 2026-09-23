@@ -246,6 +246,30 @@ func _init() -> void:
 	if out != "":
 		_render_png(world, CM, out)
 
+	# Desktop seed UI: Enter in the seed field and Randomize regenerate the
+	# world in place (web reloads the page instead). Material keeps the
+	# rebuilds cheap; the placements are compared directly.
+	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world.flush_chunk_work()
+	var seed_input: LineEdit = world.get_node("UI/SeedInput")
+	var randomize: Button = world.get_node("UI/RandomizeButton")
+	check(seed_input.visible and randomize.visible and seed_input.text == "4242", "desktop: seed field (showing '%s') and Randomize shown" % seed_input.text)
+	var before := str(world._place_stack_chunk(Vector2i.ZERO))
+	seed_input.text_submitted.emit("777")
+	world.flush_chunk_work()
+	check(world.world_seed == 777 and world._loaded_chunks.size() == 81 and _all_current(world)
+		and not world._inspector_panel.visible and str(world._place_stack_chunk(Vector2i.ZERO)) != before,
+		"seed field Enter: regenerated as seed 777 - all 81 chunks rebuilt, different objects, stale inspector closed")
+	seed_input.text_submitted.emit("hello")
+	world.flush_chunk_work()
+	check(world.world_seed == "hello".hash() and seed_input.text == "hello", "text seed 'hello' hashed to %d" % world.world_seed)
+	randomize.pressed.emit()
+	world.flush_chunk_work()
+	check(seed_input.text == str(world.world_seed) and world.world_seed != "hello".hash(), "Randomize: new seed %s, shown in the field" % seed_input.text)
+	seed_input.text_submitted.emit("4242")
+	world.flush_chunk_work()
+	check(str(world._place_stack_chunk(Vector2i.ZERO)) == before, "back to seed 4242: identical objects (other seeds' caches dropped)")
+
 	# Without a worker (the web export has no threads) the jobs run on the
 	# main thread within a per-frame budget: a few chunks per frame, not the
 	# whole load square in one.

@@ -13,9 +13,9 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 
 ## UI panel (top-right)
 
-- **Seed field**: shows the seed currently in use; type a seed and press Enter to reload with it
-- **Randomize**: generates a fresh random seed and reloads immediately
-- **Reload**: forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
+- **Seed field**: shows the seed currently in use; type a seed and press Enter to switch to it (web: reloads the page with it; desktop: regenerates the world in place)
+- **Randomize**: generates a fresh random seed and switches to it immediately (reload on web, in-place regenerate on desktop)
+- **Reload** (web only): forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
 - **View mode dropdown**: switches how chunks are rendered (see below)
 
 A plain visit with no `?seed=` in the URL gets a new random seed each time; passing `?seed=<anything>` pins it to a specific world (numeric seeds are used directly, other text is hashed to one deterministically).
@@ -44,7 +44,7 @@ The art tileset (`tileset.tres`, `urizen_onebit_tileset__v2d0*.png`) is present 
 
 ## Running locally
 
-Open the project in Godot 4.7+ and run `world.tscn` (the project's main scene). No import/build step needed for the editor; the seed URL-param/reload features are web-export-only and no-op (hidden) elsewhere.
+Open the project in Godot 4.7+ and run `world.tscn` (the project's main scene). No import/build step needed for the editor. The seed field and Randomize regenerate the world in place (starting from the `world_seed` exported on the World node); the `?seed=` URL param and the Reload button are web-export-only.
 
 ## Deploying
 
