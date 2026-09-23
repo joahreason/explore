@@ -8,6 +8,7 @@
 [ext_resource type="Script" path="res://scripts/randomize_seed_button.gd" id="6"]
 [ext_resource type="Script" path="res://scripts/tile_inspector_panel.gd" id="7"]
 [ext_resource type="Script" path="res://scripts/touch_scroll_container.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/biome_travel_dropdown.gd" id="9"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -72,6 +73,16 @@ offset_right = -16.0
 offset_bottom = 348.0
 theme_override_font_sizes/font_size = 30
 script = ExtResource("4")
+
+[node name="BiomeTravelDropdown" type="OptionButton" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -276.0
+offset_top = 360.0
+offset_right = -16.0
+offset_bottom = 424.0
+theme_override_font_sizes/font_size = 30
+script = ExtResource("9")
 
 [node name="TileInspector" type="PanelContainer" parent="UI"]
 offset_left = 16.0

@@ -270,6 +270,32 @@ func _init() -> void:
 	world.flush_chunk_work()
 	check(str(world._place_stack_chunk(Vector2i.ZERO)) == before, "back to seed 4242: identical objects (other seeds' caches dropped)")
 
+	# Biome travel menu: picking a biome moves the camera onto it; picking it
+	# again from there moves on to another patch of it.
+	var travel: OptionButton = world.get_node("UI/BiomeTravelDropdown")
+	var desert := -1
+	for i in travel.item_count:
+		if travel.get_item_text(i) == "Desert":
+			desert = i
+	cam.global_position = Vector2.ZERO
+	var spots: Array[Vector2i] = []
+	var biomes: Array[String] = []
+	for trip in 2:
+		var t_find := Time.get_ticks_msec()
+		travel.item_selected.emit(desert)
+		var waited := 0
+		while world.is_finding_biome() and waited < 5000:
+			await process_frame
+			waited += 1
+		world.flush_chunk_work()
+		var tile := Vector2i((cam.global_position / world.TILE_SIZE).floor())
+		spots.append(tile)
+		biomes.append(BiomeClassifier.classify(world._world_gen.sample(tile.x, tile.y)))
+		print("INFO desert trip %d: %s in %d ms" % [trip + 1, tile, Time.get_ticks_msec() - t_find])
+	check(biomes == ["Desert", "Desert"] and Vector2(spots[1] - spots[0]).length() >= BiomeFinder.AVOID_RADIUS
+		and travel.selected == 0 and not travel.disabled and world._loaded_chunks.size() == 81,
+		"biome travel: Desert at %s, then another Desert patch at %s; menu reset" % [spots[0], spots[1]])
+
 	# Without a worker (the web export has no threads) the jobs run on the
 	# main thread within a per-frame budget: a few chunks per frame, not the
 	# whole load square in one.

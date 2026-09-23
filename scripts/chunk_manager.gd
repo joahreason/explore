@@ -27,6 +27,7 @@ const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd"
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
+const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -190,6 +191,17 @@ var _stop_worker: bool = false
 ## the generation caches without reading _loaded_chunks off the main thread.
 var _gen_area: int = (2 * MIN_LOAD_RADIUS + 1) * (2 * MIN_LOAD_RADIUS + 1)
 
+## "Go to biome" (travel_to_biome): searches run on their own thread with
+## their own WorldGen copy, so they share nothing with chunk generation.
+signal biome_travel_finished(biome: String, found: bool, cancelled: bool)
+var _finder_gen: WorldGen
+var _finder_thread: Thread
+var _finder_biome: String = ""
+var _finder_seed: int = 0
+var _finder_result: Variant = null  # written by the search thread, read after it finishes
+var _finder_cancel: bool = false
+var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
+
 
 func _ready() -> void:
 	world_seed = _resolve_world_seed()
@@ -208,13 +220,17 @@ func _ready() -> void:
 		_target = get_node(target_path)
 		_target.connect("clicked", _on_tile_clicked)
 
-	if threaded_generation and (not OS.has_feature("web") or OS.has_feature("threads")):
+	if threaded_generation and _threads_available():
 		_worker = Thread.new()
 		_worker.start(_worker_loop)
 	_refresh_streaming()
 
 
 func _exit_tree() -> void:
+	if _finder_thread != null:
+		_finder_cancel = true
+		_finder_thread.wait_to_finish()
+		_finder_thread = null
 	if _worker == null:
 		return
 	_queue_mutex.lock()
@@ -278,6 +294,61 @@ func regenerate(seed_text: String) -> void:
 	for c in _loaded_chunks.keys():
 		_unload_chunk(c)
 	_invalidate_chunks()
+	_finder_cancel = true  # a running search is looking at the old world
+	_travel_visited.clear()
+
+
+func _threads_available() -> bool:
+	return not OS.has_feature("web") or OS.has_feature("threads")
+
+
+## Biome travel dropdown: moves the camera to the nearest tile of `biome`
+## (a BiomeClassifier base biome name) - or, if the camera already stands in
+## that biome, to the nearest other patch of it; repeated trips to the same
+## biome hop onward (see BiomeFinder). The search takes up to a few seconds,
+## so it runs on a thread (inline where threads are unavailable) and
+## biome_travel_finished reports the outcome. Ignored while a search runs.
+func travel_to_biome(biome: String) -> void:
+	if is_finding_biome():
+		return
+	if _finder_gen == null:
+		_finder_gen = world_gen_params.duplicate() if world_gen_params != null else WorldGen.new()
+	_finder_gen.configure(world_seed)
+	_finder_biome = biome
+	_finder_seed = world_seed
+	_finder_cancel = false
+	var pos := _target.global_position if _target else Vector2.ZERO
+	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
+	var avoid: Array = _travel_visited.get(biome, []).duplicate()
+	if _threads_available():
+		_finder_thread = Thread.new()
+		_finder_thread.start(_find_biome.bind(biome, start, avoid))
+	else:
+		_find_biome(biome, start, avoid)
+		_finish_biome_travel()
+
+
+func is_finding_biome() -> bool:
+	return _finder_thread != null
+
+
+func _find_biome(biome: String, start: Vector2i, avoid: Array) -> void:
+	_finder_result = BiomeFinderScript.find(_finder_gen, biome, start, avoid, func() -> bool: return _finder_cancel)
+
+
+## Main thread, once the search is done: moves the camera there (chunks
+## stream in around it) unless the world changed meanwhile.
+func _finish_biome_travel() -> void:
+	var cancelled := _finder_cancel or _finder_seed != world_seed
+	var found := not cancelled and _finder_result != null
+	if found:
+		var tile: Vector2i = _finder_result
+		if _target:
+			_target.global_position = (Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE
+		var visited: Array = _travel_visited.get(_finder_biome, [])
+		visited.append(tile)
+		_travel_visited[_finder_biome] = visited.slice(-8)
+	biome_travel_finished.emit(_finder_biome, found, cancelled)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -314,6 +385,10 @@ func set_view_mode(mode: ViewMode) -> void:
 ## Without a target (target_path unset) the area around the origin stays
 ## loaded, as the initial load always did.
 func _process(_delta: float) -> void:
+	if _finder_thread != null and not _finder_thread.is_alive():
+		_finder_thread.wait_to_finish()
+		_finder_thread = null
+		_finish_biome_travel()
 	_refresh_streaming()
 	if _worker == null:
 		var deadline := Time.get_ticks_usec() + INLINE_BUDGET_USEC
