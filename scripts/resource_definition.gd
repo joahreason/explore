@@ -90,8 +90,14 @@ extends Resource
 @export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""
-## Marker color in the placement debug views, until real sprites exist.
+## Marker color in the placement debug views (and the Deposits view).
 @export var debug_color: Color = Color(0.10, 0.32, 0.10)
+## Phase 8 step 6: tile (column, row) in the one-bit Urizen sheet
+## (urizen_onebit_tileset__v2d0.png, 12 px tiles) drawn for this resource in
+## the Resources view; (-1, -1) = no sprite (a plain marker is drawn). The
+## sheet's white pixels are tinted by sprite_color.
+@export var sprite_tile: Vector2i = Vector2i(-1, -1)
+@export var sprite_color: Color = Color(1, 1, 1)
 
 ## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
 ## body rather than a surface object. ResourceManager.get_deposit_potential()

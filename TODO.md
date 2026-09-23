@@ -5,7 +5,7 @@ Keep this list actionable and current.
 ## Current Task
 
 - [ ] Phase 10: step 2 floodplains (farming potential view, clay), step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - step 1 rivers done
-- [ ] Phase 8 step 6 (deferred): sprites instead of debug markers
+- [ ] Phase 8 step 6: sprites for rocks, shrubs, wetland plants, outcrops (trees done)
 
 ## Next
 

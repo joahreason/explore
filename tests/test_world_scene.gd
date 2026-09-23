@@ -6,7 +6,8 @@ extends SceneTree
 ## set, also renders the real _color_for() base + chunk-by-chunk Resources
 ## view (every guild, in its marker shapes; chunk grid drawn) to that path
 ## for visual inspection - OUT_TILES tiles wide, centered on OUT_CENTER="x,y"
-## (default the origin). Run via tests/run_tests.sh.
+## (default the origin), OUT_PX pixels per tile (default 5; 12 = native
+## sprite size). Run via tests/run_tests.sh.
 
 var _fails := 0
 
@@ -97,7 +98,7 @@ func _init() -> void:
 		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
 	# Resources view: Material base image; the same trees as Tree Placement
-	# as triangles, plus the same rocks (squares), berry bushes (circles) and
+	# as tinted sheet sprites, plus the same rocks (squares), berry bushes (circles) and
 	# wetland plants (diamonds), and ore outcrops (hexagons).
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
@@ -116,13 +117,18 @@ func _init() -> void:
 	var outcrops_placed := 0
 	for c in world._loaded_chunks:
 		outcrops_placed += world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS].size()
-	check(shape_counts.get(Shape.TRIANGLE, 0) == tree_count and tree_count > 0
+	var sprites_ok := true
+	for m in world._loaded_placements.values():
+		for i in m._shapes.size():
+			if m._shapes[i] == Shape.SPRITE:
+				sprites_ok = sprites_ok and m._textures[i] != null and world.CANOPY_TREES.members.any(func(t): return t.sprite_color == m._fills[i])
+	check(sprites_ok and shape_counts.get(Shape.SPRITE, 0) == tree_count and tree_count > 0
 		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
 		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"]
 		and shape_counts.get(Shape.DIAMOND, 0) == guild_counts["wetland_plants"]
 		and shape_counts.get(Shape.HEXAGON, 0) == outcrops_placed,
-		"resources view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles, %d wetland diamonds, %d ore hexagons" % [
-			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0), shape_counts.get(Shape.HEXAGON, 0)])
+		"resources view: %d tree sprites (= Tree Placement, textured, sprite colors), %d rock squares, %d berry circles, %d wetland diamonds, %d ore hexagons" % [
+			shape_counts.get(Shape.SPRITE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0), shape_counts.get(Shape.DIAMOND, 0), shape_counts.get(Shape.HEXAGON, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
@@ -191,7 +197,7 @@ func _init() -> void:
 func _render_png(world: Node2D, CM, out: String) -> void:
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
-	var px := 5
+	var px := int(OS.get_environment("OUT_PX")) if OS.get_environment("OUT_PX") != "" else 5
 	var center := Vector2i.ZERO
 	var center_env := OS.get_environment("OUT_CENTER").split(",")
 	if center_env.size() == 2:
@@ -214,13 +220,18 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 	for layer in world._placement_layers():
 		var source: Resource = layer[0]
 		var radius: float = source.minimum_spacing * px * 0.35
-		var colors: Dictionary = world._marker_colors(source)
+		var as_sprites: bool = layer[1] == markers.Shape.SPRITE
+		var colors: Dictionary = world._marker_colors(source, as_sprites)
+		var sprite_tiles: Dictionary = world._sprite_tiles(source)
 		for base in stacks:
 			for inst in stacks[base][source]:
 				var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
+				total += 1
+				if as_sprites and sprite_tiles.has(inst["id"]):
+					_blit_sprite(img, markers.sprite_image(sprite_tiles[inst["id"]]), p, roundi(source.minimum_spacing * px), colors[inst["id"]], outline)
+					continue
 				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
 				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])
-				total += 1
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:
@@ -229,6 +240,24 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			img.set_pixel(j, k, Color(1, 1, 1, 1).darkened(0.6))
 	img.save_png(out)
 	print("INFO rendered %d instances to %s" % [total, out])
+
+
+## A white-on-transparent sheet tile, px pixels wide, centered on p and
+## tinted, with a one-sprite-pixel dark outline - as resource_marker_chunk.gd.
+func _blit_sprite(img: Image, sprite: Image, p: Vector2, px: int, tint: Color, outline: Color) -> void:
+	var n := sprite.get_width()
+	var cell := float(px) / n
+	var top_left := p - Vector2(px, px) * 0.5
+	for pass_i in 2:
+		var offsets := [Vector2(cell, 0), Vector2(-cell, 0), Vector2(0, cell), Vector2(0, -cell)] if pass_i == 0 else [Vector2.ZERO]
+		for offset in offsets:
+			for sy in n:
+				for sx in n:
+					if sprite.get_pixel(sx, sy).a < 0.5:
+						continue
+					var q: Vector2 = top_left + offset + Vector2(sx, sy) * cell
+					var r := Rect2i(Vector2i(floori(q.x), floori(q.y)), Vector2i(maxi(ceili(cell), 1), maxi(ceili(cell), 1)))
+					img.fill_rect(r.intersection(Rect2i(Vector2i.ZERO, img.get_size())), outline if pass_i == 0 else tint)
 
 
 func _fill_polygon(img: Image, poly: PackedVector2Array, c: Color) -> void:

@@ -42,3 +42,5 @@ cluster_strength = 0.85
 minimum_spacing = 2.0
 placement_type = "scatter"
 debug_color = Color(0.55, 0.9, 0.85, 1)
+sprite_tile = Vector2i(2, 8)
+sprite_color = Color(0.55, 0.78, 0.45, 1)

@@ -520,7 +520,8 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 ## placement markers in this view). Placement views keep the matching
 ## density heatmap as their base image, so each marker can be read against
 ## the field it was drawn from; the Resources view draws every guild over
-## the Material image, trees last so they sit on top.
+## the Material image, trees last (as tinted sheet sprites) so they sit on
+## top.
 func _placement_layers() -> Array:
 	var circle := ResourceMarkerChunkScript.Shape.CIRCLE
 	match _view_mode:
@@ -542,7 +543,7 @@ func _placement_layers() -> Array:
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHRUBS, circle],
-				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.TRIANGLE],
+				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
 			]
 		_:
 			return []
@@ -578,7 +579,8 @@ func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 	for layer in _placement_layers():
 		var source: Resource = layer[0]
 		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
-		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source), layer[1])
+		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
+		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source))
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
@@ -664,11 +666,19 @@ func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> 
 	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn)
 
 
-## Instance id -> marker color for a ResourceDefinition or ResourceGuild.
-func _marker_colors(source: Resource) -> Dictionary:
-	if source is ResourceGuild:
-		var colors := {}
-		for member in source.members:
-			colors[member.id] = member.debug_color
-		return colors
-	return {source.id: source.debug_color}
+## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
+## debug_color, or sprite_color when drawn as sprites.
+func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
+	var colors := {}
+	for member in (source.members if source is ResourceGuild else [source]):
+		colors[member.id] = member.sprite_color if as_sprites else member.debug_color
+	return colors
+
+
+## Instance id -> sheet tile, for members that have a sprite.
+func _sprite_tiles(source: Resource) -> Dictionary:
+	var tiles := {}
+	for member in (source.members if source is ResourceGuild else [source]):
+		if member.sprite_tile.x >= 0:
+			tiles[member.id] = member.sprite_tile
+	return tiles
