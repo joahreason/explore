@@ -40,6 +40,13 @@ extends Resource
 @export var slope_curve: Curve
 @export var drainage_curve: Curve
 @export var erosion_curve: Curve
+## Phase 10 water-edge inputs: WorldGen's `river` (0 away from a river, rising
+## toward its line; >= river_threshold is the river itself), `shore_proximity`
+## and `deposition` (sediment on concave ground - floodplains). Listing
+## river_curve in required_curves confines a resource to river banks.
+@export var river_curve: Curve
+@export var shore_curve: Curve
+@export var deposition_curve: Curve
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -83,8 +90,16 @@ extends Resource
 @export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""
-## Marker color in the placement debug views, until real sprites exist.
+## Marker color in the placement debug views (and the Deposits view).
 @export var debug_color: Color = Color(0.10, 0.32, 0.10)
+## Phase 8 step 6: tile (column, row) in the one-bit Urizen sheet
+## (urizen_onebit_tileset__v2d0.png, 12 px tiles) drawn for this resource in
+## the Resources view; (-1, -1) = no sprite (a plain marker is drawn). The
+## sheet's white pixels are tinted by sprite_color.
+@export var sprite_tile: Vector2i = Vector2i(-1, -1)
+@export var sprite_color: Color = Color(1, 1, 1)
+## Drawn width in tiles. Whole multiples of 1 keep the 12 px art crisp.
+@export var sprite_size: float = 1.0
 
 ## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
 ## body rather than a surface object. ResourceManager.get_deposit_potential()
@@ -97,6 +112,12 @@ extends Resource
 @export_group("Deposit")
 @export var vein_scale: float = 0.0
 @export var vein_sharpness: float = 4.0
+## What makes the deposit visible (ResourceManager.get_exposure()): an
+## EnvironmentalState field, optionally remapped by exposure_curve. Bedrock
+## ores use rock_exposure (eroded ground, cliffs); clay (Phase 10) uses
+## `river`, since river banks cut into floodplain clay beds.
+@export var exposure_field: String = "rock_exposure"
+@export var exposure_curve: Curve
 
 
 ## Real value range of the EnvironmentalState field each curve samples
@@ -110,6 +131,9 @@ const CURVE_FIELD_RANGES := {
 	"slope_curve": Vector2(0.0, INF),
 	"drainage_curve": Vector2(0.0, 1.0),
 	"erosion_curve": Vector2(0.0, 1.0),
+	"river_curve": Vector2(0.0, 1.0),
+	"shore_curve": Vector2(0.0, 1.0),
+	"deposition_curve": Vector2(0.0, 1.0),
 }
 
 
@@ -135,6 +159,10 @@ func get_curve_domain_warnings() -> PackedStringArray:
 	if cluster_curve != null and (cluster_curve.min_domain > 0.0 or cluster_curve.max_domain < 1.0):
 		warnings.append("ResourceDefinition '%s': cluster_curve domain [%s, %s] doesn't cover [0, 1]" % [
 			id, cluster_curve.min_domain, cluster_curve.max_domain
+		])
+	if exposure_curve != null and (exposure_curve.min_domain > 0.0 or exposure_curve.max_domain < 1.0):
+		warnings.append("ResourceDefinition '%s': exposure_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, exposure_curve.min_domain, exposure_curve.max_domain
 		])
 	for curve_name in required_curves:
 		if not CURVE_FIELD_RANGES.has(curve_name):

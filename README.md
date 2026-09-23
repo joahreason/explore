@@ -25,7 +25,9 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 - **Material** - the default terrain look, a continuous color blend driven by climate/vegetation/geology (no hard biome edges)
 - **Subtype**, **Modifiers** - text-label overlays over the Material look, naming each region's biome subtype or independent tags (Cold, Wet, FireProne, etc.)
 - **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the Material look (not a full replacement) so terrain stays visible as context for how the field affects generation
-- **Resources** - the Material look with every placed natural object: trees as triangles (oak green, pine blue, palm orange, olive yellow), rocks as squares (granite light grey, sandstone tan, basalt charcoal - by bedrock) and berry bushes as magenta circles. Hidden when zoomed far out.
+- **Resources** - the Material look with every placed natural object: trees as sprites from the one-bit tileset (oak, olive, willow, pine, palm; tinted by each species' `sprite_color`), ore outcrops (iron, copper, coal) and rocks (granite, sandstone, basalt - by bedrock) as tileset sprites too, as are berry bushes, reeds and cattails; clay outcrops on river banks are slate-blue hexagons. Hidden when zoomed far out.
+- **Deposits** - where iron, copper, coal and clay exist underground (dim) vs. show at the surface (bright), with placed outcrops as hexagons.
+- **Farming Potential** - how good each tile is for farming: flat, fertile, moist ground, best on river floodplains.
 
 (Base Biome - a region-outline overlay - is available via the `B` key but left out of the dropdown for now in favor of click-to-inspect. The per-resource debug views - Oak Suitability/Density/Placement, Tree Cover, Tree/Rock/Berry Placement - still exist in `chunk_manager.gd` but are left out of the dropdown; re-add them in `view_mode_dropdown.gd` when tuning a resource.)
 

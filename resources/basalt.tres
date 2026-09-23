@@ -45,3 +45,6 @@ water_body_weights = {
 }
 placement_type = "scatter"
 debug_color = Color(0.22, 0.22, 0.26, 1)
+sprite_tile = Vector2i(0, 13)
+sprite_color = Color(0.4, 0.4, 0.45, 1)
+sprite_size = 1.0

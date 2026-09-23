@@ -18,17 +18,26 @@ const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
-## Phase 9 ore deposits: per-tile fields (exists / exposed), not placed
-## instances - see ResourceManager.get_deposit_potential().
+const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
+## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
+const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
+## Phase 9 ore deposits (and Phase 10 clay): per-tile fields (exists /
+## exposed) - see ResourceManager.get_deposit_potential(); ORE_OUTCROPS
+## places the exposed part.
 const ORE_DEPOSITS := [
 	preload("res://resources/iron.tres"),
 	preload("res://resources/copper.tres"),
 	preload("res://resources/coal.tres"),
+	preload("res://resources/clay.tres"),
 ]
+## Phase 10 floodplains: a suitability field only (Farming Potential view,
+## inspector), nothing placed.
+const FARMLAND := preload("res://resources/farmland.tres")
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
-## rocks are geology and were there first, then trees, then the shrubs
-## that fill in around both.
-const GUILD_STACK := [SURFACE_ROCKS, CANOPY_TREES, SHRUBS]
+## ore outcrops and rocks are geology and were there first, then trees,
+## then wetland plants (Phase 10) that own the wet margins, then the shrubs
+## that fill in around all of them.
+const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHRUBS]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -86,6 +95,8 @@ enum ViewMode {
 	BERRY_PLACEMENT,
 	ROCK_EXPOSURE,
 	DEPOSITS,
+	WETLAND_PLACEMENT,
+	FARMING_POTENTIAL,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -119,7 +130,7 @@ func _ready() -> void:
 	_world_gen.configure(world_seed)
 
 	# A guild's warnings include its members' (oak among them).
-	for source in GUILD_STACK + ORE_DEPOSITS:
+	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
 		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
 
@@ -264,10 +275,12 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var sample := _world_gen.sample(tile.x, tile.y)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	var deposits := {}
+	var state = EnvironmentalStateScript.from_sample(sample)
 	var potentials := _deposit_potentials(sample, tile.x, tile.y)
 	for ore in potentials:
-		deposits[String(ore.id).capitalize()] = potentials[ore]
-	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits)
+		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
+	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
+	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits, farming)
 
 
 func _update_chunks(center: Vector2i, load_radius: int) -> void:
@@ -339,10 +352,14 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SURFACE_ROCKS, wx, wy))
 		ViewMode.BERRY_PLACEMENT:
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHRUBS, wx, wy))
+		ViewMode.WETLAND_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_guild_density(sample, WETLAND_PLANTS, wx, wy))
 		ViewMode.ROCK_EXPOSURE:
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
 			return _deposit_color(sample, wx, wy)
+		ViewMode.FARMING_POTENTIAL:
+			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, FARMLAND))
 		_:
 			return null
 
@@ -395,14 +412,15 @@ func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
 			best_potential = potentials[ore]
 	if best == null:
 		return HeatmapColorizerScript.NO_DEPOSIT
-	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, sample["rock_exposure"])
+	var exposure: float = ResourceManagerScript.get_exposure(EnvironmentalStateScript.from_sample(sample), best)
+	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, exposure)
 
 
-func _species_shares(sample: Dictionary, guild: ResourceGuild) -> PackedFloat32Array:
+func _species_shares(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Array:
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	var suitabilities: PackedFloat32Array = ResourceManagerScript.get_member_suitabilities(state, guild, classified)
-	return ResourceManagerScript.get_species_shares(suitabilities, guild.species_sharpness)
+	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(state, guild, world_seed, wx, wy, classified)
+	return ResourceManagerScript.get_species_shares(scores, guild.species_sharpness)
 
 
 ## lod_step tiles collapse into one sample (taken at the block's center);
@@ -509,11 +527,13 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 
 
 ## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
-## instances of, as [source, marker shape] pairs in draw order (empty = no
+## instances of, as [source, marker shape(, shape for members without a
+## sprite when drawing SPRITE)] in draw order (empty = no
 ## placement markers in this view). Placement views keep the matching
 ## density heatmap as their base image, so each marker can be read against
 ## the field it was drawn from; the Resources view draws every guild over
-## the Material image, trees last so they sit on top.
+## the Material image, trees last (as tinted sheet sprites) so they sit on
+## top.
 func _placement_layers() -> Array:
 	var circle := ResourceMarkerChunkScript.Shape.CIRCLE
 	match _view_mode:
@@ -525,11 +545,17 @@ func _placement_layers() -> Array:
 			return [[SURFACE_ROCKS, circle]]
 		ViewMode.BERRY_PLACEMENT:
 			return [[SHRUBS, circle]]
+		ViewMode.WETLAND_PLACEMENT:
+			return [[WETLAND_PLANTS, circle]]
+		ViewMode.DEPOSITS:
+			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
 			return [
-				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SQUARE],
-				[SHRUBS, circle],
-				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.TRIANGLE],
+				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.HEXAGON],
+				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
+				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
+				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],
+				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
 			]
 		_:
 			return []
@@ -565,7 +591,9 @@ func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 	for layer in _placement_layers():
 		var source: Resource = layer[0]
 		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
-		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source), layer[1])
+		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
+		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
+		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
@@ -634,7 +662,7 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 				var density_fn := func(wx: int, wy: int) -> float:
 					return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
 				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
-					return _species_shares(_world_gen.sample(wx, wy), guild)
+					return _species_shares(_world_gen.sample(wx, wy), guild, wx, wy)
 				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
 				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn)
 			for inst in _raw_guild_chunks[key]:
@@ -651,11 +679,20 @@ func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> 
 	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn)
 
 
-## Instance id -> marker color for a ResourceDefinition or ResourceGuild.
-func _marker_colors(source: Resource) -> Dictionary:
-	if source is ResourceGuild:
-		var colors := {}
-		for member in source.members:
-			colors[member.id] = member.debug_color
-		return colors
-	return {source.id: source.debug_color}
+## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
+## debug_color, or sprite_color for members drawn as sprites.
+func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
+	var colors := {}
+	for member in (source.members if source is ResourceGuild else [source]):
+		colors[member.id] = member.sprite_color if as_sprites and member.sprite_tile.x >= 0 else member.debug_color
+	return colors
+
+
+## Instance id -> {"tile", "size"} (resource_marker_chunk.gd), for members
+## that have a sprite.
+func _sprite_tiles(source: Resource) -> Dictionary:
+	var tiles := {}
+	for member in (source.members if source is ResourceGuild else [source]):
+		if member.sprite_tile.x >= 0:
+			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size}
+	return tiles

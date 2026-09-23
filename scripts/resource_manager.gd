@@ -10,9 +10,9 @@ extends RefCounted
 ##
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
-## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion)
-## not listed in required_curves, plus geology/water_body weights, are
-## combined via GEOMETRIC MEAN: still
+## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
+## plus river/shore/deposition since Phase 10) not listed in required_curves,
+## plus geology/water_body weights, are combined via GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
 ## multiplicatively compounding the penalty the way straight multiplication
@@ -47,6 +47,20 @@ const PATCH_CONTRAST := 1.8
 ## the leading biome dominant while staying continuous.
 const BIOME_MEMBERSHIP_SHARPNESS := 4.0
 
+## ResourceDefinition curve -> the EnvironmentalState field it samples.
+const CURVE_STATE_FIELDS := {
+	"temperature_curve": "temperature",
+	"moisture_curve": "moisture",
+	"fertility_curve": "soil_fertility",
+	"elevation_curve": "elevation",
+	"slope_curve": "slope",
+	"drainage_curve": "drainage",
+	"erosion_curve": "erosion",
+	"river_curve": "river",
+	"shore_curve": "shore_proximity",
+	"deposition_curve": "deposition",
+}
+
 static var _patch_noise_cache: Dictionary = {}
 static var _vein_noise_cache: Dictionary = {}
 
@@ -56,20 +70,11 @@ static func get_suitability(
 ) -> float:
 	var core_factors: Array[float] = []
 	var requirement := 1.0
-	var curve_inputs := {
-		"temperature_curve": state.temperature,
-		"moisture_curve": state.moisture,
-		"fertility_curve": state.soil_fertility,
-		"elevation_curve": state.elevation,
-		"slope_curve": state.slope,
-		"drainage_curve": state.drainage,
-		"erosion_curve": state.erosion,
-	}
-	for curve_name in curve_inputs:
+	for curve_name in CURVE_STATE_FIELDS:
 		var curve: Curve = definition.get(curve_name)
 		if curve == null:
 			continue
-		var factor := clampf(curve.sample(curve_inputs[curve_name]), 0.0, 1.0)
+		var factor := clampf(curve.sample(state.get(CURVE_STATE_FIELDS[curve_name])), 0.0, 1.0)
 		if definition.required_curves.has(curve_name):
 			requirement = minf(requirement, factor)
 		else:
@@ -216,6 +221,26 @@ static func get_member_suitabilities(
 	return result
 
 
+## What each member competes with in a guild, in guild.members order: its
+## get_suitability(), except for a deposit (vein_scale > 0), which scores its
+## EXPOSED deposit (Phase 9 step 2: an ore outcrop only appears where ore
+## exists and bedrock shows - or, for clay, where a river bank cuts into
+## it). Unexposed tiles skip the deposit math entirely.
+static func get_member_scores(
+	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> PackedFloat32Array:
+	var result := PackedFloat32Array()
+	for member in guild.members:
+		if member.vein_scale <= 0.0:
+			result.append(get_suitability(state, member, classified))
+		elif get_exposure(state, member) <= 0.0:
+			result.append(0.0)
+		else:
+			var potential := get_deposit_potential(state, member, world_seed, wx, wy, classified)
+			result.append(get_exposed_deposit(potential, state, member))
+	return result
+
+
 ## Each member's share of the guild's instances at a tile:
 ## s_i^sharpness / sum_j s_j^sharpness. All zeros where no member can live.
 static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: float) -> PackedFloat32Array:
@@ -232,22 +257,32 @@ static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: flo
 
 
 ## Guild counterpart of get_density(): cover(cover_field) * base_density *
-## the guild's patch noise * the best member's suitability. The environment
-## sets how much can grow; the max-suitability cap keeps the guild off tiles
-## none of its members tolerate (and thins it toward every member's limits)
-## without letting the member mix change the total.
+## the guild's patch noise * the best member's score (get_member_scores():
+## suitability, or exposed deposit for ores). An empty cover_field means full
+## cover (the members' scores alone decide). guild.density_curve, if set,
+## reshapes the result. The environment sets how much can grow; the
+## best-member cap keeps the guild off tiles none of its members tolerate
+## (and thins it toward every member's limits) without letting the member
+## mix change the total.
 static func get_guild_density(
 	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
 ) -> float:
+	var field := 1.0 if guild.cover_field == "" else clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
+	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
+	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
+	# Cheap factors first: member suitabilities are the costly part, and most
+	# tiles have no cover for guilds like wetland plants (dry ground).
+	if cover <= 0.0 or patch <= 0.0:
+		return 0.0
 	var best := 0.0
-	for s in get_member_suitabilities(state, guild, classified):
+	for s in get_member_scores(state, guild, world_seed, wx, wy, classified):
 		best = maxf(best, s)
 	if best <= 0.0:
 		return 0.0
-	var field := clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
-	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
-	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
-	return clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)
+	var density := clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)
+	if guild.density_curve != null:
+		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
+	return density
 
 
 ## Phase 9 of docs/resource-generation-plan.md: how much of an ore deposit
@@ -276,10 +311,21 @@ static func get_deposit_potential(
 
 
 ## The part of get_deposit_potential() visible at the surface: potential x
-## the tile's rock_exposure (eroded ground, cliffs). The rest is hidden -
-## "resource exists" and "resource is exposed" stay separate fields.
-static func get_exposed_deposit(potential: float, state: EnvironmentalState) -> float:
-	return clampf(potential * state.rock_exposure, 0.0, 1.0)
+## the deposit's exposure at the tile (get_exposure(); rock_exposure when no
+## definition is given). The rest is hidden - "resource exists" and
+## "resource is exposed" stay separate fields.
+static func get_exposed_deposit(potential: float, state: EnvironmentalState, definition: ResourceDefinition = null) -> float:
+	var exposure := get_exposure(state, definition) if definition != null else state.rock_exposure
+	return clampf(potential * exposure, 0.0, 1.0)
+
+
+## 0..1: how much of a deposit shows at this tile - its exposure_field
+## (rock_exposure for bedrock ores), through exposure_curve if set.
+static func get_exposure(state: EnvironmentalState, definition: ResourceDefinition) -> float:
+	var field := clampf(float(state.get(definition.exposure_field)), 0.0, 1.0)
+	if definition.exposure_curve != null:
+		return clampf(definition.exposure_curve.sample(field), 0.0, 1.0)
+	return field
 
 
 ## Ridged vein noise, pow(1 - |n|, vein_sharpness): 1 along a seam's center

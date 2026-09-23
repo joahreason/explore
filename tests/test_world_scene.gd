@@ -5,7 +5,9 @@ extends SceneTree
 ## (Tree/Rock/Berry Placement, Resources) draw their members. If OUT_PNG is
 ## set, also renders the real _color_for() base + chunk-by-chunk Resources
 ## view (every guild, in its marker shapes; chunk grid drawn) to that path
-## for visual inspection. Run via tests/run_tests.sh.
+## for visual inspection - OUT_TILES tiles wide, centered on OUT_CENTER="x,y"
+## (default the origin), OUT_PX pixels per tile (default 5; 12 = native
+## sprite size). Run via tests/run_tests.sh.
 
 var _fails := 0
 
@@ -81,9 +83,9 @@ func _init() -> void:
 		only_members = only_members and member_colors.has(c)
 	check(fills.get(oak_c, 0) > 0 and fills.get(pine_c, 0) > 0 and only_members, "tree view: oak (%d) and pine (%d) markers, species colors only (%d colors)" % [fills.get(oak_c, 0), fills.get(pine_c, 0), fills.size()])
 
-	# Rock/Berry Placement: each guild's members only.
+	# Rock/Berry/Wetland Placement: each guild's members only.
 	var guild_counts := {}
-	for mode in [CM.ViewMode.ROCK_PLACEMENT, CM.ViewMode.BERRY_PLACEMENT]:
+	for mode in [CM.ViewMode.ROCK_PLACEMENT, CM.ViewMode.BERRY_PLACEMENT, CM.ViewMode.WETLAND_PLACEMENT]:
 		world.set_view_mode(mode)
 		var guild: ResourceGuild = world._placement_layers()[0][0]
 		var ok: bool = world._loaded_placements.size() == world._loaded_chunks.size()
@@ -95,8 +97,9 @@ func _init() -> void:
 		guild_counts[guild.id] = n
 		check(ok and n > 0, "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
-	# Resources view: Material base image; the same trees as Tree Placement
-	# as triangles, plus the same rocks (squares) and berry bushes (circles).
+	# Resources view: Material base image; the same trees as Tree Placement,
+	# rocks, ore outcrops, berry bushes, reeds and cattails, all as tinted
+	# sheet sprites; clay outcrops (no sprite) as hexagons.
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
@@ -105,17 +108,37 @@ func _init() -> void:
 	world._raw_guild_chunks.clear()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCES)
-	print("INFO switch to Resources (3 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	print("INFO switch to Resources (5 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
 	var shape_counts := {}
 	for m in world._loaded_placements.values():
 		for s in m._shapes:
 			shape_counts[s] = shape_counts.get(s, 0) + 1
 	var Shape = world.ResourceMarkerChunkScript.Shape
-	check(shape_counts.get(Shape.TRIANGLE, 0) == tree_count and tree_count > 0
-		and shape_counts.get(Shape.SQUARE, 0) == guild_counts["surface_rocks"]
-		and shape_counts.get(Shape.CIRCLE, 0) == guild_counts["shrubs"],
-		"resources view: %d tree triangles (= Tree Placement), %d rock squares, %d berry circles" % [
-			shape_counts.get(Shape.TRIANGLE, 0), shape_counts.get(Shape.SQUARE, 0), shape_counts.get(Shape.CIRCLE, 0)])
+	var outcrops_placed := 0
+	for c in world._loaded_chunks:
+		outcrops_placed += world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS].size()
+	var sprites_ok := true
+	var sprite_colors := {}
+	for g in [world.CANOPY_TREES, world.SURFACE_ROCKS, world.ORE_OUTCROPS, world.SHRUBS, world.WETLAND_PLANTS]:
+		for member in g.members:
+			sprite_colors[member.sprite_color] = true
+	for m in world._loaded_placements.values():
+		for i in m._shapes.size():
+			if m._shapes[i] == Shape.SPRITE:
+				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
+	# Clay has no sprite: its outcrops stay hexagons, everything else is a sprite.
+	var clay_outcrops := 0
+	for c in world._loaded_chunks:
+		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS]:
+			if inst["id"] == "clay":
+				clay_outcrops += 1
+	var all_placed: int = tree_count + guild_counts["surface_rocks"] + outcrops_placed + guild_counts["shrubs"] + guild_counts["wetland_plants"]
+	check(sprites_ok and tree_count > 0 and guild_counts["shrubs"] > 0 and guild_counts["wetland_plants"] > 0
+		and shape_counts.get(Shape.SPRITE, 0) == all_placed - clay_outcrops
+		and shape_counts.get(Shape.HEXAGON, 0) == clay_outcrops
+		and shape_counts.get(Shape.DIAMOND, 0) == 0 and shape_counts.get(Shape.CIRCLE, 0) == 0,
+		"resources view: %d sprites (%d trees, %d rocks, %d outcrops less %d clay, %d berry bushes, %d wetland plants; textured, sprite colors), %d clay hexagons" % [
+			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, clay_outcrops, guild_counts["shrubs"], guild_counts["wetland_plants"], shape_counts.get(Shape.HEXAGON, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
@@ -145,8 +168,8 @@ func _init() -> void:
 	var probe: Dictionary = world._world_gen.sample(3, 5)
 	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
 
-	# Deposits view (Phase 9): a heatmap, no markers; clicking a tile with
-	# ore lists it in the inspector.
+	# Deposits view (Phase 9): a heatmap plus ore outcrop markers (step 2);
+	# clicking a tile with ore lists it in the inspector.
 	world.set_view_mode(CM.ViewMode.DEPOSITS)
 	var ore_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64):
@@ -158,10 +181,35 @@ func _init() -> void:
 			break
 	world._on_tile_clicked((Vector2(ore_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var ore_sample: Dictionary = world._world_gen.sample(ore_tile.x, ore_tile.y)
-	check(world._loaded_placements.is_empty() and ore_tile.x != 1 << 30
+	var outcrop_count := 0
+	var outcrops_ok := true
+	for m in world._loaded_placements.values():
+		outcrop_count += m._positions.size()
+		for sh in m._shapes:
+			outcrops_ok = outcrops_ok and sh == world.ResourceMarkerChunkScript.Shape.HEXAGON
+	check(outcrops_ok and ore_tile.x != 1 << 30
 		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != DebugColorizer.color_for(ore_sample)
 		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
-		"deposits view: no markers; ore tile %s tinted and listed under Deposits in the inspector" % ore_tile)
+		"deposits view: only outcrop hexagons (%d); ore tile %s tinted and listed under Deposits in the inspector" % [outcrop_count, ore_tile])
+
+	# Farming Potential (Phase 10): a heatmap, no markers; the inspector
+	# shows the tile's value.
+	world.set_view_mode(CM.ViewMode.FARMING_POTENTIAL)
+	var farm_tile := Vector2i(1 << 30, 0)
+	for y in range(-64, 64, 2):
+		for x in range(-64, 64, 2):
+			var st = EnvironmentalState.from_sample(world._world_gen.sample(x, y))
+			if ResourceManager.get_suitability(st, world.FARMLAND, BiomeClassifier.classify_full(world._world_gen.sample(x, y))) > 0.5:
+				farm_tile = Vector2i(x, y)
+				break
+		if farm_tile.x != 1 << 30:
+			break
+	world._on_tile_clicked((Vector2(farm_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var farm_sample: Dictionary = world._world_gen.sample(farm_tile.x, farm_tile.y)
+	check(world._loaded_placements.is_empty() and farm_tile.x != 1 << 30
+		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != DebugColorizer.color_for(farm_sample)
+		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
+		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 
 	var out := OS.get_environment("OUT_PNG")
@@ -178,8 +226,12 @@ func _init() -> void:
 func _render_png(world: Node2D, CM, out: String) -> void:
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	var tiles := int(OS.get_environment("OUT_TILES")) if OS.get_environment("OUT_TILES") != "" else 160
-	var px := 5
-	var origin := Vector2i(-tiles / 2, -tiles / 2)
+	var px := int(OS.get_environment("OUT_PX")) if OS.get_environment("OUT_PX") != "" else 5
+	var center := Vector2i.ZERO
+	var center_env := OS.get_environment("OUT_CENTER").split(",")
+	if center_env.size() == 2:
+		center = Vector2i(int(center_env[0]), int(center_env[1]))
+	var origin := center - Vector2i(tiles / 2, tiles / 2)
 	var img := Image.create(tiles * px, tiles * px, false, Image.FORMAT_RGB8)
 	for ty in tiles:
 		for tx in tiles:
@@ -197,13 +249,19 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 	for layer in world._placement_layers():
 		var source: Resource = layer[0]
 		var radius: float = source.minimum_spacing * px * 0.35
-		var colors: Dictionary = world._marker_colors(source)
+		var as_sprites: bool = layer[1] == markers.Shape.SPRITE
+		var colors: Dictionary = world._marker_colors(source, as_sprites)
+		var sprite_tiles: Dictionary = world._sprite_tiles(source)
 		for base in stacks:
 			for inst in stacks[base][source]:
 				var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px
-				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius + 1.5), outline)
-				_fill_polygon(img, markers.shape_polygon(layer[1], p, radius), colors[inst["id"]])
 				total += 1
+				if as_sprites and sprite_tiles.has(inst["id"]):
+					_blit_sprite(img, markers.sprite_image(sprite_tiles[inst["id"]]["tile"]), p, roundi(sprite_tiles[inst["id"]]["size"] * px), colors[inst["id"]], outline)
+					continue
+				var shape: int = (layer[2] if layer.size() > 2 else markers.Shape.TRIANGLE) if as_sprites else layer[1]
+				_fill_polygon(img, markers.shape_polygon(shape, p, radius + 1.5), outline)
+				_fill_polygon(img, markers.shape_polygon(shape, p, radius), colors[inst["id"]])
 	# Chunk grid lines to eyeball seams.
 	for i in range(0, tiles + 1, 16):
 		for j in tiles * px:
@@ -212,6 +270,24 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 			img.set_pixel(j, k, Color(1, 1, 1, 1).darkened(0.6))
 	img.save_png(out)
 	print("INFO rendered %d instances to %s" % [total, out])
+
+
+## A white-on-transparent sheet tile, px pixels wide, centered on p and
+## tinted, with a one-sprite-pixel dark outline - as resource_marker_chunk.gd.
+func _blit_sprite(img: Image, sprite: Image, p: Vector2, px: int, tint: Color, outline: Color) -> void:
+	var n := sprite.get_width()
+	var cell := float(px) / n
+	var top_left := p - Vector2(px, px) * 0.5
+	for pass_i in 2:
+		var offsets := [Vector2(cell, 0), Vector2(-cell, 0), Vector2(0, cell), Vector2(0, -cell)] if pass_i == 0 else [Vector2.ZERO]
+		for offset in offsets:
+			for sy in n:
+				for sx in n:
+					if sprite.get_pixel(sx, sy).a < 0.5:
+						continue
+					var q: Vector2 = top_left + offset + Vector2(sx, sy) * cell
+					var r := Rect2i(Vector2i(floori(q.x), floori(q.y)), Vector2i(maxi(ceili(cell), 1), maxi(ceili(cell), 1)))
+					img.fill_rect(r.intersection(Rect2i(Vector2i.ZERO, img.get_size())), outline if pass_i == 0 else tint)
 
 
 func _fill_polygon(img: Image, poly: PackedVector2Array, c: Color) -> void:
