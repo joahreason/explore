@@ -55,6 +55,10 @@ extends Resource
 ## scar). Places a resource along bare -> grass/herbs -> shrubs -> young
 ## trees -> mature forest; required = only at those stages.
 @export var succession_curve: Curve
+## Phase 12: WorldGen's `rock_exposure` (0 buried .. 1 bare bedrock) - the
+## same field that decides whether a deposit shows (Phase 9); exposed stone
+## requires it.
+@export var rock_exposure_curve: Curve
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -150,6 +154,7 @@ const CURVE_FIELD_RANGES := {
 	"deposition_curve": Vector2(0.0, 1.0),
 	"salinity_curve": Vector2(0.0, 1.0),
 	"succession_curve": Vector2(0.0, 1.0),
+	"rock_exposure_curve": Vector2(0.0, 1.0),
 }
 
 

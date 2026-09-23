@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 11: merge the first pass (branch `claude/phase-11-start-5kl6xx`) and check scars by eye in the web build (Succession + Resources views); tune pioneer/deadwood abundance
+- [ ] Phase 12: merge the first pass (branch `claude/phase-11-start-5kl6xx`); check scars and new species by eye in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
 
 ## Next
 

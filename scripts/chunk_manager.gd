@@ -25,6 +25,8 @@ const SHORE_FEATURES := preload("res://resources/shore_features.tres")
 ## and pioneer grass/herbs recolonizing them.
 const DEADWOOD := preload("res://resources/deadwood.tres")
 const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
+## Phase 12: meadow grass, herbs and wildflowers on established ground.
+const GROUND_COVER := preload("res://resources/ground_cover.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
 const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
 ## Phase 9 ore deposits (and Phase 10 clay): per-tile fields (exists /
@@ -45,8 +47,9 @@ const FARMLAND := preload("res://resources/farmland.tres")
 ## then wetland plants (Phase 10) that own the wet margins, then shore
 ## features (shells, beach grass, mud flats), then deadwood left by the
 ## disturbance (Phase 11), the shrubs that fill in around all of them, and
-## last the pioneer plants on what open ground remains.
-const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS]
+## last the pioneer plants and ground cover (Phase 12) on what open ground
+## remains.
+const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS, GROUND_COVER]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -575,6 +578,7 @@ func _placement_layers() -> Array:
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHORE_FEATURES, ResourceMarkerChunkScript.Shape.SPRITE, circle],
+				[GROUND_COVER, ResourceMarkerChunkScript.Shape.SPRITE],
 				[PIONEER_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[DEADWOOD, ResourceMarkerChunkScript.Shape.SPRITE],
 				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],

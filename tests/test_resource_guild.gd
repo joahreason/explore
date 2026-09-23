@@ -146,7 +146,12 @@ func _init() -> void:
 	for g in [ROCKS, SHRUBS]:
 		check(g.get_curve_domain_warnings().is_empty(), "%s + members: no curve-domain warnings %s" % [g.id, g.get_curve_domain_warnings()])
 	var rocks := place_real(ROCKS, wg, seed, area)
-	var rock_geology := {"granite": [WorldGen.Geology.METAMORPHIC, WorldGen.Geology.IGNEOUS], "sandstone": [WorldGen.Geology.SEDIMENTARY], "basalt": [WorldGen.Geology.VOLCANIC]}
+	# Phase 12: limestone/shale split sedimentary ground with sandstone;
+	# gravel and exposed stone follow erosion/exposure, not geology.
+	var any_geology := [WorldGen.Geology.SEDIMENTARY, WorldGen.Geology.METAMORPHIC, WorldGen.Geology.IGNEOUS, WorldGen.Geology.VOLCANIC]
+	var sedimentary := [WorldGen.Geology.SEDIMENTARY]
+	var rock_geology := {"granite": [WorldGen.Geology.METAMORPHIC, WorldGen.Geology.IGNEOUS], "sandstone": sedimentary, "limestone": sedimentary, "shale": sedimentary,
+		"basalt": [WorldGen.Geology.VOLCANIC], "gravel": any_geology, "exposed_stone": any_geology}
 	var wrong_rock := 0
 	var rock_ids := {}
 	for inst in rocks:
@@ -156,7 +161,8 @@ func _init() -> void:
 			wrong_rock += 1
 	var bad := violations(ROCKS, wg, rocks)
 	check(bad == [0, 0], "real rocks: %d instances, 0 on water (%d), 0 where their type scores 0 (%d)" % [rocks.size(), bad[0], bad[1]])
-	check(wrong_rock == 0 and rock_ids.size() == 3, "rock type follows geology: %s, %d on the wrong rock" % [rock_ids, wrong_rock])
+	var sedimentary_rocks: int = rock_ids.get("sandstone", 0) + rock_ids.get("limestone", 0) + rock_ids.get("shale", 0)
+	check(wrong_rock == 0 and rock_ids.has("granite") and rock_ids.has("basalt") and sedimentary_rocks > 0, "rock type follows geology: %s, %d on the wrong rock" % [rock_ids, wrong_rock])
 
 	var berries := place_real(SHRUBS, wg, seed, area)
 	bad = violations(SHRUBS, wg, berries)
