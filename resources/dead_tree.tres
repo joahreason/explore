@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.7, 0), 0.0, 0.0, 0, 0, Vector2(-0.5, 1), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.5), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_elevation"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.03, 1), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(0.65, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_succession"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(0.5, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_def")
+id = "dead_tree"
+category = "vegetation"
+temperature_curve = SubResource("Curve_temperature")
+elevation_curve = SubResource("Curve_elevation")
+succession_curve = SubResource("Curve_succession")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "succession_curve")
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.3
+}
+disturbance_type_weights = {
+"fire": 1.0,
+"flood": 0.2,
+"landslide": 0.3,
+"storm": 0.5
+}
+placement_type = "scatter"
+debug_color = Color(0.55, 0.5, 0.45, 1)
+sprite_tile = Vector2i(5, 10)
+sprite_color = Color(0.55, 0.5, 0.45, 1)
+sprite_size = 1.0

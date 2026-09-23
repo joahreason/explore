@@ -46,6 +46,7 @@ var temp_variation: float
 var precip_seasonality: float
 
 var vegetation: float
+var vegetation_potential: float  # Phase 11: vegetation before the scar penalty
 var fuel_load: float
 var fire_risk: float
 var resource: float
@@ -53,6 +54,7 @@ var resource: float
 var disturbance: float
 var disturbance_type: String
 var disturbance_age: float
+var succession: float  # Phase 11: 0 fresh scar .. 1 mature/undisturbed
 
 
 ## Uses load() on its own path rather than the bare class_name so this
@@ -99,6 +101,7 @@ static func from_sample(s: Dictionary):
 	state.precip_seasonality = s["precip_seasonality"]
 
 	state.vegetation = s["vegetation"]
+	state.vegetation_potential = s["vegetation_potential"]
 	state.fuel_load = s["fuel_load"]
 	state.fire_risk = s["fire_risk"]
 	state.resource = s["resource"]
@@ -106,5 +109,6 @@ static func from_sample(s: Dictionary):
 	state.disturbance = s["disturbance"]
 	state.disturbance_type = s["disturbance_type"]
 	state.disturbance_age = s["disturbance_age"]
+	state.succession = s["succession"]
 
 	return state

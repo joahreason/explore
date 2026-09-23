@@ -24,6 +24,10 @@ point_count = 4
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.3, 0), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_succ"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_def")
 id = "mangrove"
@@ -33,7 +37,8 @@ moisture_curve = SubResource("C_moist")
 elevation_curve = SubResource("C_elev")
 shore_curve = SubResource("C_shore")
 salinity_curve = SubResource("C_salt")
-required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "shore_curve", "salinity_curve")
+succession_curve = SubResource("Curve_succ")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "shore_curve", "salinity_curve", "succession_curve")
 biome_weights = {
 "Beach": 0.15,
 "Swamp": 1.0,

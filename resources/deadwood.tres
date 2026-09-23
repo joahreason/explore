@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="2_def"]
+[ext_resource type="Resource" path="res://resources/dead_tree.tres" id="3_dead_tree"]
+[ext_resource type="Resource" path="res://resources/fallen_log.tres" id="4_fallen_log"]
+[ext_resource type="Resource" path="res://resources/mushrooms.tres" id="5_mushrooms"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.15), 0.0, 0.0, 0, 0, Vector2(0.2, 0.4), 0.0, 0.0, 0, 0, Vector2(0.3, 0.8), 0.0, 0.0, 0, 0, Vector2(0.4, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[resource]
+script = ExtResource("1_guild")
+id = "deadwood"
+members = Array[ExtResource("2_def")]([ExtResource("3_dead_tree"), ExtResource("4_fallen_log"), ExtResource("5_mushrooms")])
+cover_field = "vegetation_potential"
+cover_curve = SubResource("Curve_cover")
+base_density = 0.4
+species_sharpness = 4.0
+cluster_scale = 24.0
+cluster_strength = 0.6
+minimum_spacing = 2.0
+footprint_radius = 0.5

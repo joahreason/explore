@@ -29,6 +29,10 @@ point_count = 4
 _data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.12, 1), 0.0, 0.0, 0, 0, Vector2(0.22, 0.35), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_succ"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_pine")
 id = "pine"
@@ -39,7 +43,8 @@ fertility_curve = SubResource("Curve_pinefert")
 elevation_curve = SubResource("Curve_pineelev")
 slope_curve = SubResource("Curve_pineslope")
 erosion_curve = SubResource("Curve_pineero")
-required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve")
+succession_curve = SubResource("Curve_succ")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve", "succession_curve")
 biome_weights = {
 "Alpine Snow": 0.4,
 "Desert": 0.2,

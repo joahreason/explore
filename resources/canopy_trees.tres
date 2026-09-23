@@ -8,6 +8,7 @@
 [ext_resource type="Resource" path="res://resources/olive.tres" id="6_olive"]
 [ext_resource type="Resource" path="res://resources/willow.tres" id="7_willow"]
 [ext_resource type="Resource" path="res://resources/mangrove.tres" id="8_mangrove"]
+[ext_resource type="Resource" path="res://resources/young_tree.tres" id="9_young"]
 
 [sub_resource type="Curve" id="Curve_cover"]
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.15), 0.0, 0.0, 0, 0, Vector2(0.2, 0.4), 0.0, 0.0, 0, 0, Vector2(0.3, 0.8), 0.0, 0.0, 0, 0, Vector2(0.4, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
@@ -16,7 +17,8 @@ point_count = 6
 [resource]
 script = ExtResource("1_guild")
 id = "canopy_trees"
-members = Array[ExtResource("4_def")]([ExtResource("2_oak"), ExtResource("3_pine"), ExtResource("5_palm"), ExtResource("6_olive"), ExtResource("7_willow"), ExtResource("8_mangrove")])
+members = Array[ExtResource("4_def")]([ExtResource("2_oak"), ExtResource("3_pine"), ExtResource("5_palm"), ExtResource("6_olive"), ExtResource("7_willow"), ExtResource("8_mangrove"), ExtResource("9_young")])
+cover_field = "vegetation_potential"
 cover_curve = SubResource("Curve_cover")
 species_sharpness = 4.0
 cluster_scale = 48.0

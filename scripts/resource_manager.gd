@@ -11,8 +11,9 @@ extends RefCounted
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
 ## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
-## plus river/shore/deposition/salinity since Phase 10) not listed in
-## required_curves, plus geology/water_body weights, are combined via
+## plus river/shore/deposition/salinity since Phase 10, succession since
+## Phase 11) not listed in required_curves, plus geology/water_body weights
+## and the succession-gated disturbance_type weight, are combined via
 ## GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
@@ -61,6 +62,7 @@ const CURVE_STATE_FIELDS := {
 	"shore_curve": "shore_proximity",
 	"deposition_curve": "deposition",
 	"salinity_curve": "shore_salinity",
+	"succession_curve": "succession",
 }
 
 static var _patch_noise_cache: Dictionary = {}
@@ -79,6 +81,8 @@ static func get_suitability(
 		var factor := clampf(curve.sample(state.get(CURVE_STATE_FIELDS[curve_name])), 0.0, 1.0)
 		if definition.required_curves.has(curve_name):
 			requirement = minf(requirement, factor)
+			if requirement <= 0.0:
+				return 0.0
 		else:
 			core_factors.append(factor)
 	if not definition.geology_weights.is_empty():
@@ -87,6 +91,9 @@ static func get_suitability(
 	if not definition.water_body_weights.is_empty():
 		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
 		core_factors.append(clampf(water_body_factor, 0.0, 1.0))
+	if not definition.disturbance_type_weights.is_empty():
+		var type_weight: float = definition.disturbance_type_weights.get(state.disturbance_type, 1.0)
+		core_factors.append(clampf(lerpf(1.0, type_weight, 1.0 - state.succession), 0.0, 1.0))
 
 	var suitability := requirement * _geometric_mean(core_factors)
 

@@ -21,6 +21,10 @@ const SHRUBS := preload("res://resources/shrubs.tres")
 const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
 ## Phase 10 shores / river mouths: shells, beach grass, mud flats.
 const SHORE_FEATURES := preload("res://resources/shore_features.tres")
+## Phase 11 succession: snags, logs and mushrooms on scars that were wooded,
+## and pioneer grass/herbs recolonizing them.
+const DEADWOOD := preload("res://resources/deadwood.tres")
+const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
 const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
 ## Phase 9 ore deposits (and Phase 10 clay): per-tile fields (exists /
@@ -39,9 +43,10 @@ const FARMLAND := preload("res://resources/farmland.tres")
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
 ## ore outcrops and rocks are geology and were there first, then trees,
 ## then wetland plants (Phase 10) that own the wet margins, then shore
-## features (shells, beach grass, mud flats), then the shrubs that fill in
-## around all of them.
-const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, SHRUBS]
+## features (shells, beach grass, mud flats), then deadwood left by the
+## disturbance (Phase 11), the shrubs that fill in around all of them, and
+## last the pioneer plants on what open ground remains.
+const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -102,6 +107,8 @@ enum ViewMode {
 	WETLAND_PLACEMENT,
 	FARMING_POTENTIAL,
 	SHORE_PLACEMENT,
+	SUCCESSION,
+	SUCCESSION_PLACEMENT,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -361,6 +368,8 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, WETLAND_PLANTS, wx, wy))
 		ViewMode.SHORE_PLACEMENT:
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHORE_FEATURES, wx, wy))
+		ViewMode.SUCCESSION, ViewMode.SUCCESSION_PLACEMENT:
+			return HeatmapColorizerScript.succession(sample)
 		ViewMode.ROCK_EXPOSURE:
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
@@ -556,6 +565,8 @@ func _placement_layers() -> Array:
 			return [[WETLAND_PLANTS, circle]]
 		ViewMode.SHORE_PLACEMENT:
 			return [[SHORE_FEATURES, circle]]
+		ViewMode.SUCCESSION_PLACEMENT:
+			return [[DEADWOOD, circle], [PIONEER_PLANTS, circle]]
 		ViewMode.DEPOSITS:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
@@ -564,6 +575,8 @@ func _placement_layers() -> Array:
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
 				[SHORE_FEATURES, ResourceMarkerChunkScript.Shape.SPRITE, circle],
+				[PIONEER_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
+				[DEADWOOD, ResourceMarkerChunkScript.Shape.SPRITE],
 				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],
 				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
 			]

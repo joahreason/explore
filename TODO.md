@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 11: disturbance and ecological succession (prep notes in PROJECT_STATE.md "Next")
+- [ ] Phase 11: merge the first pass (branch `claude/phase-11-start-5kl6xx`) and check scars by eye in the web build (Succession + Resources views); tune pioneer/deadwood abundance
 
 ## Next
 
@@ -15,7 +15,7 @@ Keep this list actionable and current.
 
 ## Later
 
-- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~6.6s, Resources ~8.6s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
+- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~6.6s, Resources ~11.5s cold for 81 chunks headless, 8 guilds) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 

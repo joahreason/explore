@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 11 — Disturbance and Ecological Succession is NEXT (not started). Phases 0-10 are complete and merged to `main` (PRs #1-#3), and every placed resource is drawn as a tinted tileset sprite. See "Phase 11 prep" under Next.
+Phase 11 — Disturbance and Ecological Succession: first pass implemented on branch `claude/phase-11-start-5kl6xx` (succession field, stage curves, deadwood + pioneer guilds, Succession view; tests pass), not yet merged or checked by eye in the running game. Phases 0-10 are merged to `main` (PRs #1-#4).
 
 ## Completed
 
@@ -101,19 +101,19 @@ Phase 11 — Disturbance and Ecological Succession is NEXT (not started). Phases
 
 ## In Progress
 
-- (none - Phase 10 and the sprite work are merged; Phase 11 has not started.)
+- Phase 11 first pass (branch `claude/phase-11-start-5kl6xx`), all in data except two new sample keys:
+  - WorldGen.sample() gained `succession` (0 fresh scar .. 1 mature/undisturbed) = 1 - footprint x (1 - disturbance_age), footprint = the scar's distance falloff before the age fade, so it is exactly 1 outside any scar - per-blob type/age can't leak (prep Trap 1/2). And `vegetation_potential` = vegetation before the (1 - disturbance) penalty. Both in EnvironmentalState and docs/architecture.md §2. Measured (seed 4242+1337, 8 regions): succession < 0.5 on 4.8% of land, < 0.9 on ~21-29%.
+  - ResourceDefinition: `succession_curve` (in CURVE_STATE_FIELDS / CURVE_FIELD_RANGES) and `disturbance_type_weights` (keyed fire/flood/storm/landslide, applied as lerp(1, weight, 1 - succession) in the geometric mean - neutral outside scars). get_suitability() now returns 0 as soon as a required curve is 0 (same result, skips the rest).
+  - Stages: canopy trees, shrubs and the new guilds take cover from `vegetation_potential` (identical to `vegetation` outside scars) and members' required succession curves pick the stage, replacing the blanket scar penalty (oak's `disturbance_affinity = -0.15` removed): mature trees 0 at <= 0.55 -> 1 at 0.85; new canopy member `young_tree` (sprout (1,9), broad tree climate) 0.35 -> 1 at 0.55..0.8 -> 0 at 0.95; berry_bush 0 at <= 0.15 -> 1 at 0.3..0.7 -> 0.8 at 1 (shrubs base_density 0.6 -> 0.75 keeps undisturbed berries unchanged).
+  - New guild `deadwood` (canopy's cover curve = only formerly wooded scars; base 0.4, spacing 2, patch 24/0.6): `dead_tree` snag (5,10) succession 1 until 0.3 -> 0 at 0.5, fire-weighted; `fallen_log` (0,25) peak 0.1..0.45, storm/landslide-weighted; `mushrooms` (3,10) peak 0.35..0.65, moist only.
+  - New guild `pioneer_plants` (cover 0 at vegetation_potential 0.03 -> 1 at 0.15; base 0.5, spacing 1.5): `pioneer_grass` (5,9) peak 0.2..0.45, flood-weighted; `fireweed` (8,9) peak 0.25..0.5, fire-weighted. Fresh scar centers (succession < ~0.1) stay bare apart from deadwood and the existing surface rocks.
+  - GUILD_STACK: ... SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS (pioneers last, on whatever ground remains). Resources view draws both; new debug views `SUCCESSION` (heatmap, in the dropdown) and `SUCCESSION_PLACEMENT` (deadwood + pioneers over it, not in the dropdown).
+  - Tests: new `tests/test_succession.gd` (12): no curve-domain warnings; succession in [0,1], exactly 1 wherever disturbance is 0; vegetation_potential >= vegetation and equal outside scars; determinism; type weights neutral at succession 1; deadwood/pioneers/young trees never on undisturbed land; stage order by mean succession of placed instances (4 regions, seed 4242): dead trees 0.24 < pioneers 0.43 < young trees 0.69 < oak/pine 0.98, berries 0.91. test_world_scene counts deadwood/pioneers in the Resources view (none in its origin area).
+  - Renders (OUT_PNG, seed 4242) of a fresh storm scar (-540,-2060) and fire scar (1760,-870) inspected: bare center with snags/logs/rocks, pioneer ring, then young and mature trees outward.
 
 ## Next
 
-- **Phase 11 prep (measured this session, seed 4242 + 1337, 8 regions, stride 3):**
-  - Spec: `docs/resource-generation-plan.md` Phase 11 - age-dependent modifiers for trees, grass, herbs, berries, mushrooms, deadwood, fallen trees; succession bare -> grass/herbs -> shrubs -> young trees -> mature forest; consume the EXISTING disturbance fields, no separate "forest regeneration" system.
-  - Real fields (docs/architecture.md §2): `disturbance` (0..1 intensity, faded by distance from the scar center AND by age: x (1 - 0.6 x age)), `disturbance_type` ("fire"/"flood"/"storm"/"landslide"), `disturbance_age` (0 fresh .. 1 old). The plan's `disturbance_intensity` is the `disturbance` key. EnvironmentalState has all three.
-  - Trap 1: type and age are constant across each blob's whole cellular cell, even where `disturbance` is ~0 - always gate type/age effects by intensity (e.g. effect x smoothstep on `disturbance`).
-  - Trap 2: intensity already falls with age, so "old scar" = low intensity + high age; curves on age alone will leak into undisturbed land.
-  - Coverage: land with disturbance > 0.05 / 0.3 / 0.6 = 33.6% / 13.8% / 2.7%. Types among d > 0.3: flood 3178, storm 2737, landslide 2402, fire 1182 samples. Ages evenly spread (quintiles 2305/1520/1712/2252/1710).
-  - Already in effect: WorldGen multiplies `vegetation` by (1 - disturbance), and canopy/shrub cover comes from vegetation, so tree density in scars (d > 0.3) is 0.065 vs 0.162 undisturbed. Phase 11 should build on that (shape WHICH species/stages appear by age), not stack a second blanket penalty.
-  - Existing hooks: `ResourceDefinition.disturbance_affinity` (additive x `disturbance`, applied after the zero-core check), curves via `ResourceManager.CURVE_STATE_FIELDS` (add e.g. `disturbance_curve`/`disturbance_age_curve` there + `CURVE_FIELD_RANGES`), guild `cover_field`/`density_curve`. Type-specific behavior needs a categorical weight map like `water_body_weights` (e.g. `disturbance_type_weights`), gated by intensity.
-  - Art on hand: stump (4,10) and dead tree (5,10) for deadwood/fallen trees; mushrooms (2,10)/(3,10); grass/sprout tiles in row 9 not yet used ((1,9), (2,9), (5,9), (8,9), (9,9); reed (3,9), salt marsh (4,9), cattail (6,9), beach grass (7,9) are taken); wheat/grass (0-3,24). Possible shape: a new "deadwood" guild (stump/dead tree/log) weighted to fresh fire/storm scars, mushrooms on mid-age scars, pioneer herbs/grass on fresh scars, and trees whose members differ by age (e.g. a young-tree member or age curves on existing ones).
+- Phase 11 open: by-eye check of scars in the running game; tuning of pioneer/deadwood abundance (first pass, pioneers are dense on big scars); mushrooms and grass currently exist only on scars - Phase 12 profiles may give them undisturbed habitats too.
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
 - Owed: a by-eye look at the deployed web build (sprites, coasts, Farming Potential, Deposits) and the Resources view switch time (~8.6s headless cold, 6 guilds) on web.
 
@@ -150,6 +150,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Plan amendments (2026-09-22, agreed with the user): static resources only, no animals for now; suitability splits requirements (tolerance envelope) from preferences and uses biome *membership* (normalized classifier scores) instead of the argmax label; Phase 8 is built around resource guilds (environment sets how much, relative suitability sets which species); persistence keys must survive content changes. Recorded as **Amendment** blocks in the plan doc, which remains the authority.
 - Phase 1 decision (this session): `EnvironmentalState` is an additive typed wrapper, not a replacement for `WorldGen.sample()`'s Dictionary - chosen specifically to avoid a large, risky refactor across 7 existing callers for zero behavior change. Confirmed against the plan's own wording ("introduce a clean representation without breaking existing callers").
 - Phase 9 decision (2026-09-23; the user said to continue into Phase 9 without a design round): deposits are per-tile FIELDS computed on demand (`get_deposit_potential()` = exists, `get_exposed_deposit()` = visible), not placed instances; visible outcrops will be placed instances derived from the exposed field (step 2). Per-ore vein noise lives in `ResourceManager` like patch noise (not in `WorldGen`), and `sample()` only gained the ore-independent `rock_exposure` key (plan Rule 2: one exposure definition, reused by every ore). Ores are not a guild (they don't compete for one slot). Easy to revisit - no persistence depends on it yet.
+- Phase 11 decision (2026-09-23; user said "Start phase 11", design followed the prep notes without a separate round): succession is ONE derived sample field (`succession`), not per-resource age curves - it gates type/age by the scar footprint once for every consumer (plan Rule 2). Vegetation guilds switch their cover to `vegetation_potential` so succession curves shape WHICH stage grows on a scar instead of stacking a second blanket penalty. Species stages are data (required `succession_curve`s), no forest-regeneration code. Easy to revisit - nothing persists yet.
 - Water bodies use real bounded/cached flood-fill topology (not a cheap local probe) - established in an earlier session, unaffected by this work.
 
 ## Known Issues
@@ -177,7 +178,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - Oak Suitability, Oak Density and Oak Placement views have not been checked inside the actual Godot editor/running game or web build (only headless PNG renders + scene-level scripts under the headless dummy renderer).
 - Tree Placement view: switching takes ~2.1s headless for 81 chunks (guild placement ~5 ms/chunk; every candidate evaluates both members' suitability).
-- Resources view with six guilds (+ wetland plants, ore outcrops, shore features): ~8.6s headless from a cold cache (was ~5.2s with three). Wetland plants have been checked in headless renders and tests only.
+- Resources view with eight guilds (Phase 11 added deadwood and pioneer plants): ~11.6s headless from a cold cache (9.1s before, ~5.2s with three). Wetland plants have been checked in headless renders and tests only.
 - View-switch cost with the guild stack (headless, 81 chunks): Tree Placement ~4.9s, Vegetation ~4.9s from a cold cache (it was ~3.6s after step 4 and ~2.6-2.9s with trees only), and ~0.4s when another guild view already filled `_raw_guild_chunks`. The extra cost is the one-chunk ring the footprint filter needs, plus rocks now being placed for tree views. Cheap wins left for Phase 17: `place_guild_in_rect` re-samples and re-classifies every survivor in `shares_fn` after `density_fn` already did, and rock suitability is evaluated for all three rock members even though geology zeroes two of them. Likely a noticeable hitch on web.
 - Rock contrast is moderate: bare/rugged biomes get ~6-10 rocks per 100 tiles, forests ~2. Placement saturation (below) limits how far it can be pushed through curves alone.
 - Performance: switching to Oak Placement with 81 chunks loaded took ~1.8s headless (that includes re-baking every chunk's density image, ~256 samples+classifications per chunk, plus ~7ms/chunk of placement). Fine for a debug view on desktop; likely a noticeable hitch on web. Phase 17 territory unless it gets in the way sooner.
@@ -188,14 +189,13 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (cloud, branch `claude/phase-10-development-p7gm7n`, all merged to `main` via PRs #1 `2292885`, #2 `1b6aa0f`, #3): Phase 10 complete (rivers, floodplains, river mouths, shores), Phase 9 step 2 (ore outcrops), Phase 8 step 6 (tileset sprites for every placed resource), plus perf fixes (`EnvironmentalState.from_sample()` 40 -> 9 us). Details under Completed.
-- Test suites: `tests/run_tests.sh` runs test_deposits (24), test_floodplains (9), test_resource_guild (28), test_resource_placement (14), test_shores (12), test_world_scene (all pass as of the last commit).
-- Nothing has been looked at in the running game / web build - only headless renders (`OUT_PNG`, `OUT_TILES`, `OUT_PX`, `OUT_CENTER` in test_world_scene.gd).
+- This session (cloud, branch `claude/phase-11-start-5kl6xx`): Phase 11 first pass - see In Progress. `tests/run_tests.sh` now runs 7 suites (test_succession added), all pass.
+- Earlier (merged to `main` via PRs #1-#4): Phase 10, Phase 9 step 2, Phase 8 step 6 sprites.
 
 ### Next Action
 
-- Start Phase 11 from `main` (see "Phase 11 prep" under Next): measure first, propose the species/field design briefly, then implement in steps like Phase 10 (fields/curves -> species -> views -> tests), `tests/run_tests.sh` before every commit.
-- Ask the user for a by-eye check of the web build (GitHub Pages caches ~10 min after a deploy).
+- Get the Phase 11 branch reviewed/merged (a PR the user merges), then a by-eye look at scars in the web build (Succession view + Resources).
+- Then Phase 12 (Ecological Resource Profiles) per docs/resource-generation-plan.md.
 
 ### Things To Watch Out For
 

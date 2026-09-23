@@ -29,6 +29,10 @@ point_count = 9
 _data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.2, 0.35), 0.0, 0.0, 0, 0, Vector2(0.3, 0), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_succ"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_n2fvo")
 id = "oak"
@@ -39,7 +43,8 @@ fertility_curve = SubResource("Curve_apdl1")
 elevation_curve = SubResource("Curve_n2fvo")
 slope_curve = SubResource("Curve_unadh")
 erosion_curve = SubResource("Curve_oakero")
-required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve")
+succession_curve = SubResource("Curve_succ")
+required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve", "succession_curve")
 biome_weights = {
 "Forest": 1.0,
 "Grassland": 0.3,
@@ -57,7 +62,6 @@ water_body_weights = {
 }
 river_affinity = 0.1
 shore_affinity = -0.6
-disturbance_affinity = -0.15
 cluster_scale = 48.0
 cluster_strength = 0.85
 minimum_spacing = 2.0
