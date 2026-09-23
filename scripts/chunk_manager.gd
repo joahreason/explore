@@ -71,6 +71,14 @@ const LOD_THRESHOLDS := [
 	{"zoom": 0.0, "step": 8},
 ]
 
+## Phase 17: how many chunks of per-tile EnvironmentalState + classify_full()
+## results _tile_env() keeps (FIFO). Placing one chunk's guild stack reads
+## tiles up to about one chunk around it, and chunks are processed row by
+## row, so a few rows of the loaded area catch nearly every reuse. One tile
+## costs ~5 KB (state ~3 KB, classification ~2 KB), so the whole ~121-chunk
+## footprint of the Resources view (~150 MB) is deliberately not kept.
+const ENV_CACHE_CHUNKS := 48
+
 ## Placed-instance markers are skipped at coarser LOD steps than this: a
 ## marker would be a pixel or two wide, and zoomed out is exactly when the
 ## most chunks are loaded (placement costs ~7ms/chunk for oak).
@@ -133,6 +141,8 @@ var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
 var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource markers), only in a placement view
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
+var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
+var _density_chunks: Dictionary = {} # [guild/resource id, chunk] -> PackedFloat64Array per tile, NAN = not computed (see _cached_density)
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -211,7 +221,7 @@ func set_view_mode(mode: ViewMode) -> void:
 	_view_mode = mode
 	var now_label := _is_label_view(_view_mode)
 
-	for chunk_coord in _loaded_chunks.keys():
+	for chunk_coord in _chunks_row_major():
 		_regenerate_chunk_image(chunk_coord)
 
 	if now_label:
@@ -360,17 +370,17 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 		ViewMode.RESOURCE_SUITABILITY_OAK:
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
 		ViewMode.RESOURCE_DENSITY_OAK, ViewMode.RESOURCE_PLACEMENT_OAK:
-			return HeatmapColorizerScript.resource_density(_resource_density(sample, OAK_RESOURCE, wx, wy))
+			return HeatmapColorizerScript.resource_density(_resource_density(OAK_RESOURCE, wx, wy, sample))
 		ViewMode.TREE_COVER, ViewMode.TREE_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(sample, CANOPY_TREES, wx, wy))
+			return HeatmapColorizerScript.resource_density(_guild_density(CANOPY_TREES, wx, wy, sample))
 		ViewMode.ROCK_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(sample, SURFACE_ROCKS, wx, wy))
+			return HeatmapColorizerScript.resource_density(_guild_density(SURFACE_ROCKS, wx, wy, sample))
 		ViewMode.BERRY_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHRUBS, wx, wy))
+			return HeatmapColorizerScript.resource_density(_guild_density(SHRUBS, wx, wy, sample))
 		ViewMode.WETLAND_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(sample, WETLAND_PLANTS, wx, wy))
+			return HeatmapColorizerScript.resource_density(_guild_density(WETLAND_PLANTS, wx, wy, sample))
 		ViewMode.SHORE_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHORE_FEATURES, wx, wy))
+			return HeatmapColorizerScript.resource_density(_guild_density(SHORE_FEATURES, wx, wy, sample))
 		ViewMode.SUCCESSION, ViewMode.SUCCESSION_PLACEMENT:
 			return HeatmapColorizerScript.succession(sample)
 		ViewMode.ROCK_EXPOSURE:
@@ -393,18 +403,86 @@ func _resource_suitability(sample: Dictionary, definition: ResourceDefinition) -
 
 
 ## Phase 6: same pipeline as _resource_suitability(), then patch noise +
-## base_density via ResourceManager.get_density().
-func _resource_density(sample: Dictionary, definition: ResourceDefinition, wx: int, wy: int) -> float:
-	var state = EnvironmentalStateScript.from_sample(sample)
-	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	return ResourceManagerScript.get_density(state, definition, world_seed, wx, wy, classified)
+## base_density via ResourceManager.get_density(). `sample` is the tile's
+## WorldGen.sample() if the caller already has it (else taken on a cache miss).
+func _resource_density(definition: ResourceDefinition, wx: int, wy: int, sample: Dictionary = {}) -> float:
+	var cached := _cached_density(definition.id, wx, wy)
+	if not is_nan(cached):
+		return cached
+	var env := _tile_env(wx, wy, sample)
+	return _store_density(definition.id, wx, wy, ResourceManagerScript.get_density(env[0], definition, world_seed, wx, wy, env[1]))
 
 
 ## Phase 8 (guilds): the guild's total density, whatever the species mix.
-func _guild_density(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> float:
-	var state = EnvironmentalStateScript.from_sample(sample)
-	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	return ResourceManagerScript.get_guild_density(state, guild, world_seed, wx, wy, classified)
+func _guild_density(guild: ResourceGuild, wx: int, wy: int, sample: Dictionary = {}) -> float:
+	var cached := _cached_density(guild.id, wx, wy)
+	if not is_nan(cached):
+		return cached
+	var env := _tile_env(wx, wy, sample)
+	return _store_density(guild.id, wx, wy, ResourceManagerScript.get_guild_density(env[0], guild, world_seed, wx, wy, env[1]))
+
+
+## Phase 17: [EnvironmentalState, classify_full() result] for a tile, cached
+## per chunk (ENV_CACHE_CHUNKS, oldest chunk dropped first). Placement asks
+## for the same tile once per guild with a candidate there and again from
+## the neighboring chunk's one-cell ring, and the density heatmaps for every
+## tile - ~5 full evaluations per tile in the Resources view before this.
+## Both values are pure functions of (seed, tile) and are only read, never
+## mutated, so sharing them changes no result. `sample` = the tile's
+## WorldGen.sample() if the caller has it, {} = sample on a miss.
+func _tile_env(wx: int, wy: int, sample: Dictionary = {}) -> Array:
+	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
+	var entry: Array = _env_chunks.get(chunk, [])
+	if entry.is_empty():
+		if _env_chunks.size() >= ENV_CACHE_CHUNKS:
+			_env_chunks.erase(_env_chunks.keys()[0])
+		var states := []
+		var classifications := []
+		states.resize(CHUNK_SIZE * CHUNK_SIZE)
+		classifications.resize(CHUNK_SIZE * CHUNK_SIZE)
+		entry = [states, classifications]
+		_env_chunks[chunk] = entry
+	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
+	if entry[0][i] == null:
+		var s := sample if not sample.is_empty() else _world_gen.sample(wx, wy)
+		entry[0][i] = EnvironmentalStateScript.from_sample(s)
+		entry[1][i] = BiomeClassifierScript.classify_full(s)
+	return [entry[0][i], entry[1][i]]
+
+
+## Drops every per-seed generation cache (placements, densities, tile
+## environments) - for cold-cache timings in tests; nothing else needs it.
+func clear_generation_caches() -> void:
+	_raw_guild_chunks.clear()
+	_density_chunks.clear()
+	_env_chunks.clear()
+
+
+## Phase 17: a guild's (or single resource's) density at a tile, memoized
+## per chunk - NAN if not computed yet. Shared by the placement callbacks
+## (a chunk's one-cell ring is its neighbor's interior) and the density
+## heatmaps. Valid for the seed like _raw_guild_chunks, and dropped the same
+## way once it grows well past the loaded area (~2 KB per id and chunk).
+func _cached_density(id: String, wx: int, wy: int) -> float:
+	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
+	var densities: PackedFloat64Array = _density_chunks.get([id, chunk], PackedFloat64Array())
+	if densities.is_empty():
+		return NAN
+	return densities[(wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)]
+
+
+func _store_density(id: String, wx: int, wy: int, density: float) -> float:
+	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
+	var key := [id, chunk]
+	if not _density_chunks.has(key):
+		if _density_chunks.size() > 8 * (GUILD_STACK.size() + 1) * maxi(_loaded_chunks.size(), 1):
+			_density_chunks.clear()
+		var densities := PackedFloat64Array()
+		densities.resize(CHUNK_SIZE * CHUNK_SIZE)
+		densities.fill(NAN)
+		_density_chunks[key] = densities
+	_density_chunks[key][(wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)] = density
+	return density
 
 
 ## Phase 9: every ORE_DEPOSITS entry's potential at a tile -> {definition: potential}
@@ -435,10 +513,9 @@ func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
 	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, exposure)
 
 
-func _species_shares(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Array:
-	var state = EnvironmentalStateScript.from_sample(sample)
-	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(state, guild, world_seed, wx, wy, classified)
+func _species_shares(guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Array:
+	var env := _tile_env(wx, wy)
+	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(env[0], guild, world_seed, wx, wy, env[1])
 	return ResourceManagerScript.get_species_shares(scores, guild.species_sharpness)
 
 
@@ -600,8 +677,16 @@ func _refresh_placements() -> void:
 	_loaded_placements.clear()
 	if not _placements_visible():
 		return
-	for chunk_coord in _loaded_chunks.keys():
+	for chunk_coord in _chunks_row_major():
 		_generate_placement_chunk(chunk_coord)
+
+
+## Loaded chunks sorted by row, then column: neighbors are processed close
+## together, so _tile_env()'s bounded cache still catches their shared tiles.
+func _chunks_row_major() -> Array:
+	var chunks := _loaded_chunks.keys()
+	chunks.sort_custom(func(a: Vector2i, b: Vector2i) -> bool: return a.y < b.y or (a.y == b.y and a.x < b.x))
+	return chunks
 
 
 ## ResourcePlacement decides instances purely from world coordinates, so
@@ -687,9 +772,9 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 			var key := [guild.id, Vector2i(cx, cy)]
 			if not _raw_guild_chunks.has(key):
 				var density_fn := func(wx: int, wy: int) -> float:
-					return _guild_density(_world_gen.sample(wx, wy), guild, wx, wy)
+					return _guild_density(guild, wx, wy)
 				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
-					return _species_shares(_world_gen.sample(wx, wy), guild, wx, wy)
+					return _species_shares(guild, wx, wy)
 				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
 				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn)
 			for inst in _raw_guild_chunks[key]:
@@ -702,7 +787,7 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 ## A single ResourceDefinition placed on its own (Oak Placement).
 func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> Array:
 	var density_fn := func(wx: int, wy: int) -> float:
-		return _resource_density(_world_gen.sample(wx, wy), definition, wx, wy)
+		return _resource_density(definition, wx, wy)
 	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn)
 
 

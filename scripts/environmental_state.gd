@@ -11,9 +11,10 @@ extends RefCounted
 ## additional representation, not a replacement (see docs/architecture.md §8
 ## and the Phase 1 decision in the session that added this file).
 ##
-## Transient by design: build fresh per sample() call via from_sample(),
-## never cached or mutated afterward - adds no new per-tile state and no risk
-## to determinism.
+## Built from one sample() call via from_sample() and never mutated
+## afterward - adds no new per-tile state and no risk to determinism. Since
+## Phase 17 chunk_manager.gd keeps instances in a bounded per-tile cache
+## (_tile_env) and shares them between readers, which relies on exactly that.
 
 var elevation: float
 var slope: float

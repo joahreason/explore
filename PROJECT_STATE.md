@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11-start-5kl6xx` (branch name kept from Phase 11), tests pass, not yet merged. Phases 0-11 are merged to `main` (PRs #1-#5); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 17 — Performance and Chunk Integration (moved ahead of Phases 13-16, plan amendment 2026-09-23): in progress on branch `claude/phase-17-performance-chunks-9gkja0`. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
 
 ## Completed
 
@@ -109,9 +109,7 @@ Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11
     - Tests: new `tests/test_succession.gd` (12): no curve-domain warnings; succession in [0,1], exactly 1 wherever disturbance is 0; vegetation_potential >= vegetation and equal outside scars; determinism; type weights neutral at succession 1; deadwood/pioneers/young trees never on undisturbed land; stage order by mean succession of placed instances (4 regions, seed 4242): dead trees 0.24 < pioneers 0.43 < young trees 0.69 < oak/pine 0.98, berries 0.91. test_world_scene counts deadwood/pioneers in the Resources view (none in its origin area).
     - Renders (OUT_PNG, seed 4242) of a fresh storm scar (-540,-2060) and fire scar (1760,-870) inspected: bare center with snags/logs/rocks, pioneer ring, then young and mature trees outward.
 
-## In Progress
-
-- Phase 12 first pass (branch `claude/phase-11-start-5kl6xx`, PR pending). Every category in plan Phase 12 now has a data-driven definition (checked by test_ecological_profiles). New in this phase, all data except one curve field:
+- Phase 12 (merged, PR #6). Every category in plan Phase 12 now has a data-driven definition (checked by test_ecological_profiles). New in this phase, all data except one curve field:
   - `ResourceDefinition.rock_exposure_curve` (WorldGen's `rock_exposure`, in CURVE_STATE_FIELDS / CURVE_FIELD_RANGES).
   - New guild `ground_cover` (cover from vegetation_potential 0.05 -> 1 at 0.25; base 0.35, spacing 2, patch 20/1.0 with a steep cluster curve; last in GUILD_STACK, in the Resources view). Members all require succession 0 at 0.45 -> 1 at 0.7 (pioneers own younger scars): `meadow_grass` (15,5) open country, `wild_herbs` (12,9) moist fertile woodland, `wildflowers` (13,9) temperate meadows. Per 100 tiles (resource_by_biome, 4 seeds): Savanna/Grassland ~3, Forest/Plains 2.4, Desert 0.07; grass 93% open, herbs 93% wooded.
   - `birch` (1,34), size 2: canopy member, cool (-0.6..0.1) and moist, succession 1 at 0.6..0.85 falling to 0.6 at 1 (a pioneer tree that persists). ~0.75/100 tiles in Forest and Wetland; pine unchanged.
@@ -120,9 +118,17 @@ Phase 12 — Ecological Resource Profiles: first pass on branch `claude/phase-11
   - Tests: new `tests/test_ecological_profiles.gd` (14): every plan category has a definition; no curve warnings; nothing on water; each new species placed; ground cover only at succession >= 0.45; grass open / herbs wooded; birch only where temperature <= 0.1; forest-floor mushrooms; sedimentary rocks only on sedimentary geology; exposed stone only at rock_exposure >= 0.5; gravel on eroded ground or banks. test_succession no longer requires mushrooms to be scar-only; test_resource_guild accepts the new rock types (limestone/shale sedimentary-only, gravel/exposed stone any geology); test_world_scene counts ground cover.
   - Render (seed 4242, 8000,-12000, sedimentary Wetland) inspected: birch/pine forest, shale/limestone boulders, fireweed on a scar. Cattails dominate that area (existing Phase 10 behavior, Wetland biome).
 
+## In Progress
+
+- Phase 17 (branch `claude/phase-17-performance-chunks-9gkja0`). Rule for every step: output identical, checked by `tests/test_placement_snapshot.gd`.
+  - Guard: `test_placement_snapshot.gd` places the full GUILD_STACK + Oak Placement for seed 4242 over six 3x3-chunk areas (origin forest, river 18000,8820, storm scar -540,-2060, fire scar 1760,-870, wetland 8000,-12000, sea coast 19946,20042) through the real chunk_manager paths, bakes 5 views' images at LOD 1/2, and compares per-layer count + md5 with `tests/placement_snapshot.txt` (recorded from unchanged main, 2088 lines). `SNAPSHOT_DUMP=path` writes the lines for diffing; `SNAPSHOT_WRITE=1` only for an agreed output change. `tests/bench_views.gd` prints cold Oak/Tree/Resources/Material switch times (`BENCH_REPEAT=n` for min of n; not in run_tests.sh).
+  - Profile (seed 4242, 81 chunks, instrumented): the Resources switch did 161,552 candidate evaluations, each a fresh `sample()` + `from_sample()` + `classify_full()` (~6.6s together) over only ~31k distinct tiles (~5x per tile: every guild with a candidate there, plus each chunk re-testing its one-cell ring that the neighbor also tests), plus ~5.2s of guild densities (member suitabilities). Tree/Oak Placement: the density heatmap bake (a density per tile, own sample/classify) was 2.75s/1.6s of the switch. The prep-note suspect "shares_fn re-samples survivors" was only ~0.4s.
+  - Step 1: `chunk_manager.gd` `_tile_env()` caches EnvironmentalState + classify_full() per tile, per chunk, FIFO-bounded at `ENV_CACHE_CHUNKS` = 48 (~5 KB/tile, so the ~121-chunk Resources footprint is not kept whole; an unbounded cache gained nothing for Resources); `_cached_density()`/`_store_density()` memoize guild (and Oak) density per tile in a PackedFloat64Array per (id, chunk) (NAN = unknown; Float64 so accept rolls compare against the exact value), shared by the placement callbacks and the density heatmaps, cleared like `_raw_guild_chunks`. Images and placements are processed row-major (`_chunks_row_major()`). `clear_generation_caches()` drops all three (cold timings in tests/bench).
+  - Timings (bench_views, this cloud container, cold, 81 chunks; min of 2): before Oak 2176 / Tree 7162 / Resources 13616 / Material 398 ms -> after step 1 Oak 1874 / Tree 5195 / Resources 6739 / Material 392 ms. (This container is slower than the machine that measured the 11.2s baseline.)
+
 ## Next
 
-- NEXT: Phase 17 (Performance and Chunk Integration), moved ahead of Phases 13-16 at the user's request (plan amendment 2026-09-23). Profile the view switch and chunk placement first (baseline: Resources view ~11.2s cold headless, 81 chunks, 9 guilds), then fix the largest costs without changing output.
+- NEXT: Phase 17 step 2 - member suitability cost (now the largest item): a per-definition precomputed curve list in `get_suitability()` measured ~35-40% faster with identical results (it skips 13 string-keyed `definition.get()` lookups + `required_curves.has()` per call); needs invalidation when a definition's curves are reassigned. Then re-profile (remaining: raw `_place` hashing/candidates, the Tree view's image pass evicting the env window before placement).
 - Phase 11/12 open: by-eye check of scars and the new species in the running game; abundance tuning (pioneers/ground cover/deadwood are first pass). After Phase 17: Phase 13 (Correlated Ecosystems).
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
 - Owed: a by-eye look at the deployed web build (sprites, coasts, Farming Potential, Deposits) and the Resources view switch time (~8.6s headless cold, 6 guilds) on web.
@@ -189,10 +195,8 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 - Oak Suitability, Oak Density and Oak Placement views have not been checked inside the actual Godot editor/running game or web build (only headless PNG renders + scene-level scripts under the headless dummy renderer).
 - Tree Placement view: switching takes ~2.1s headless for 81 chunks (guild placement ~5 ms/chunk; every candidate evaluates both members' suitability).
-- Resources view with nine guilds (Phase 11 added deadwood and pioneer plants, Phase 12 ground cover): ~11.2-11.6s headless from a cold cache (9.1s before, ~5.2s with three). Wetland plants have been checked in headless renders and tests only.
-- View-switch cost with the guild stack (headless, 81 chunks): Tree Placement ~4.9s, Vegetation ~4.9s from a cold cache (it was ~3.6s after step 4 and ~2.6-2.9s with trees only), and ~0.4s when another guild view already filled `_raw_guild_chunks`. The extra cost is the one-chunk ring the footprint filter needs, plus rocks now being placed for tree views. Cheap wins left for Phase 17: `place_guild_in_rect` re-samples and re-classifies every survivor in `shares_fn` after `density_fn` already did, and rock suitability is evaluated for all three rock members even though geology zeroes two of them. Likely a noticeable hitch on web.
+- View-switch cost (Phase 17 tracks it - see In Progress for current numbers): cold Resources ~6.7s headless after step 1 (13.6s before on the same container), Tree Placement ~5.2s, Oak ~1.9s. Likely still a noticeable hitch on web; not measured there. Wetland plants have been checked in headless renders and tests only.
 - Rock contrast is moderate: bare/rugged biomes get ~6-10 rocks per 100 tiles, forests ~2. Placement saturation (below) limits how far it can be pushed through curves alone.
-- Performance: switching to Oak Placement with 81 chunks loaded took ~1.8s headless (that includes re-baking every chunk's density image, ~256 samples+classifications per chunk, plus ~7ms/chunk of placement). Fine for a debug view on desktop; likely a noticeable hitch on web. Phase 17 territory unless it gets in the way sooner.
 - Placement count is concave in density (Matern thinning: density 0.25 already gives ~half the instances of density 1.0), which compresses mid vs. high density. The geometric-mean half of the old contrast problem is solved by `required_curves`; this half isn't. Guilds (Phase 8) change what density means (guild cover from `vegetation`), so revisit then - the plan's optional `density_curve` is the data-driven lever if still needed.
 - Tuning: groves vs. clearings read in the placement, but contrast is mild - oak density rarely exceeds ~0.6, and hard-core thinning saturates around 0.3 instances / spacing^2. Worth revisiting in Phase 8 (base_density / curves / spacing) rather than changing the algorithm.
 
@@ -200,15 +204,16 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (cloud, branch `claude/phase-11-start-5kl6xx`): Phase 11 (merged, PR #5), then Phase 12 first pass - see In Progress. `tests/run_tests.sh` now runs 8 suites (test_succession, test_ecological_profiles added), all pass.
-- Earlier (merged to `main` via PRs #1-#4): Phase 10, Phase 9 step 2, Phase 8 step 6 sprites.
+- This session (cloud, branch `claude/phase-17-performance-chunks-9gkja0`): Phase 17 guard (snapshot test + bench) and step 1 (shared per-tile env cache + density memo) - see In Progress. `tests/run_tests.sh` runs 9 suites (test_placement_snapshot added), all pass.
+- Earlier (merged to `main` via PRs #1-#6): Phases 0-12.
 
 ### Next Action
 
-- Get the Phase 12 PR merged, then a by-eye look at the web build (Succession view + Resources).
-- Then Phase 17 (performance), moved up ahead of Phase 13 - see its plan amendment. Profile first; keep output identical (tests + same-seed instance comparison).
+- Phase 17 step 2 (suitability cost), then re-profile - see Next. Keep `test_placement_snapshot` passing; report bench_views before/after for each step.
 
 ### Things To Watch Out For
+
+- Don't edit scripts while `tests/run_tests.sh` (or any headless run) is going: each suite loads the scripts when it starts, so a mid-run edit silently tests a mix (a half-written instrumentation edit made the Phase 17 baseline test_world_scene "hang"). Benchmark old code from a `git worktree` rather than stashing.
 
 - Deploys: pushing to `main` from a cloud session was blocked by the auto-mode permission check ("Production Deploy"). The working path is a PR from the session branch that the user merges (GitHub reports merged PRs as closed/merged=false through the MCP listing - check `git log origin/main` instead). After a merge, continue on the same branch name fast-forwarded to `origin/main`.
 - Tileset coordinates in code and docs are (column, row), 0-based, 12 px tiles with 1 px margin/separation (`resource_marker_chunk.gd` SPRITE_*). The user may count 1-based or row-first - render the area with numbered columns before assuming. The right ~2/3 of the sheet is characters/letters; objects are in the left third. `sprite_image()` turns the white-on-black one-bit tile into white-on-transparent.

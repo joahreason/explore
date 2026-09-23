@@ -106,8 +106,9 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
 		tree_count += m._positions.size()
-	# Cold: drop the per-chunk guild placement cache the views above filled.
-	world._raw_guild_chunks.clear()
+	# Cold: drop the per-chunk placement/density/environment caches the views
+	# above filled.
+	world.clear_generation_caches()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	print("INFO switch to Resources (9 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
