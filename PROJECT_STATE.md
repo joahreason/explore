@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2 floodplains, 3 river mouths, 4 shores). Phases 8 and 9 are complete too. All of it is merged to `main` (PR #1: steps 1-2, Phase 9 step 2, sprites; PR #2: steps 3-4). Next per the plan: Phase 11 (disturbance and ecological succession).
+Phase 11 — Disturbance and Ecological Succession is NEXT (not started). Phases 0-10 are complete and merged to `main` (PRs #1-#3), and every placed resource is drawn as a tinted tileset sprite. See "Phase 11 prep" under Next.
 
 ## Completed
 
@@ -101,12 +101,21 @@ Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2
 
 ## In Progress
 
-- (none - Phase 9 step 1 is committed on `claude/phase-9-continuation-76teqg`; Phase 8 step 6, sprites, is deferred, not in progress.)
+- (none - Phase 10 and the sprite work are merged; Phase 11 has not started.)
 
 ## Next
 
-- Phase 11 (disturbance and ecological succession): resources respond to disturbance_type/age/intensity (fire scars thin trees, young scars get stumps (4,10) / dead trees (5,10) from the sheet, recovery with age). The plan doc section is the spec.
+- **Phase 11 prep (measured this session, seed 4242 + 1337, 8 regions, stride 3):**
+  - Spec: `docs/resource-generation-plan.md` Phase 11 - age-dependent modifiers for trees, grass, herbs, berries, mushrooms, deadwood, fallen trees; succession bare -> grass/herbs -> shrubs -> young trees -> mature forest; consume the EXISTING disturbance fields, no separate "forest regeneration" system.
+  - Real fields (docs/architecture.md §2): `disturbance` (0..1 intensity, faded by distance from the scar center AND by age: x (1 - 0.6 x age)), `disturbance_type` ("fire"/"flood"/"storm"/"landslide"), `disturbance_age` (0 fresh .. 1 old). The plan's `disturbance_intensity` is the `disturbance` key. EnvironmentalState has all three.
+  - Trap 1: type and age are constant across each blob's whole cellular cell, even where `disturbance` is ~0 - always gate type/age effects by intensity (e.g. effect x smoothstep on `disturbance`).
+  - Trap 2: intensity already falls with age, so "old scar" = low intensity + high age; curves on age alone will leak into undisturbed land.
+  - Coverage: land with disturbance > 0.05 / 0.3 / 0.6 = 33.6% / 13.8% / 2.7%. Types among d > 0.3: flood 3178, storm 2737, landslide 2402, fire 1182 samples. Ages evenly spread (quintiles 2305/1520/1712/2252/1710).
+  - Already in effect: WorldGen multiplies `vegetation` by (1 - disturbance), and canopy/shrub cover comes from vegetation, so tree density in scars (d > 0.3) is 0.065 vs 0.162 undisturbed. Phase 11 should build on that (shape WHICH species/stages appear by age), not stack a second blanket penalty.
+  - Existing hooks: `ResourceDefinition.disturbance_affinity` (additive x `disturbance`, applied after the zero-core check), curves via `ResourceManager.CURVE_STATE_FIELDS` (add e.g. `disturbance_curve`/`disturbance_age_curve` there + `CURVE_FIELD_RANGES`), guild `cover_field`/`density_curve`. Type-specific behavior needs a categorical weight map like `water_body_weights` (e.g. `disturbance_type_weights`), gated by intensity.
+  - Art on hand: stump (4,10) and dead tree (5,10) for deadwood/fallen trees; mushrooms (2,10)/(3,10); grass/sprout tiles in row 9 not yet used ((1,9), (2,9), (5,9), (8,9), (9,9); reed (3,9), salt marsh (4,9), cattail (6,9), beach grass (7,9) are taken); wheat/grass (0-3,24). Possible shape: a new "deadwood" guild (stump/dead tree/log) weighted to fresh fire/storm scars, mushrooms on mid-age scars, pioneer herbs/grass on fresh scars, and trees whose members differ by age (e.g. a young-tree member or age curves on existing ones).
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
+- Owed: a by-eye look at the deployed web build (sprites, coasts, Farming Potential, Deposits) and the Resources view switch time (~8.6s headless cold, 6 guilds) on web.
 
 ## Important Architecture
 
@@ -179,23 +188,21 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 10 step 1 (`c613fad`: water-edge curves, wetland_plants guild with reed + cattail, willow; see Completed) on branch `claude/phase-10-development-p7gm7n` (cloud session), pushed there only - not on `main`, so not deployed. The branch started from `main` at `d456f2a` (which already includes Phase 9 step 1), so `main` can be fast-forwarded when the user OKs a deploy.
-- Phase 9 step 1 (`1342d62`: deposit fields, iron/copper/coal, Deposits + Rock Exposure views; see Completed) on branch `claude/phase-9-continuation-76teqg` (cloud session), pushed there only - not fast-forwarded into `main`, so not deployed. `main` was identical to this branch's base (`50a451f`), so it can be fast-forwarded when the user OKs a deploy.
-- Phases 0-7 plus Phase 8 so far (canopy-tree guild: oak/pine/palm, Tree Cover / Tree Placement / Vegetation views) and the world-gen balance pass (temperature contrast/offset, heat-x-dryness vegetation, even land-biome shares, Wetland = waterlogged, cold-only Alpine Snow) are on `main`, fast-forwarded from `claude/phase-8-continuation-xk9cwo` (cloud session) and deployed by the push. `main` is the integration branch - branch new work from `main`.
-- World-gen changes shifted every biome view; land-only biome shares (4 seeds, 60k-tile sample) are now Forest 21.5, Grassland 18.4, Plains 11.4, Tundra 10.6, Desert 9.2, Rainforest 8.0, Wetland 5.8, Savanna 5.4, Badlands 4.9, Alpine Snow 4.9 %. None of this has been looked at in the running game/web build yet - only headless renders.
-- Phase 8 step 4 (`0fa7ec7`, surface-rock + shrub guilds) and step 5 (`38c65fb`, cross-guild footprint stack), plus handoff commit `2c35dba`, were fast-forwarded into `main` and pushed with the user's go-ahead (this deploys the web build). Branch `phase8-rocks-berries` is now identical to `main` and can be deleted. Phase 8 step 6 (sprites) is deferred.
-- Forest species fix (`7d1a39c`, on `main`, pushed): no more label-based subtype weights, tropical-only palm, Montane = real high ground (see Completed).
-- Olive + Resources view + click-to-inspect (`27d8985`, on `main`, pushed; see Completed).
+- This session (cloud, branch `claude/phase-10-development-p7gm7n`, all merged to `main` via PRs #1 `2292885`, #2 `1b6aa0f`, #3): Phase 10 complete (rivers, floodplains, river mouths, shores), Phase 9 step 2 (ore outcrops), Phase 8 step 6 (tileset sprites for every placed resource), plus perf fixes (`EnvironmentalState.from_sample()` 40 -> 9 us). Details under Completed.
+- Test suites: `tests/run_tests.sh` runs test_deposits (24), test_floodplains (9), test_resource_guild (28), test_resource_placement (14), test_shores (12), test_world_scene (all pass as of the last commit).
+- Nothing has been looked at in the running game / web build - only headless renders (`OUT_PNG`, `OUT_TILES`, `OUT_PX`, `OUT_CENTER` in test_world_scene.gd).
 
 ### Next Action
 
-- Fast-forward `main` to `claude/phase-10-development-p7gm7n` - the user OK'd it, but the session's permission check blocked the push; the user pushes/merges or allows it (deploys the web build), then look at the Resources view (wetland diamonds, willows along rivers, ore hexagons) and the Deposits / Rock Exposure views in the running game.
-- Then Phase 11 (disturbance and succession). Run `tests/run_tests.sh` before every commit (on Windows set `GODOT`, see below).
-- Still owed: a by-eye look at the deployed Resources view (and its view-switch hitch, now ~7.0s headless when cold) in the web build. GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
-- Biome-share numbers above came from ad hoc stride-sampling scripts (not committed). `tests/resource_by_biome.gd` now covers 4 spread-out 300x300 regions per seed, but that is still only 16 regions in total. `RESOURCE=res://resources/wetland_plants.tres` runs it for the new guild.
+- Start Phase 11 from `main` (see "Phase 11 prep" under Next): measure first, propose the species/field design briefly, then implement in steps like Phase 10 (fields/curves -> species -> views -> tests), `tests/run_tests.sh` before every commit.
+- Ask the user for a by-eye check of the web build (GitHub Pages caches ~10 min after a deploy).
 
 ### Things To Watch Out For
 
+- Deploys: pushing to `main` from a cloud session was blocked by the auto-mode permission check ("Production Deploy"). The working path is a PR from the session branch that the user merges (GitHub reports merged PRs as closed/merged=false through the MCP listing - check `git log origin/main` instead). After a merge, continue on the same branch name fast-forwarded to `origin/main`.
+- Tileset coordinates in code and docs are (column, row), 0-based, 12 px tiles with 1 px margin/separation (`resource_marker_chunk.gd` SPRITE_*). The user may count 1-based or row-first - render the area with numbered columns before assuming. The right ~2/3 of the sheet is characters/letters; objects are in the left third. `sprite_image()` turns the white-on-black one-bit tile into white-on-transparent.
+- Narrow temperature ramps speckle: WorldGen adds +-0.06 micro-jitter to temperature, so any curve that goes 0 -> 1 over ~0.25 flickers tile to tile (found on farmland; fixed with a -0.6..-0.1 ramp). Keep temperature ramps wide or expect salt-and-pepper edges.
+- `python3` works in cloud sessions (Linux); only the Windows machine has the Store stub.
 - Background-job worktrees (`EnterWorktree`) branch from `origin/main`, which is now the right base (`main` is the integration branch; `resource-generation` is stale). Still `git fetch` first: local branches can lag the remote (local `main` was 20 commits behind at the start of the step-4 session).
 - Local Windows runs: `tests/run_tests.sh` only auto-downloads the Linux Godot. Set `GODOT=~/.cache/godot/Godot_v4.7.2-stable_win64_console.exe` (extracted there from `~/Downloads/Godot_v4.7.2-stable_win64.exe.zip`; use the `_console` exe so output reaches the shell). `python3` on this machine is the Microsoft Store stub and hangs - do scripted edits with sed or the Edit tool.
 - Cloud (Linux) sessions have no Godot installed: `tests/run_tests.sh` handles it (downloads the CI's 4.7.2 into `~/.cache/godot` and rebuilds the class cache - a `--quit-after 3` editor run was too short for a cold cache, the script uses 30). For ad hoc scripts, point `$GODOT` at that binary.
