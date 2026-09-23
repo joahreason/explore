@@ -197,13 +197,20 @@ static func _place(
 	var survivors := {}  # Vector2i cell -> Dictionary candidate
 	for cy in range(c0.y - 1, c1.y + 2):
 		for cx in range(c0.x - 1, c1.x + 2):
-			var candidate := _candidate(resource_seed, spacing, Vector2i(cx, cy))
-			if candidate["accept"] >= density_bound:
+			# Accept roll first: jitter and priority are only hashed for
+			# candidates that can still pass.
+			var cell := Vector2i(cx, cy)
+			var accept := _cell_unit(resource_seed, cell, _SALT_ACCEPT)
+			if accept >= density_bound:
 				continue  # can't pass: density_fn never exceeds density_bound
-			var pos: Vector2 = candidate["position"]
+			var pos := _jittered(resource_seed, spacing, cell)
 			var density: float = density_fn.call(floori(pos.x), floori(pos.y))
-			if candidate["accept"] < density:
-				survivors[candidate["cell"]] = candidate
+			if accept < density:
+				survivors[cell] = {
+					"cell": cell,
+					"position": pos,
+					"priority": _cell_hash(resource_seed, cell, _SALT_PRIORITY),
+				}
 
 	var result: Array[Dictionary] = []
 	var min_dist_sq := spacing * spacing
@@ -244,16 +251,12 @@ static func _outranks(a: Dictionary, b: Dictionary) -> bool:
 	return ca.x > cb.x if ca.x != cb.x else ca.y > cb.y
 
 
-static func _candidate(resource_seed: int, spacing: float, cell: Vector2i) -> Dictionary:
+## The cell's one candidate position, jittered inside it (tile units).
+static func _jittered(resource_seed: int, spacing: float, cell: Vector2i) -> Vector2:
 	var jitter := Vector2(
 		_cell_unit(resource_seed, cell, _SALT_JITTER_X), _cell_unit(resource_seed, cell, _SALT_JITTER_Y)
 	)
-	return {
-		"cell": cell,
-		"position": (Vector2(cell) + jitter) * spacing,
-		"accept": _cell_unit(resource_seed, cell, _SALT_ACCEPT),
-		"priority": _cell_hash(resource_seed, cell, _SALT_PRIORITY),
-	}
+	return (Vector2(cell) + jitter) * spacing
 
 
 ## Same derivation style as ResourceManager's patch noise (world_seed +

@@ -142,7 +142,7 @@ var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay)
 var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource markers), only in a placement view
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
-var _density_chunks: Dictionary = {} # [guild/resource id, chunk] -> PackedFloat64Array per tile, NAN = not computed (see _cached_density)
+var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
 var _view_mode: ViewMode = ViewMode.MATERIAL
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -401,20 +401,24 @@ func _resource_suitability(sample: Dictionary, definition: ResourceDefinition) -
 ## base_density via ResourceManager.get_density(). `sample` is the tile's
 ## WorldGen.sample() if the caller already has it (else taken on a cache miss).
 func _resource_density(definition: ResourceDefinition, wx: int, wy: int, sample: Dictionary = {}) -> float:
-	var cached := _cached_density(definition.id, wx, wy)
-	if not is_nan(cached):
-		return cached
-	var env := _tile_env(wx, wy, sample)
-	return _store_density(definition.id, wx, wy, ResourceManagerScript.get_density(env[0], definition, world_seed, wx, wy, env[1]))
+	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
+	var memo := _density_memo(definition.id, chunk)
+	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
+	if is_nan(memo[i]):
+		var env := _tile_env(wx, wy, sample)
+		memo[i] = ResourceManagerScript.get_density(env[0], definition, world_seed, wx, wy, env[1])
+	return memo[i]
 
 
 ## Phase 8 (guilds): the guild's total density, whatever the species mix.
 func _guild_density(guild: ResourceGuild, wx: int, wy: int, sample: Dictionary = {}) -> float:
-	var cached := _cached_density(guild.id, wx, wy)
-	if not is_nan(cached):
-		return cached
-	var env := _tile_env(wx, wy, sample)
-	return _store_density(guild.id, wx, wy, ResourceManagerScript.get_guild_density(env[0], guild, world_seed, wx, wy, env[1]))
+	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
+	var memo := _density_memo(guild.id, chunk)
+	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
+	if is_nan(memo[i]):
+		var env := _tile_env(wx, wy, sample)
+		memo[i] = ResourceManagerScript.get_guild_density(env[0], guild, world_seed, wx, wy, env[1])
+	return memo[i]
 
 
 ## Phase 17: [EnvironmentalState, classify_full() result] for a tile, cached
@@ -453,31 +457,24 @@ func clear_generation_caches() -> void:
 	_env_chunks.clear()
 
 
-## Phase 17: a guild's (or single resource's) density at a tile, memoized
-## per chunk - NAN if not computed yet. Shared by the placement callbacks
-## (a chunk's one-cell ring is its neighbor's interior) and the density
-## heatmaps. Valid for the seed like _raw_guild_chunks, and dropped the same
-## way once it grows well past the loaded area (~2 KB per id and chunk).
-func _cached_density(id: String, wx: int, wy: int) -> float:
-	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
-	var densities: PackedFloat64Array = _density_chunks.get([id, chunk], PackedFloat64Array())
+## Phase 17: the density memo of one guild (or single resource) for one
+## chunk - a PackedFloat64Array per tile, NAN = not computed yet - shared by
+## the placement callbacks (a chunk's one-cell ring is its neighbor's
+## interior) and the density heatmaps. Written through by the caller. Valid
+## for the seed like _raw_guild_chunks; an id's chunks are dropped once they
+## grow well past the loaded area (~2 KB each).
+func _density_memo(id: String, chunk: Vector2i) -> PackedFloat64Array:
+	var by_chunk: Dictionary = _density_chunks.get(id, {})
+	if not _density_chunks.has(id):
+		_density_chunks[id] = by_chunk
+	var densities: PackedFloat64Array = by_chunk.get(chunk, PackedFloat64Array())
 	if densities.is_empty():
-		return NAN
-	return densities[(wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)]
-
-
-func _store_density(id: String, wx: int, wy: int, density: float) -> float:
-	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
-	var key := [id, chunk]
-	if not _density_chunks.has(key):
-		if _density_chunks.size() > 8 * (GUILD_STACK.size() + 1) * maxi(_loaded_chunks.size(), 1):
-			_density_chunks.clear()
-		var densities := PackedFloat64Array()
+		if by_chunk.size() > 8 * maxi(_loaded_chunks.size(), 1):
+			by_chunk.clear()
 		densities.resize(CHUNK_SIZE * CHUNK_SIZE)
 		densities.fill(NAN)
-		_density_chunks[key] = densities
-	_density_chunks[key][(wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)] = density
-	return density
+		by_chunk[chunk] = densities
+	return densities
 
 
 ## Phase 9: every ORE_DEPOSITS entry's potential at a tile -> {definition: potential}

@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 17 step 4: trim placement machinery (per-id density memo without Array keys; accept roll before jitter/priority hashes in `_place`) - `test_placement_snapshot` unchanged
+- [ ] Phase 17: merge PR #8 (steps 1-4); agree the next direction (progressive per-frame chunk work, LOD/aggregation, cheaper heatmap bakes) or move on to Phase 13
 
 ## Next
 
