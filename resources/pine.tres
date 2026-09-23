@@ -48,13 +48,6 @@ biome_weights = {
 "Tundra": 0.35,
 "Wetland": 0.4
 }
-subtype_weights = {
-"Boreal": 1.0,
-"Dry Woodland": 0.5,
-"Montane": 1.0,
-"Temperate": 0.6,
-"Tropical": 0.1
-}
 water_body_weights = {
 "lake": 0.0,
 "none": 1.0,

@@ -32,7 +32,7 @@ static func _score_forest(s: Dictionary) -> Dictionary:
 	var moisture: float = s["moisture"]
 	var elev01 := clampf((float(s["elevation"]) + 1.0) * 0.5, 0.0, 1.0)
 	return {
-		"Montane": smoothstep(0.5, 0.72, elev01),
+		"Montane": smoothstep(0.62, 0.75, elev01),
 		"Boreal": smoothstep(0.05, 0.35, -temperature),
 		"Tropical": smoothstep(0.1, 0.25, temperature) * smoothstep(0.45, 0.6, moisture),
 		"Dry Woodland": smoothstep(0.05, 0.2, temperature) * (1.0 - smoothstep(0.4, 0.55, moisture)),
