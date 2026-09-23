@@ -29,6 +29,7 @@ var soil_fertility: float
 var drainage: float
 var cave_potential: float
 var cliff_tendency: float
+var rock_exposure: float
 
 var river: float
 var water_body: String
@@ -73,6 +74,7 @@ static func from_sample(s: Dictionary):
 	state.drainage = s["drainage"]
 	state.cave_potential = s["cave_potential"]
 	state.cliff_tendency = s["cliff_tendency"]
+	state.rock_exposure = s["rock_exposure"]
 
 	state.river = s["river"]
 	state.water_body = s["water_body"]

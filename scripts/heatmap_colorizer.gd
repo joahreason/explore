@@ -51,6 +51,11 @@ const HIGHLY_SUITABLE := Color(0.25, 0.85, 0.35)
 const NO_DENSITY := Color(0.1, 0.1, 0.12)
 const HIGH_DENSITY := Color(0.95, 0.7, 0.15)
 
+const BURIED_ROCK := Color(0.2, 0.17, 0.12)
+const BARE_ROCK := Color(0.9, 0.88, 0.85)
+
+const NO_DEPOSIT := Color(0.45, 0.45, 0.45)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -131,3 +136,18 @@ static func resource_suitability(value: float) -> Color:
 ## ResourceManager.get_density() (Phase 6).
 static func resource_density(value: float) -> Color:
 	return NO_DENSITY.lerp(HIGH_DENSITY, clampf(value, 0.0, 1.0))
+
+
+static func rock_exposure(s: Dictionary) -> Color:
+	return BURIED_ROCK.lerp(BARE_ROCK, clampf(float(s["rock_exposure"]), 0.0, 1.0))
+
+
+## Phase 9 Deposits view: one ore's potential (how much exists) in its
+## debug color, dimmed where it's buried and full brightness where the
+## tile's rock_exposure shows it at the surface, so hidden and visible
+## deposits read apart at a glance.
+static func deposit(ore_color: Color, potential: float, rock_exposure: float) -> Color:
+	var hidden := ore_color.darkened(0.55)
+	var exposed := ore_color.lightened(0.25)
+	var shade := hidden.lerp(exposed, clampf(rock_exposure, 0.0, 1.0))
+	return NO_DEPOSIT.lerp(shade, clampf(potential * 1.5, 0.0, 1.0))

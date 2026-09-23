@@ -16,6 +16,7 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 const ITEMS := [
 	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
 	{"label": "Resources", "mode": ChunkManagerScript.ViewMode.RESOURCES},
+	{"label": "Deposits", "mode": ChunkManagerScript.ViewMode.DEPOSITS},
 	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},
 	{"label": "Modifiers", "mode": ChunkManagerScript.ViewMode.MODIFIERS},
 	{"label": "Temperature", "mode": ChunkManagerScript.ViewMode.TEMPERATURE},
@@ -29,6 +30,7 @@ const ITEMS := [
 	{"label": "Fire Risk", "mode": ChunkManagerScript.ViewMode.FIRE_RISK},
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
+	{"label": "Rock Exposure", "mode": ChunkManagerScript.ViewMode.ROCK_EXPOSURE},
 ]
 
 

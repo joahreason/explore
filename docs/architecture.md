@@ -18,7 +18,7 @@ Both the sampling and classification stages are callable directly, independent o
 
 ## 2. `WorldGen.sample(wx, wy) -> Dictionary` (`scripts/world_gen.gd`)
 
-Deterministic per `world_seed` (16 independent `FastNoiseLite` fields, each seeded `world_seed + <reserved offset>`, offsets `+1` through `+16`; `+17` and `+18` are reserved for per-resource patch noise and placement rolls, see §6; next free is `+19`). Pure per-tile arithmetic **except** the water-body block, which queries `WaterTopology` (§3) — a cached, non-O(1) component.
+Deterministic per `world_seed` (16 independent `FastNoiseLite` fields, each seeded `world_seed + <reserved offset>`, offsets `+1` through `+16`; `+17`, `+18` and `+19` are reserved for per-resource patch noise, placement rolls and per-deposit vein noise, see §6; next free is `+20`). Pure per-tile arithmetic **except** the water-body block, which queries `WaterTopology` (§3) — a cached, non-O(1) component.
 
 The returned Dictionary's exact keys, as currently returned (`world_gen.gd:526-558`):
 
@@ -55,6 +55,7 @@ The returned Dictionary's exact keys, as currently returned (`world_gen.gd:526-5
 | `fire_risk` | float, 0..1 | dryness × heat × wind × fuel × seasonal-dryness bonus |
 | `cave_potential` | float, 0..1 | geology cave bias × moisture |
 | `cliff_tendency` | float, 0..1 | hardness × steep slope |
+| `rock_exposure` | float, 0..1 | how much bedrock shows: max(erosion-exposure gate, smoothstep on `cliff_tendency` from `resource_cliff_exposure_requirement`); 0 on water. Phase 9: decides whether a deposit is visible (`ResourceManager.get_exposed_deposit()`) |
 
 Four geology-keyed constant tables (`GEOLOGY_HARDNESS`, `GEOLOGY_RESOURCE_BIAS`, `GEOLOGY_DRAINAGE_BIAS`, `GEOLOGY_FERTILITY_BIAS`, `GEOLOGY_CAVE_BIAS` — five, not four) drive most of the rock-type-dependent behavior; `resource01` (the `resource` key) already directly encodes `GEOLOGY_RESOURCE_BIAS`, so a `ResourceDefinition`'s `geology_weights` (per the plan's Phase 2) can reuse this field rather than re-deriving it from raw `geology`.
 
@@ -85,7 +86,7 @@ A 3-stage layer purely for debug/inspector labeling — nothing in `WorldGen.sam
 
 ## 6. Determinism & seed model
 
-`world_seed` is resolved once in `chunk_manager.gd:_ready()` (`_resolve_world_seed()`): a fixed exported int in the editor, or on web, a `?seed=` URL param (numeric used directly, other text hashed via `String.hash()`), or a fresh `randi()` if no param — see `README.md` for the user-facing seed UI (Randomize/Reload/Enter-to-submit). `WorldGen.configure(world_seed)` seeds all 16 noise fields off of it once per session. Per Rule 1 of the resource-generation plan, new noise follows the same pattern: `world_seed + <a newly reserved offset>`, next free `+19` (`+18` = `WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET`, Phase 7 placement rolls, derived per resource id the same way as patch noise). Per-resource distribution/patch noise (Phase 5) reserves `+17` (`WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET`) but lives in `ResourceManager.get_patch_modifier()`, not WorldGen: each `ResourceDefinition` gets its own `FastNoiseLite` seeded by `("<world_seed + 17>:<definition.id>").hash()`, so resources are decorrelated from each other and `definition.id` must be unique. These noise objects are cached in a static Dictionary keyed by seed/id/scale - pure derived data, never serialized.
+`world_seed` is resolved once in `chunk_manager.gd:_ready()` (`_resolve_world_seed()`): a fixed exported int in the editor, or on web, a `?seed=` URL param (numeric used directly, other text hashed via `String.hash()`), or a fresh `randi()` if no param — see `README.md` for the user-facing seed UI (Randomize/Reload/Enter-to-submit). `WorldGen.configure(world_seed)` seeds all 16 noise fields off of it once per session. Per Rule 1 of the resource-generation plan, new noise follows the same pattern: `world_seed + <a newly reserved offset>`, next free `+20` (`+18` = `WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET`, Phase 7 placement rolls; `+19` = `WorldGen.DEPOSIT_VEIN_SEED_OFFSET`, Phase 9 per-deposit vein noise in `ResourceManager.get_vein_value()`; both derived per resource id the same way as patch noise). Per-resource distribution/patch noise (Phase 5) reserves `+17` (`WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET`) but lives in `ResourceManager.get_patch_modifier()`, not WorldGen: each `ResourceDefinition` gets its own `FastNoiseLite` seeded by `("<world_seed + 17>:<definition.id>").hash()`, so resources are decorrelated from each other and `definition.id` must be unique. These noise objects are cached in a static Dictionary keyed by seed/id/scale - pure derived data, never serialized.
 
 ## 7. Per-instance object rendering (was a flagged gap; resolved in Phase 7)
 

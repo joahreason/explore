@@ -145,6 +145,25 @@ func _init() -> void:
 	var probe: Dictionary = world._world_gen.sample(3, 5)
 	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
 
+	# Deposits view (Phase 9): a heatmap, no markers; clicking a tile with
+	# ore lists it in the inspector.
+	world.set_view_mode(CM.ViewMode.DEPOSITS)
+	var ore_tile := Vector2i(1 << 30, 0)
+	for y in range(-64, 64):
+		for x in range(-64, 64):
+			if not world._deposit_potentials(world._world_gen.sample(x, y), x, y).is_empty():
+				ore_tile = Vector2i(x, y)
+				break
+		if ore_tile.x != 1 << 30:
+			break
+	world._on_tile_clicked((Vector2(ore_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var ore_sample: Dictionary = world._world_gen.sample(ore_tile.x, ore_tile.y)
+	check(world._loaded_placements.is_empty() and ore_tile.x != 1 << 30
+		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != DebugColorizer.color_for(ore_sample)
+		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
+		"deposits view: no markers; ore tile %s tinted and listed under Deposits in the inspector" % ore_tile)
+	world.set_view_mode(CM.ViewMode.RESOURCES)
+
 	var out := OS.get_environment("OUT_PNG")
 	if out != "":
 		_render_png(world, CM, out)

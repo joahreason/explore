@@ -15,8 +15,9 @@ func _ready() -> void:
 
 
 ## resource: the placed instance under the click (ChunkManager._resource_at()),
-## or {} when the click hit bare ground.
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}) -> void:
+## or {} when the click hit bare ground. deposits: ore name -> potential (how
+## much exists here); sample["rock_exposure"] says whether it shows.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}) -> void:
 	visible = true
 
 	var lines: Array[String] = []
@@ -26,6 +27,12 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 		lines.append("[b]Resource:[/b] -")
 	else:
 		lines.append("[b]Resource:[/b] %s (%s)" % [resource["name"], resource["guild_name"]])
+	if not deposits.is_empty():
+		var parts: Array[String] = []
+		for ore_name in deposits:
+			parts.append("%s %.2f" % [ore_name, float(deposits[ore_name])])
+		var shown := "exposed" if float(sample["rock_exposure"]) >= 0.5 else "hidden"
+		lines.append("[b]Deposits:[/b] %s (%s)" % [", ".join(parts), shown])
 	lines.append("[b]Biome:[/b] %s" % classified["base_biome"])
 
 	var subtype: String = classified["subtype"]

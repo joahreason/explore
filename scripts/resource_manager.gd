@@ -48,6 +48,7 @@ const PATCH_CONTRAST := 1.8
 const BIOME_MEMBERSHIP_SHARPNESS := 4.0
 
 static var _patch_noise_cache: Dictionary = {}
+static var _vein_noise_cache: Dictionary = {}
 
 
 static func get_suitability(
@@ -147,7 +148,7 @@ static func _geometric_mean(values: Array[float]) -> float:
 ## cluster_scale sets the patch size (tiles), cluster_strength how much the
 ## patch noise modulates density (0 = uniform 1.0, 1 = full 0..1 range).
 static func get_patch_modifier(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
-	return _patch_value(definition.id, definition.cluster_scale, definition.cluster_strength, world_seed, wx, wy)
+	return _patch_value(definition.id, definition.cluster_scale, definition.cluster_strength, world_seed, wx, wy, definition.cluster_curve)
 
 
 ## Guild counterpart of get_patch_modifier(): the guild's own patch noise,
@@ -247,3 +248,60 @@ static func get_guild_density(
 	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
 	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
 	return clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)
+
+
+## Phase 9 of docs/resource-generation-plan.md: how much of an ore deposit
+## EXISTS here, exposed or not - geological affinity (get_suitability(),
+## chiefly geology_weights) x the ore's own vein noise x its patch noise
+## (the ore district) x base_density, 0..1. Zero for a definition that isn't
+## a deposit (vein_scale <= 0).
+static func get_deposit_potential(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	classified: Dictionary = {}
+) -> float:
+	if definition.vein_scale <= 0.0:
+		return 0.0
+	var suitability := get_suitability(state, definition, classified)
+	if suitability <= 0.0:
+		return 0.0
+	var district := get_patch_modifier(definition, world_seed, wx, wy)
+	if district <= 0.0:
+		return 0.0
+	var vein := get_vein_value(definition, world_seed, wx, wy)
+	return clampf(suitability * district * vein * clampf(definition.base_density, 0.0, 1.0), 0.0, 1.0)
+
+
+## The part of get_deposit_potential() visible at the surface: potential x
+## the tile's rock_exposure (eroded ground, cliffs). The rest is hidden -
+## "resource exists" and "resource is exposed" stay separate fields.
+static func get_exposed_deposit(potential: float, state: EnvironmentalState) -> float:
+	return clampf(potential * state.rock_exposure, 0.0, 1.0)
+
+
+## Ridged vein noise, pow(1 - |n|, vein_sharpness): 1 along a seam's center
+## line, falling off to either side. Each deposit id gets its own field
+## (seeded from world_seed + WorldGen.DEPOSIT_VEIN_SEED_OFFSET and the id,
+## like get_patch_modifier()), so different ores don't share seams.
+static func get_vein_value(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
+	var noise := _vein_noise(definition.id, definition.vein_scale, world_seed)
+	var n := clampf(noise.get_noise_2d(wx, wy), -1.0, 1.0)
+	return pow(1.0 - absf(n), maxf(definition.vein_sharpness, 0.0))
+
+
+static func _vein_noise(id: String, vein_scale: float, world_seed: int) -> FastNoiseLite:
+	var scale := maxf(vein_scale, 1.0)
+	var key := "%d|%s|%f" % [world_seed, id, scale]
+	if _vein_noise_cache.has(key):
+		return _vein_noise_cache[key]
+	var noise := FastNoiseLite.new()
+	noise.seed = ("%d:%s" % [world_seed + WorldGen.DEPOSIT_VEIN_SEED_OFFSET, id]).hash()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 1.0 / scale
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 2
+	_vein_noise_cache[key] = noise
+	return noise

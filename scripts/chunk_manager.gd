@@ -18,6 +18,13 @@ const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
 const SHRUBS := preload("res://resources/shrubs.tres")
+## Phase 9 ore deposits: per-tile fields (exists / exposed), not placed
+## instances - see ResourceManager.get_deposit_potential().
+const ORE_DEPOSITS := [
+	preload("res://resources/iron.tres"),
+	preload("res://resources/copper.tres"),
+	preload("res://resources/coal.tres"),
+]
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
 ## rocks are geology and were there first, then trees, then the shrubs
 ## that fill in around both.
@@ -77,6 +84,8 @@ enum ViewMode {
 	RESOURCES,
 	ROCK_PLACEMENT,
 	BERRY_PLACEMENT,
+	ROCK_EXPOSURE,
+	DEPOSITS,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -110,8 +119,8 @@ func _ready() -> void:
 	_world_gen.configure(world_seed)
 
 	# A guild's warnings include its members' (oak among them).
-	for guild in GUILD_STACK:
-		for warning in guild.get_curve_domain_warnings():
+	for source in GUILD_STACK + ORE_DEPOSITS:
+		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
 
 	if _seed_text != "":
@@ -254,7 +263,11 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
 	var sample := _world_gen.sample(tile.x, tile.y)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE))
+	var deposits := {}
+	var potentials := _deposit_potentials(sample, tile.x, tile.y)
+	for ore in potentials:
+		deposits[String(ore.id).capitalize()] = potentials[ore]
+	_inspector_panel.show_info(tile, sample, classified, _resource_at(world_pos / TILE_SIZE), deposits)
 
 
 func _update_chunks(center: Vector2i, load_radius: int) -> void:
@@ -326,6 +339,10 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SURFACE_ROCKS, wx, wy))
 		ViewMode.BERRY_PLACEMENT:
 			return HeatmapColorizerScript.resource_density(_guild_density(sample, SHRUBS, wx, wy))
+		ViewMode.ROCK_EXPOSURE:
+			return HeatmapColorizerScript.rock_exposure(sample)
+		ViewMode.DEPOSITS:
+			return _deposit_color(sample, wx, wy)
 		_:
 			return null
 
@@ -352,6 +369,33 @@ func _guild_density(sample: Dictionary, guild: ResourceGuild, wx: int, wy: int) 
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
 	return ResourceManagerScript.get_guild_density(state, guild, world_seed, wx, wy, classified)
+
+
+## Phase 9: every ORE_DEPOSITS entry's potential at a tile -> {definition: potential}
+## (zero entries left out).
+func _deposit_potentials(sample: Dictionary, wx: int, wy: int) -> Dictionary:
+	var state = EnvironmentalStateScript.from_sample(sample)
+	var result := {}
+	for ore in ORE_DEPOSITS:
+		var potential: float = ResourceManagerScript.get_deposit_potential(state, ore, world_seed, wx, wy)
+		if potential > 0.0:
+			result[ore] = potential
+	return result
+
+
+## Deposits view: the strongest ore at the tile (ores rarely overlap -
+## they favor different geology and have their own seams).
+func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
+	var best: ResourceDefinition = null
+	var best_potential := 0.0
+	var potentials := _deposit_potentials(sample, wx, wy)
+	for ore in potentials:
+		if potentials[ore] > best_potential:
+			best = ore
+			best_potential = potentials[ore]
+	if best == null:
+		return HeatmapColorizerScript.NO_DEPOSIT
+	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, sample["rock_exposure"])
 
 
 func _species_shares(sample: Dictionary, guild: ResourceGuild) -> PackedFloat32Array:

@@ -161,6 +161,9 @@ extends Resource
 @export_group("Resources")
 @export var resource_frequency: float = 0.02
 @export var resource_exposure_requirement: float = 0.15
+## cliff_tendency above which bare rock starts showing on steep hard ground
+## (rock_exposure's second source, next to erosion - see sample()).
+@export var resource_cliff_exposure_requirement: float = 0.1
 
 enum Geology { SEDIMENTARY, METAMORPHIC, IGNEOUS, VOLCANIC }
 
@@ -244,10 +247,13 @@ var _configured_seed: int = -1
 # +17 per-resource distribution/patch noise (not owned here - see
 # ResourceManager.get_patch_modifier(), which derives one seed per
 # ResourceDefinition.id from world_seed + this offset), +18 per-resource
-# placement rolls (likewise not owned here - see ResourcePlacement).
-# Next free offset: +19.
+# placement rolls (likewise not owned here - see ResourcePlacement),
+# +19 per-deposit vein noise (not owned here - see
+# ResourceManager.get_vein_value()).
+# Next free offset: +20.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 const RESOURCE_PLACEMENT_SEED_OFFSET := 18
+const DEPOSIT_VEIN_SEED_OFFSET := 19
 
 
 func configure(world_seed: int) -> void:
@@ -554,6 +560,12 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var ridged_vein := pow(1.0 - absf(vein_raw), 4.0)
 	var exposure_gate := smoothstep(resource_exposure_requirement, resource_exposure_requirement + 0.25, erosion01)
 	var resource01 := clampf(ridged_vein * float(GEOLOGY_RESOURCE_BIAS[geology]) * exposure_gate, 0.0, 1.0)
+	# How much bedrock shows at the surface (0 buried .. 1 bare): eroded
+	# ground or steep hard cliffs. Phase 9 deposits exist underground either
+	# way; this is what decides whether one is visible (see
+	# ResourceManager.get_exposed_deposit()).
+	var cliff_gate := smoothstep(resource_cliff_exposure_requirement, resource_cliff_exposure_requirement + 0.3, cliff_tendency)
+	var rock_exposure := 0.0 if water_body != "none" else maxf(exposure_gate, cliff_gate)
 
 	return {
 		"elevation": e,
@@ -587,6 +599,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"fire_risk": fire_risk,
 		"cave_potential": cave_potential,
 		"cliff_tendency": cliff_tendency,
+		"rock_exposure": rock_exposure,
 	}
 
 

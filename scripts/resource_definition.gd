@@ -77,10 +77,26 @@ extends Resource
 @export_group("Spatial")
 @export var cluster_scale: float = 32.0
 @export_range(0.0, 1.0) var cluster_strength: float = 0.0
+## Optional reshaping of the 0..1 patch value, as ResourceGuild.cluster_curve:
+## a steep curve turns patches into distinct areas with nothing between
+## (Phase 9 ore districts).
+@export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
 @export var placement_type: String = ""
 ## Marker color in the placement debug views, until real sprites exist.
 @export var debug_color: Color = Color(0.10, 0.32, 0.10)
+
+## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
+## body rather than a surface object. ResourceManager.get_deposit_potential()
+## multiplies its suitability (geology_weights = geological affinity) by its
+## own vein noise: ridged, so deposits form seams about vein_scale tiles
+## apart, narrower the higher vein_sharpness - and by its patch noise
+## (Spatial group), which confines those seams to ore districts instead of a
+## map-wide lattice. That is where the ore EXISTS;
+## whether it's visible at the surface is WorldGen's rock_exposure.
+@export_group("Deposit")
+@export var vein_scale: float = 0.0
+@export var vein_sharpness: float = 4.0
 
 
 ## Real value range of the EnvironmentalState field each curve samples
@@ -116,6 +132,10 @@ func get_curve_domain_warnings() -> PackedStringArray:
 			warnings.append("ResourceDefinition '%s': %s domain [%s, %s] doesn't cover the field's range [%s, %s]" % [
 				id, curve_name, curve.min_domain, curve.max_domain, field_range.x, field_range.y
 			])
+	if cluster_curve != null and (cluster_curve.min_domain > 0.0 or cluster_curve.max_domain < 1.0):
+		warnings.append("ResourceDefinition '%s': cluster_curve domain [%s, %s] doesn't cover [0, 1]" % [
+			id, cluster_curve.min_domain, cluster_curve.max_domain
+		])
 	for curve_name in required_curves:
 		if not CURVE_FIELD_RANGES.has(curve_name):
 			warnings.append("ResourceDefinition '%s': required_curves names unknown curve '%s'" % [id, curve_name])
