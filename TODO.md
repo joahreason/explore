@@ -5,7 +5,6 @@ Keep this list actionable and current.
 ## Current Task
 
 - [ ] Phase 11: disturbance and ecological succession
-- [ ] Sprites for salt (hexagon) and shells/mud (circles) - candidates in PROJECT_STATE.md
 
 ## Next
 
