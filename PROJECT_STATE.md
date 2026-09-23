@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2 floodplains, 3 river mouths, 4 shores). Phases 8 and 9 are complete too. Steps 1-2 plus Phase 9 step 2 and the sprites were merged to `main` via PR #1; steps 3-4 are on `claude/phase-10-development-p7gm7n` (restarted from `main` after the merge), for a new PR. Next per the plan: Phase 11 (disturbance and ecological succession).
+Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2 floodplains, 3 river mouths, 4 shores). Phases 8 and 9 are complete too. All of it is merged to `main` (PR #1: steps 1-2, Phase 9 step 2, sprites; PR #2: steps 3-4). Next per the plan: Phase 11 (disturbance and ecological succession).
 
 ## Completed
 
@@ -68,6 +68,7 @@ Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2
   - `resource_marker_chunk.gd` `Shape.SPRITE`: the one-bit sheet is white on OPAQUE BLACK, so `sprite_image()` converts each used tile to white-on-transparent (alpha = brightness) once and caches an ImageTexture; `_draw()` draws a 1-sprite-pixel dark outline (4 offset copies) and the tinted sprite, `minimum_spacing` wide (trees: 2 tiles = exact 2x scale; one tile read too small next to the markers). Members without a tile fall back to a triangle. Still one CanvasItem per chunk. The Resources view uses it for canopy trees; Tree Placement etc. keep circles.
   - Tests: scene test checks every tree in Resources is a textured sprite in its species' sprite_color; `OUT_PX` sets the render's pixels per tile (12 = native) and the render blits the same sprites. Render at (18000, 8850) inspected.
 - Phase 8 step 6, rocks and ore (user pointed at the sheet's bottom-left): row 13, columns 0-5 are rock tiles (rows 11-12 are path/river connectors). Basalt (0,13) cracked block, sandstone (2,13) layered, granite (4,13) round boulder; outcrops iron (1,13) veined, copper (3,13) patterned boulder, coal (5,13) rubble - each tinted by its `sprite_color`. New `ResourceDefinition.sprite_size` (tiles; trees 2.0, rocks/ore 1.0 = native 12 px) replaces "guild spacing wide". The Resources view draws outcrops and rocks as sprites; the Deposits view keeps outcrop hexagons over its heatmap. Scene test: Resources sprites = trees + rocks + outcrops, all textured in sprite colors. Render at (90, -265) inspected.
+- Sprite swap (user pick): clay outcrops use (5,13) - the scattered-pebble tile right of the rock tiles, slate-blue tint - and coal moved to the dark lumps at (13,18) so no two deposits share a tile. Salt, shells and mud still have no sprite; candidates from a full-sheet scan (the right ~2/3 of the sheet is characters/letters, objects are in the left third): shells (6,15) snail shell / (7,14) crab / (14,18) shrimp; mud (11,34) streaky marsh texture / (10,34); salt (4,22) crystal cluster / (5,22) / (18,34) dotted flats.
 - Phase 10 steps 3-4 (river mouths, shores; user: "finish phase 10"):
   - Measured first: rivers fade out toward the coast (river x lowland gate), yet river mouths (land with river > 0.02 and shore_proximity > 0.1) exist on ~0.35% of land, with weak river values there (median 0.064) - so mouth species key on river + shore together at low thresholds, no new field. Lake-only shores were 7.5% of shore tiles, which is why salt/shells needed a lake-vs-sea signal.
   - New `WorldGen.sample()` key `shore_salinity` (0 lake shore / no shore .. 1 sea shore): the existing shore_proximity probes now check all 4 directions (shore_proximity itself unchanged) and classify each wet probe with the existing `WaterTopology` (salty = open or strait-connected, the same test as water_body). `EnvironmentalState.shore_salinity`, new `ResourceDefinition.salinity_curve`. sample() cost unchanged (13.1 vs 13.5 us, origin area).
@@ -105,7 +106,7 @@ Phase 10 — Rivers, Shores, and Special Habitats is complete (steps 1 rivers, 2
 
 - Phase 11 (disturbance and ecological succession): resources respond to disturbance_type/age/intensity (fire scars thin trees, young scars get stumps (4,10) / dead trees (5,10) from the sheet, recovery with age). The plan doc section is the spec.
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
-- Clay outcrops have no sprite (row 13 rocks are all used); a tile from elsewhere in the sheet would replace the hexagon fallback.
+- Sprites still missing: salt (hexagon), shells and mud (circles) - candidates listed under Completed (sprite swap).
 
 ## Important Architecture
 

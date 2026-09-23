@@ -129,12 +129,12 @@ func _init() -> void:
 			if m._shapes[i] == Shape.SPRITE:
 				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
 	# Clay has no sprite: its outcrops stay hexagons, everything else is a sprite.
-	# Members without a sprite: clay and salt outcrops (hexagons), shells and
-	# mud (circles). Everything else is a sprite.
+	# Members without a sprite: salt outcrops (hexagons), shells and mud
+	# (circles). Everything else is a sprite.
 	var hex_expected := 0
 	for c in world._loaded_chunks:
 		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS]:
-			if inst["id"] in ["clay", "salt"]:
+			if inst["id"] == "salt":
 				hex_expected += 1
 	var circle_expected := 0
 	for c in world._loaded_chunks:
@@ -147,7 +147,7 @@ func _init() -> void:
 		and shape_counts.get(Shape.HEXAGON, 0) == hex_expected
 		and shape_counts.get(Shape.CIRCLE, 0) == circle_expected
 		and shape_counts.get(Shape.DIAMOND, 0) == 0,
-		"resources view: %d sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants, %d shore features), %d hexagons (clay/salt), %d circles (shells/mud)" % [
+		"resources view: %d sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants, %d shore features), %d hexagons (salt), %d circles (shells/mud)" % [
 			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, guild_counts["shrubs"], guild_counts["wetland_plants"], guild_counts["shore_features"], shape_counts.get(Shape.HEXAGON, 0), shape_counts.get(Shape.CIRCLE, 0)])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
