@@ -4,8 +4,8 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 17 step 5: pan-test threaded chunk streaming in the desktop game, then merge `claude/phase-17-chunk-streaming`
-- [ ] Phase 17: agree the next direction (web Resources smoothness: split chunk jobs or threaded web; multi-worker throughput; LOD/aggregation) or move on to Phase 13
+- [ ] Phase 17 steps 5-6 (on main): pan-test Resources on the web build (phone) and the desktop game
+- [ ] Phase 17: agree the next direction (multi-worker throughput; LOD/aggregation; cheaper per-chunk density) or move on to Phase 13
 
 ## Next
 

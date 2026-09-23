@@ -312,6 +312,25 @@ func _init() -> void:
 	check(inline_world._worker == null and early > 0 and early < 81 and inline_world._loaded_chunks.size() == 81 and _all_current(inline_world),
 		"no worker: %d chunks after two frames, all 81 once flushed" % early)
 
+	# The main-thread fallback builds a chunk in small steps over several
+	# frames (Phase 17 step 6); the markers must match placing it in one go.
+	inline_world.set_view_mode(CM.ViewMode.RESOURCES)
+	var step_frames := 0
+	while inline_world.has_pending_chunks() and step_frames < 5000:
+		await process_frame
+		step_frames += 1
+	var same: bool = inline_world._loaded_placements.size() == 81
+	var markers_total := 0
+	for c in inline_world._loaded_placements:
+		var one_go := PackedVector2Array()
+		for entry in inline_world._placement_chunk(c):
+			for inst in entry[1]:
+				one_go.append(((inst["position"] as Vector2) - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE)
+		var shown: PackedVector2Array = inline_world._loaded_placements[c]._positions
+		markers_total += shown.size()
+		same = same and shown == one_go
+	check(same and markers_total > 0, "no worker: Resources built in steps over %d frames - all %d markers match one-go placement" % [step_frames, markers_total])
+
 	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
 	quit(1 if _fails > 0 else 0)
 

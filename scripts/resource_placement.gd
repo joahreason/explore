@@ -119,20 +119,8 @@ static func place_stack_in_rect(
 ## placements, which is valid because placement is chunk-independent.
 static func place_stack_with(guilds: Array, tile_rect: Rect2i, raw_fn: Callable) -> Array:
 	var n := guilds.size()
-	# reach[i]: how far a guild-i instance can be blocked by a higher guild.
-	var reach := []
-	for i in n:
-		var r := 0.0
-		for j in i:
-			r = maxf(r, guilds[i].footprint_radius + guilds[j].footprint_radius)
-		reach.append(r)
-	# Tile margin each guild must be placed with, around tile_rect.
-	var margin := []
-	margin.resize(n)
-	margin.fill(0)
-	for i in range(n - 1, -1, -1):
-		for j in i:
-			margin[j] = maxi(margin[j], margin[i] + ceili(reach[i]))
+	var reach := stack_reach(guilds)
+	var margin := stack_margins(guilds)
 
 	var placed := []  # per guild, survivors inside tile_rect.grow(margin[i])
 	for i in n:
@@ -152,6 +140,32 @@ static func place_stack_with(guilds: Array, tile_rect: Rect2i, raw_fn: Callable)
 				inside.append(inst)
 		result.append(inside)
 	return result
+
+
+## reach[i]: how far a guild-i instance can be blocked by a higher guild.
+static func stack_reach(guilds: Array) -> Array:
+	var reach := []
+	for i in guilds.size():
+		var r := 0.0
+		for j in i:
+			r = maxf(r, guilds[i].footprint_radius + guilds[j].footprint_radius)
+		reach.append(r)
+	return reach
+
+
+## margin[i]: the tile margin place_stack_with() places guild i with around
+## its rect (raw_fn is asked for tile_rect.grow(margin[i])) - lets a caller
+## prepare those placements ahead (Phase 17 step 6: chunk job steps).
+static func stack_margins(guilds: Array) -> Array:
+	var n := guilds.size()
+	var reach := stack_reach(guilds)
+	var margin := []
+	margin.resize(n)
+	margin.fill(0)
+	for i in range(n - 1, -1, -1):
+		for j in i:
+			margin[j] = maxi(margin[j], margin[i] + ceili(reach[i]))
+	return margin
 
 
 static func _is_blocked(inst: Dictionary, level: int, guilds: Array, placed: Array) -> bool:

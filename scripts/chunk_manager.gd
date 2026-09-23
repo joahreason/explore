@@ -11,11 +11,11 @@ extends Node2D
 ## so crossing a chunk boundary never stalls a frame on a whole row of
 ## chunks. On desktop the jobs run on one worker thread; where threads are
 ## unavailable (the web export has thread_support off) they run on the main
-## thread within INLINE_BUDGET_USEC per frame. Threading rule: everything
+## thread, a few small steps per frame (INLINE_BUDGET_USEC). Threading rule: everything
 ## generation touches - _world_gen (and its water topology cache), the
 ## generation caches, _view_mode, ResourceManager's static noise caches,
 ## ResourceDefinition.curve_plan - is only used while holding _gen_mutex
-## (the worker holds it per chunk), and the scene tree only on the main
+## (held per job step), and the scene tree only on the main
 ## thread. Tests that call generation functions directly do it after
 ## flush_chunk_work(), which leaves the worker idle.
 
@@ -99,9 +99,11 @@ const ENV_CACHE_CHUNKS := 48
 ## most chunks are loaded (placement costs ~7ms/chunk for oak).
 const MAX_PLACEMENT_LOD_STEP := 2
 
-## Without a worker thread: time per frame spent generating chunks on the
-## main thread (at least one chunk per frame while any are queued).
+## Without a worker thread: time per frame spent on chunk job steps on the
+## main thread (at least one step per frame while any are queued).
 const INLINE_BUDGET_USEC := 5000
+## Pixel rows a chunk job bakes per step (see _chunk_job_steps).
+const IMAGE_BAND_ROWS := 4
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
 
@@ -182,6 +184,7 @@ var _jobs: Array = []               # [chunk, epoch, lod step, area], nearest la
 var _in_flight: Dictionary = {}     # chunk -> epoch of a job taken but not yet applied
 var _results: Array = []            # finished job data for the main thread
 var _ready_results: Array = []      # main thread: taken from _results, not yet applied
+var _inline_job: Dictionary = {}     # main thread without a worker: the job being stepped (see _run_inline_steps)
 var _queue_mutex := Mutex.new()     # guards _jobs, _in_flight, _results, _epoch writes, _stop_worker
 var _gen_mutex := Mutex.new()       # held while generating
 var _semaphore := Semaphore.new()
@@ -391,9 +394,7 @@ func _process(_delta: float) -> void:
 		_finish_biome_travel()
 	_refresh_streaming()
 	if _worker == null:
-		var deadline := Time.get_ticks_usec() + INLINE_BUDGET_USEC
-		while _run_next_job() and Time.get_ticks_usec() < deadline:
-			pass
+		_run_inline_steps(Time.get_ticks_usec() + INLINE_BUDGET_USEC)
 	_apply_results(APPLY_BUDGET_USEC)
 
 
@@ -430,6 +431,9 @@ func _invalidate_chunks() -> void:
 func flush_chunk_work() -> void:
 	while true:
 		_refresh_streaming()
+		while not _inline_job.is_empty():
+			if _step_job(_inline_job):
+				_inline_job = {}
 		while _run_next_job():
 			pass
 		_apply_results(-1)
@@ -442,7 +446,7 @@ func has_pending_chunks() -> bool:
 	_queue_mutex.lock()
 	var busy := not (_jobs.is_empty() and _in_flight.is_empty() and _results.is_empty())
 	_queue_mutex.unlock()
-	return busy or not _ready_results.is_empty() or _jobs_dirty
+	return busy or not _ready_results.is_empty() or not _inline_job.is_empty() or _jobs_dirty
 
 
 func _current_zoom() -> float:
@@ -537,28 +541,88 @@ static func _farther_first(a: Vector2i, b: Vector2i, center: Vector2i) -> bool:
 	return a.y > b.y or (a.y == b.y and a.x > b.x)
 
 
-## Takes the nearest queued chunk and builds its content (holding
-## _gen_mutex), leaving the data in _results for _apply_results(). Returns
-## false when there was nothing to take (or the worker is stopping).
+## Takes the nearest queued chunk and runs its whole job (every step),
+## leaving the data in _results for _apply_results() - the worker's and
+## flush_chunk_work()'s way. Returns false when there was nothing to take
+## (or the worker is stopping).
 func _run_next_job() -> bool:
-	_queue_mutex.lock()
-	if _jobs.is_empty() or _stop_worker:
-		_queue_mutex.unlock()
+	var job := _take_job()
+	if job.is_empty():
 		return false
-	var job: Array = _jobs.pop_back()
-	var current: bool = job[1] == _epoch
-	if current:
-		_in_flight[job[0]] = job[1]
-	_queue_mutex.unlock()
-	if not current:
-		return true  # queued before a view/LOD change; its rebuild is queued too
+	var state := _new_job_state(job, false)
+	while not _step_job(state):
+		pass
+	return true
 
-	_gen_mutex.lock()
-	var data := _build_chunk_data(job[0], job[2], job[3])
-	_gen_mutex.unlock()
-	data["epoch"] = job[1]
+
+## Main thread without a worker: runs job steps (taking new jobs as needed)
+## until the deadline - at least one step, so a frame spends at most about
+## one step past its budget.
+func _run_inline_steps(deadline: int) -> void:
+	while true:
+		if _inline_job.is_empty():
+			var job := _take_job()
+			if job.is_empty():
+				return
+			_inline_job = _new_job_state(job, true)
+		if _step_job(_inline_job):
+			_inline_job = {}
+		if Time.get_ticks_usec() >= deadline:
+			return
+
+
+## Pops the nearest queued job for the current epoch and marks it in flight
+## (jobs queued before a view/LOD change are dropped - their rebuild is
+## queued too); [] if there is none, or the worker is stopping.
+func _take_job() -> Array:
+	var job: Array = []
 	_queue_mutex.lock()
-	_results.append(data)
+	while not _jobs.is_empty() and not _stop_worker:
+		var candidate: Array = _jobs.pop_back()
+		if candidate[1] == _epoch:
+			_in_flight[candidate[0]] = candidate[1]
+			job = candidate
+			break
+	_queue_mutex.unlock()
+	return job
+
+
+## A taken job ([chunk, epoch, lod step, area]) about to run: its data (filled
+## by the steps) and step list (planned by the first _step_job(); fine =
+## the main-thread fallback's finer steps, see _chunk_job_steps).
+func _new_job_state(job: Array, fine: bool) -> Dictionary:
+	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": _new_chunk_image(job[2])}
+	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
+
+
+## Runs one step of a job (holding _gen_mutex). Returns true when the job
+## is over: finished, with its data queued in _results, or abandoned because
+## a view/LOD/seed change made it stale (its rebuild is queued already).
+func _step_job(state: Dictionary) -> bool:
+	var data: Dictionary = state["data"]
+	_queue_mutex.lock()
+	var stale: bool = data["epoch"] != _epoch
+	_queue_mutex.unlock()
+	if not stale:
+		_gen_mutex.lock()
+		_gen_area = data["area"]
+		if not state["planned"]:
+			state["steps"] = _chunk_job_steps(data, state["fine"])
+			state["planned"] = true
+		var steps: Array = state["steps"]
+		if state["next"] < steps.size():
+			(steps[state["next"]] as Callable).call()
+			state["next"] += 1
+		_gen_mutex.unlock()
+		if state["next"] < steps.size():
+			return false
+
+	_queue_mutex.lock()
+	if stale:
+		if _in_flight.get(data["chunk"], -1) == data["epoch"]:
+			_in_flight.erase(data["chunk"])
+	else:
+		_results.append(data)
 	_queue_mutex.unlock()
 	return true
 
@@ -804,29 +868,71 @@ func _species_shares(guild: ResourceGuild, wx: int, wy: int) -> PackedFloat32Arr
 ## Sprite2D back up to compensate, so a chunk's world-space footprint never
 ## changes - only how much per-tile detail it actually shows.
 func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
-	var base := chunk_coord * CHUNK_SIZE
+	var img := _new_chunk_image(lod_step)
+	_bake_rows(img, chunk_coord, lod_step, 0, img.get_height())
+	return img
+
+
+func _new_chunk_image(lod_step: int) -> Image:
 	var cells := CHUNK_SIZE / lod_step
-	var img := Image.create(cells, cells, false, Image.FORMAT_RGB8)
-	for ly in range(cells):
-		for lx in range(cells):
+	return Image.create(cells, cells, false, Image.FORMAT_RGB8)
+
+
+## Pixel rows y0..y1-1 of a chunk image (a job step bakes one band).
+func _bake_rows(img: Image, chunk_coord: Vector2i, lod_step: int, y0: int, y1: int) -> void:
+	var base := chunk_coord * CHUNK_SIZE
+	for ly in range(y0, y1):
+		for lx in range(img.get_width()):
 			var wx := base.x + lx * lod_step + lod_step / 2
 			var wy := base.y + ly * lod_step + lod_step / 2
 			var sample := _world_gen.sample(wx, wy)
 			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
-	return img
 
 
-## A chunk job's work: the chunk's content for the current view at lod_step,
-## as plain data - no nodes (runs on the worker; the caller holds
-## _gen_mutex). area = chunks in play, for the generation caches' bounds.
-func _build_chunk_data(chunk_coord: Vector2i, lod_step: int, area: int) -> Dictionary:
-	_gen_area = area
-	var data := {"chunk": chunk_coord, "lod": lod_step, "image": _build_chunk_image(chunk_coord, lod_step)}
+## Fills _tile_env() for tile rows y0..y1-1 of a chunk (a warm-up job step).
+func _warm_env_rows(chunk: Vector2i, y0: int, y1: int) -> void:
+	var base := chunk * CHUNK_SIZE
+	for y in range(y0, y1):
+		for x in CHUNK_SIZE:
+			_tile_env(base.x + x, base.y + y)
+
+
+## Phase 17 step 6: a chunk job's work as small steps, so the main-thread
+## fallback (no worker) can spread one chunk over several frames - a whole
+## Resources chunk is ~42 ms on desktop, several frames' worth on web. Each
+## step is a Callable run holding _gen_mutex; together they fill `data` with
+## the chunk's content for the current view (plain data, no nodes). In
+## order: the image in bands of IMAGE_BAND_ROWS pixel rows, the label grids,
+## one step per (guild, chunk) placement the stack filter will read - the
+## guilds this view draws, in the chunk and the neighbors their margins reach
+## (cached ones return at once) - then the assembly, which by then only reads
+## caches. Same result as building it in one go. `fine` (the main-thread
+## fallback) also warms _tile_env() for those chunks in IMAGE_BAND_ROWS bands
+## first: a guild's first placement in a fresh chunk otherwise samples and
+## classifies every candidate tile in one step (up to ~20 ms on desktop). The
+## worker skips that - it would compute tiles no candidate needs.
+func _chunk_job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
+	var chunk: Vector2i = data["chunk"]
+	var lod_step: int = data["lod"]
+	var img: Image = data["image"]
+	var steps: Array[Callable] = []
+	for y0 in range(0, img.get_height(), IMAGE_BAND_ROWS):
+		steps.append(_bake_rows.bind(img, chunk, lod_step, y0, mini(y0 + IMAGE_BAND_ROWS, img.get_height())))
 	if _is_label_view(_view_mode):
-		data["overlay"] = _overlay_grids(chunk_coord)
+		steps.append(func() -> void: data["overlay"] = _overlay_grids(chunk))
 	if _placements_visible_at(lod_step):
-		data["placements"] = _placement_chunk(chunk_coord)
-	return data
+		var depth := _stack_depth(_placement_layers())
+		var margins: Array = ResourcePlacementScript.stack_margins(GUILD_STACK.slice(0, depth))
+		var rect := Rect2i(chunk * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
+		if fine and depth > 0:
+			for c in _chunks_in_rect(rect.grow(margins.max())):
+				for y0 in range(0, CHUNK_SIZE, IMAGE_BAND_ROWS):
+					steps.append(_warm_env_rows.bind(c, y0, y0 + IMAGE_BAND_ROWS))
+		for i in depth:
+			for c in _chunks_in_rect(rect.grow(margins[i])):
+				steps.append(_raw_guild_chunk.bind(GUILD_STACK[i], c))
+		steps.append(func() -> void: data["placements"] = _placement_chunk(chunk))
+	return steps
 
 
 ## Main thread: shows one finished job - creates the chunk's Sprite2D or
@@ -967,17 +1073,23 @@ func _placements_visible_at(lod_step: int) -> bool:
 func _placement_chunk(chunk_coord: Vector2i) -> Array:
 	var base := chunk_coord * CHUNK_SIZE
 	var layers := _placement_layers()
-	# A guild's instances depend only on the guilds above it in GUILD_STACK,
-	# so place the stack only down to the lowest guild this view draws.
-	var depth := 0
-	for layer in layers:
-		depth = maxi(depth, GUILD_STACK.find(layer[0]) + 1)
+	var depth := _stack_depth(layers)
 	var stack := _place_stack_chunk(base, depth) if depth > 0 else {}
 	var result := []
 	for layer in layers:
 		var source: Resource = layer[0]
 		result.append([layer, stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)])
 	return result
+
+
+## A guild's instances depend only on the guilds above it in GUILD_STACK, so
+## a view places the stack only down to the lowest guild it draws: that many
+## guilds (0 = none, e.g. Oak Placement's single definition).
+func _stack_depth(layers: Array) -> int:
+	var depth := 0
+	for layer in layers:
+		depth = maxi(depth, GUILD_STACK.find(layer[0]) + 1)
+	return depth
 
 
 ## Main thread: one marker node drawing a chunk's _placement_chunk() layers.
@@ -1044,26 +1156,40 @@ func _resource_at(point: Vector2) -> Dictionary:
 ## and guild data, so entries stay valid across view changes; the cache is
 ## just dropped when it grows well past the loaded area.
 func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
-	if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * _gen_area:
-		_raw_guild_chunks.clear()
+	var result := []
+	for c in _chunks_in_rect(rect):
+		for inst in _raw_guild_chunk(guild, c):
+			var pos: Vector2 = inst["position"]
+			if rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
+				result.append(inst)
+	return result
+
+
+## One guild's raw placement in one chunk, from _raw_guild_chunks or placed
+## and cached now.
+func _raw_guild_chunk(guild: ResourceGuild, chunk: Vector2i) -> Array:
+	var key := [guild.id, chunk]
+	if not _raw_guild_chunks.has(key):
+		if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * _gen_area:
+			_raw_guild_chunks.clear()
+		var density_fn := func(wx: int, wy: int) -> float:
+			return _guild_density(guild, wx, wy)
+		var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
+			return _species_shares(guild, wx, wy)
+		var chunk_rect := Rect2i(chunk * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
+		_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn, ResourceManagerScript.get_guild_density_bound(guild))
+	return _raw_guild_chunks[key]
+
+
+## Chunks a tile rect overlaps, row by row.
+func _chunks_in_rect(rect: Rect2i) -> Array[Vector2i]:
 	var c0 := Vector2i(floori(rect.position.x / float(CHUNK_SIZE)), floori(rect.position.y / float(CHUNK_SIZE)))
 	var c1 := Vector2i(floori((rect.end.x - 1) / float(CHUNK_SIZE)), floori((rect.end.y - 1) / float(CHUNK_SIZE)))
-	var result := []
+	var chunks: Array[Vector2i] = []
 	for cy in range(c0.y, c1.y + 1):
 		for cx in range(c0.x, c1.x + 1):
-			var key := [guild.id, Vector2i(cx, cy)]
-			if not _raw_guild_chunks.has(key):
-				var density_fn := func(wx: int, wy: int) -> float:
-					return _guild_density(guild, wx, wy)
-				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
-					return _species_shares(guild, wx, wy)
-				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
-				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn, ResourceManagerScript.get_guild_density_bound(guild))
-			for inst in _raw_guild_chunks[key]:
-				var pos: Vector2 = inst["position"]
-				if rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
-					result.append(inst)
-	return result
+			chunks.append(Vector2i(cx, cy))
+	return chunks
 
 
 ## A single ResourceDefinition placed on its own (Oak Placement).
