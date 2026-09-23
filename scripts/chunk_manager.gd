@@ -221,8 +221,7 @@ func set_view_mode(mode: ViewMode) -> void:
 	_view_mode = mode
 	var now_label := _is_label_view(_view_mode)
 
-	for chunk_coord in _chunks_row_major():
-		_regenerate_chunk_image(chunk_coord)
+	_rebuild_loaded_chunks()
 
 	if now_label:
 		# Also covers switching BASE_BIOME <-> SUBTYPE directly - labels
@@ -237,8 +236,6 @@ func set_view_mode(mode: ViewMode) -> void:
 			overlay.queue_free()
 		_loaded_overlays.clear()
 
-	_refresh_placements()
-
 
 func _process(_delta: float) -> void:
 	if _target == null:
@@ -247,9 +244,7 @@ func _process(_delta: float) -> void:
 	var lod_step := _current_lod_step()
 	if lod_step != _last_lod_step:
 		_last_lod_step = lod_step
-		for chunk_coord in _loaded_chunks.keys():
-			_regenerate_chunk_image(chunk_coord)
-		_refresh_placements()
+		_rebuild_loaded_chunks()
 
 	var center := _chunk_of(_target.global_position)
 	var load_radius := _current_load_radius()
@@ -669,16 +664,20 @@ func _placements_visible() -> bool:
 	return not _placement_layers().is_empty() and _current_lod_step() <= MAX_PLACEMENT_LOD_STEP
 
 
-## Drops every marker node and rebuilds them for all loaded chunks if the
-## current view/LOD shows placements - called on view or LOD change.
-func _refresh_placements() -> void:
+## On view or LOD change: re-bakes every loaded chunk's image and drops and
+## rebuilds its marker node if the current view/LOD shows placements - image
+## and markers chunk by chunk, row-major, so both read a chunk's tiles while
+## _tile_env()'s bounded window still holds them (baking every image first
+## evicted them before placement got there).
+func _rebuild_loaded_chunks() -> void:
 	for markers in _loaded_placements.values():
 		markers.queue_free()
 	_loaded_placements.clear()
-	if not _placements_visible():
-		return
+	var place := _placements_visible()
 	for chunk_coord in _chunks_row_major():
-		_generate_placement_chunk(chunk_coord)
+		_regenerate_chunk_image(chunk_coord)
+		if place:
+			_generate_placement_chunk(chunk_coord)
 
 
 ## Loaded chunks sorted by row, then column: neighbors are processed close

@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 17 step 3: image + placement per chunk in one row-major pass (keeps the env window warm for Tree/Oak); then profile and trim `ResourcePlacement._place` overhead - `test_placement_snapshot` unchanged
+- [ ] Phase 17 step 4: trim placement machinery (per-id density memo without Array keys; accept roll before jitter/priority hashes in `_place`) - `test_placement_snapshot` unchanged
 
 ## Next
 
