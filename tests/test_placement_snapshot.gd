@@ -5,7 +5,8 @@ extends SceneTree
 ## cell, position), Oak Placement, and bakes a few views' chunk images for a
 ## fixed seed and a fixed set of areas through the real chunk_manager.gd code
 ## paths, then compares a per-layer count + hash against
-## tests/placement_snapshot.txt.
+## tests/placement_snapshot.txt. Also checks the density bounds placement
+## relies on to skip candidates (ResourceManager.get_*density_bound()).
 ##
 ##   SNAPSHOT_WRITE=1   rewrite the golden file (only for an agreed change)
 ##   SNAPSHOT_DUMP=path write every instance line, for diffing a mismatch
@@ -61,6 +62,22 @@ func _init() -> void:
 				_append(lines, key, "%s|%d|%s" % [chunk, lod_step, img.get_data().hex_encode().md5_text()])
 	var t_images := Time.get_ticks_msec() - t0
 	print("INFO snapshot: placement %d ms, images %d ms" % [t_place, t_images])
+
+	# ResourcePlacement skips candidates whose roll is at or above the density
+	# bound, which is only exact if no tile's density ever exceeds it.
+	var bound_ok := true
+	var bound_tiles := 0
+	for area in AREAS:
+		for y in range(area.y - 24, area.y + 24, 3):
+			for x in range(area.x - 24, area.x + 24, 3):
+				var s: Dictionary = world._world_gen.sample(x, y)
+				var st = EnvironmentalState.from_sample(s)
+				var cl: Dictionary = BiomeClassifier.classify_full(s)
+				bound_tiles += 1
+				for guild in world.GUILD_STACK:
+					bound_ok = bound_ok and ResourceManager.get_guild_density(st, guild, SEED, x, y, cl) <= ResourceManager.get_guild_density_bound(guild)
+				bound_ok = bound_ok and ResourceManager.get_density(st, world.OAK_RESOURCE, SEED, x, y, cl) <= ResourceManager.get_density_bound(world.OAK_RESOURCE)
+	check(bound_ok, "density never exceeds its placement bound (%d tiles x %d guilds + oak)" % [bound_tiles, world.GUILD_STACK.size()])
 
 	var summary := PackedStringArray()
 	var dump := PackedStringArray()

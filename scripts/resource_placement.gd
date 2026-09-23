@@ -56,10 +56,14 @@ const _SALT_SPECIES := 5
 ## ResourceManager.get_density() for that tile; injected so this layer never
 ## depends on how density is computed (and can be tested with synthetic
 ## fields). Density is sampled at the tile containing each candidate.
+## `density_bound` (Phase 17) is a value density_fn never exceeds, e.g.
+## ResourceManager.get_density_bound(): a candidate whose acceptance roll is
+## at or above it is rejected without calling density_fn - the same result,
+## since roll < density would be false anyway. 1.0 = no bound known.
 static func place_in_rect(
-	definition: ResourceDefinition, world_seed: int, tile_rect: Rect2i, density_fn: Callable
+	definition: ResourceDefinition, world_seed: int, tile_rect: Rect2i, density_fn: Callable, density_bound: float = 1.0
 ) -> Array[Dictionary]:
-	return _place(definition.id, definition.minimum_spacing, world_seed, tile_rect, density_fn)
+	return _place(definition.id, definition.minimum_spacing, world_seed, tile_rect, density_fn, density_bound)
 
 
 ## Phase 8 amendment: places a whole ResourceGuild on ONE shared grid
@@ -69,13 +73,14 @@ static func place_in_rect(
 ## per guild.members entry, normally ResourceManager.get_species_shares().
 ## Instances are {"id": member id, "guild": guild id, "cell", "position"};
 ## (guild id, cell) is the stable key. An instance whose shares are all zero
-## is dropped (density_fn should already be zero there).
+## is dropped (density_fn should already be zero there). `density_bound` as
+## for place_in_rect() (ResourceManager.get_guild_density_bound()).
 static func place_guild_in_rect(
-	guild: ResourceGuild, world_seed: int, tile_rect: Rect2i, density_fn: Callable, shares_fn: Callable
+	guild: ResourceGuild, world_seed: int, tile_rect: Rect2i, density_fn: Callable, shares_fn: Callable, density_bound: float = 1.0
 ) -> Array[Dictionary]:
 	var guild_seed := _resource_seed(guild.id, world_seed)
 	var result: Array[Dictionary] = []
-	for inst in _place(guild.id, guild.minimum_spacing, world_seed, tile_rect, density_fn):
+	for inst in _place(guild.id, guild.minimum_spacing, world_seed, tile_rect, density_fn, density_bound):
 		var pos: Vector2 = inst["position"]
 		var shares: PackedFloat32Array = shares_fn.call(floori(pos.x), floori(pos.y))
 		var member := _pick(shares, _cell_unit(guild_seed, inst["cell"], _SALT_SPECIES))
@@ -179,7 +184,7 @@ static func _pick(shares: PackedFloat32Array, roll: float) -> int:
 
 
 static func _place(
-	id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_fn: Callable
+	id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_fn: Callable, density_bound: float = 1.0
 ) -> Array[Dictionary]:
 	var spacing := maxf(minimum_spacing, 0.5)
 	var resource_seed := _resource_seed(id, world_seed)
@@ -193,6 +198,8 @@ static func _place(
 	for cy in range(c0.y - 1, c1.y + 2):
 		for cx in range(c0.x - 1, c1.x + 2):
 			var candidate := _candidate(resource_seed, spacing, Vector2i(cx, cy))
+			if candidate["accept"] >= density_bound:
+				continue  # can't pass: density_fn never exceeds density_bound
 			var pos: Vector2 = candidate["position"]
 			var density: float = density_fn.call(floori(pos.x), floori(pos.y))
 			if candidate["accept"] < density:

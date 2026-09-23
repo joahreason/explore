@@ -33,37 +33,87 @@ extends Resource
 @export_range(0.0, 1.0) var base_density: float = 1.0
 
 @export_group("Suitability Curves")
-@export var temperature_curve: Curve
-@export var moisture_curve: Curve
-@export var fertility_curve: Curve
-@export var elevation_curve: Curve
-@export var slope_curve: Curve
-@export var drainage_curve: Curve
-@export var erosion_curve: Curve
+@export var temperature_curve: Curve:
+	set(value):
+		temperature_curve = value
+		curve_plan = null
+@export var moisture_curve: Curve:
+	set(value):
+		moisture_curve = value
+		curve_plan = null
+@export var fertility_curve: Curve:
+	set(value):
+		fertility_curve = value
+		curve_plan = null
+@export var elevation_curve: Curve:
+	set(value):
+		elevation_curve = value
+		curve_plan = null
+@export var slope_curve: Curve:
+	set(value):
+		slope_curve = value
+		curve_plan = null
+@export var drainage_curve: Curve:
+	set(value):
+		drainage_curve = value
+		curve_plan = null
+@export var erosion_curve: Curve:
+	set(value):
+		erosion_curve = value
+		curve_plan = null
 ## Phase 10 water-edge inputs: WorldGen's `river` (0 away from a river, rising
 ## toward its line; >= river_threshold is the river itself), `shore_proximity`
 ## and `deposition` (sediment on concave ground - floodplains). Listing
 ## river_curve in required_curves confines a resource to river banks.
-@export var river_curve: Curve
-@export var shore_curve: Curve
-@export var deposition_curve: Curve
+@export var river_curve: Curve:
+	set(value):
+		river_curve = value
+		curve_plan = null
+@export var shore_curve: Curve:
+	set(value):
+		shore_curve = value
+		curve_plan = null
+@export var deposition_curve: Curve:
+	set(value):
+		deposition_curve = value
+		curve_plan = null
 ## WorldGen's `shore_salinity`: 0 on a lake shore (or no shore) .. 1 on a sea
 ## shore. Salt, shells, mangroves and salt marsh require it.
-@export var salinity_curve: Curve
+@export var salinity_curve: Curve:
+	set(value):
+		salinity_curve = value
+		curve_plan = null
 ## Phase 11: WorldGen's `succession` - 0 on a fresh disturbance scar .. 1 on
 ## mature/undisturbed ground (a scar's age where it hit fully, 1 outside any
 ## scar). Places a resource along bare -> grass/herbs -> shrubs -> young
 ## trees -> mature forest; required = only at those stages.
-@export var succession_curve: Curve
+@export var succession_curve: Curve:
+	set(value):
+		succession_curve = value
+		curve_plan = null
 ## Phase 12: WorldGen's `rock_exposure` (0 buried .. 1 bare bedrock) - the
 ## same field that decides whether a deposit shows (Phase 9); exposed stone
 ## requires it.
-@export var rock_exposure_curve: Curve
+@export var rock_exposure_curve: Curve:
+	set(value):
+		rock_exposure_curve = value
+		curve_plan = null
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
 ## one means absent. Unlisted curves are preferences that shape abundance.
-@export var required_curves: PackedStringArray = []
+@export var required_curves: PackedStringArray = []:
+	set(value):
+		required_curves = value
+		curve_plan = null
+
+## Phase 17: ResourceManager.get_suitability()'s precomputed list of this
+## definition's non-null curves ([curve, EnvironmentalState field, required]),
+## built on first use; null = not built. The setters above reset it whenever
+## a curve or required_curves is reassigned - editing a Curve's points in
+## place needs nothing (the Curve itself is sampled), but mutate
+## required_curves by assigning a new array, not in place.
+var curve_plan = null
 
 ## Keyed by base_biome/subtype String, WorldGen.Geology int, or WorldGen's
 ## water_body String ("none"/"ocean"/"sea"/"lake"/"river"/"swamp") - a

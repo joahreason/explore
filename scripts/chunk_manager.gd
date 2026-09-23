@@ -776,7 +776,7 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 				var shares_fn := func(wx: int, wy: int) -> PackedFloat32Array:
 					return _species_shares(guild, wx, wy)
 				var chunk_rect := Rect2i(Vector2i(cx, cy) * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
-				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn)
+				_raw_guild_chunks[key] = ResourcePlacementScript.place_guild_in_rect(guild, world_seed, chunk_rect, density_fn, shares_fn, ResourceManagerScript.get_guild_density_bound(guild))
 			for inst in _raw_guild_chunks[key]:
 				var pos: Vector2 = inst["position"]
 				if rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
@@ -788,7 +788,7 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> Array:
 	var density_fn := func(wx: int, wy: int) -> float:
 		return _resource_density(definition, wx, wy)
-	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn)
+	return ResourcePlacementScript.place_in_rect(definition, world_seed, Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), density_fn, ResourceManagerScript.get_density_bound(definition))
 
 
 ## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
