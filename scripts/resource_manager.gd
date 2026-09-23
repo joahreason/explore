@@ -73,28 +73,35 @@ static var _vein_noise_cache: Dictionary = {}
 static func get_suitability(
 	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
 ) -> float:
+	# Categorical weight factors first (appended after the curves below, same
+	# order as always): a zero one - a rock off its geology, a land plant on
+	# water - zeroes the geometric mean and so the result, and skipping the
+	# curves then returns exactly what the full evaluation would (Phase 17).
+	var weight_factors: Array[float] = []
+	if not definition.geology_weights.is_empty():
+		var geology_factor: float = definition.geology_weights.get(state.geology, 1.0)
+		weight_factors.append(clampf(geology_factor, 0.0, 1.0))
+	if not definition.water_body_weights.is_empty():
+		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
+		weight_factors.append(clampf(water_body_factor, 0.0, 1.0))
+	if not definition.disturbance_type_weights.is_empty():
+		var type_weight: float = definition.disturbance_type_weights.get(state.disturbance_type, 1.0)
+		weight_factors.append(clampf(lerpf(1.0, type_weight, 1.0 - state.succession), 0.0, 1.0))
+	for factor in weight_factors:
+		if factor <= 0.0:
+			return 0.0
+
 	var core_factors: Array[float] = []
 	var requirement := 1.0
-	for curve_name in CURVE_STATE_FIELDS:
-		var curve: Curve = definition.get(curve_name)
-		if curve == null:
-			continue
-		var factor := clampf(curve.sample(state.get(CURVE_STATE_FIELDS[curve_name])), 0.0, 1.0)
-		if definition.required_curves.has(curve_name):
+	for entry in _curve_plan(definition):
+		var factor := clampf((entry[0] as Curve).sample(state.get(entry[1])), 0.0, 1.0)
+		if entry[2]:
 			requirement = minf(requirement, factor)
 			if requirement <= 0.0:
 				return 0.0
 		else:
 			core_factors.append(factor)
-	if not definition.geology_weights.is_empty():
-		var geology_factor: float = definition.geology_weights.get(state.geology, 1.0)
-		core_factors.append(clampf(geology_factor, 0.0, 1.0))
-	if not definition.water_body_weights.is_empty():
-		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
-		core_factors.append(clampf(water_body_factor, 0.0, 1.0))
-	if not definition.disturbance_type_weights.is_empty():
-		var type_weight: float = definition.disturbance_type_weights.get(state.disturbance_type, 1.0)
-		core_factors.append(clampf(lerpf(1.0, type_weight, 1.0 - state.succession), 0.0, 1.0))
+	core_factors.append_array(weight_factors)
 
 	var suitability := requirement * _geometric_mean(core_factors)
 
@@ -117,6 +124,22 @@ static func get_suitability(
 	suitability += definition.disturbance_affinity * state.disturbance
 
 	return clampf(suitability, 0.0, 1.0)
+
+
+## [curve, EnvironmentalState field, required] for each non-null curve of
+## the definition, in CURVE_STATE_FIELDS order - cached on the definition
+## (ResourceDefinition.curve_plan, reset when a curve is reassigned), which
+## saves looking up all 13 curve properties by name on every call.
+static func _curve_plan(definition: ResourceDefinition) -> Array:
+	if definition.curve_plan != null:
+		return definition.curve_plan
+	var plan := []
+	for curve_name in CURVE_STATE_FIELDS:
+		var curve: Curve = definition.get(curve_name)
+		if curve != null:
+			plan.append([curve, StringName(CURVE_STATE_FIELDS[curve_name]), definition.required_curves.has(curve_name)])
+	definition.curve_plan = plan
+	return plan
 
 
 ## Membership-weighted biome modifier (see BIOME_MEMBERSHIP_SHARPNESS).
@@ -220,6 +243,15 @@ static func get_density(
 	return clampf(suitability * base_density * patch, 0.0, 1.0)
 
 
+## Phase 17: an upper bound on get_density() for this definition - its
+## clamped base_density, since suitability and patch are both in 0..1 and a
+## float product never rounds above a factor it is multiplied down from.
+## Lets placement skip evaluating candidates whose acceptance roll is at or
+## above it (ResourcePlacement's density_bound).
+static func get_density_bound(definition: ResourceDefinition) -> float:
+	return clampf(definition.base_density, 0.0, 1.0)
+
+
 ## Phase 8 amendment (guilds, see ResourceGuild): each member's
 ## get_suitability() at this tile, in guild.members order.
 static func get_member_suitabilities(
@@ -293,6 +325,15 @@ static func get_guild_density(
 	if guild.density_curve != null:
 		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
 	return density
+
+
+## Phase 17: an upper bound on get_guild_density() - the clamped
+## base_density (cover, patch and best score are all in 0..1), or 1.0 when a
+## density_curve can reshape the result upward. See get_density_bound().
+static func get_guild_density_bound(guild: ResourceGuild) -> float:
+	if guild.density_curve != null:
+		return 1.0
+	return clampf(guild.base_density, 0.0, 1.0)
 
 
 ## Phase 9 of docs/resource-generation-plan.md: how much of an ore deposit

@@ -306,6 +306,26 @@ func _init() -> void:
 	check(willows > 20 and willow_off_bank == 0 and bank_willows > bank_trees / 3,
 		"willows only by rivers: %d willows, %d off the banks; %d of %d bank trees are willows" % [willows, willow_off_bank, bank_willows, bank_trees])
 
+	# 7. Phase 17: get_suitability() caches each definition's curve list;
+	# reassigning a curve or required_curves after first use must show.
+	var flat_curve := func(y: float) -> Curve:
+		var c := Curve.new()
+		c.add_point(Vector2(0.0, y))
+		c.add_point(Vector2(1.0, y))
+		return c
+	var tuned := ResourceDefinition.new()
+	tuned.id = "tuned"
+	tuned.temperature_curve = flat_curve.call(1.0)
+	tuned.moisture_curve = flat_curve.call(0.25)
+	var blank := EnvironmentalState.new()
+	var before := ResourceManager.get_suitability(blank, tuned)  # mean(1, 0.25) = 0.5
+	tuned.required_curves = PackedStringArray(["moisture_curve"])
+	var required := ResourceManager.get_suitability(blank, tuned)  # 0.25 x mean(1)
+	tuned.moisture_curve = flat_curve.call(1.0)
+	var reassigned := ResourceManager.get_suitability(blank, tuned)
+	check(is_equal_approx(before, 0.5) and is_equal_approx(required, 0.25) and is_equal_approx(reassigned, 1.0),
+		"suitability follows curve / required_curves reassignment after first use (%.3f, %.3f, %.3f)" % [before, required, reassigned])
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
 
