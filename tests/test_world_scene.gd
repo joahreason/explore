@@ -100,8 +100,8 @@ func _init() -> void:
 		check(ok and (n > 0 or guild == world.SHORE_FEATURES), "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
 	# Resources view: Material base image; the same trees as Tree Placement,
-	# rocks, ore outcrops and every plant as tinted sheet sprites; members
-	# without a sprite fall back to their layer's marker shape.
+	# rocks, ore outcrops, plants and shore features, all as tinted sheet
+	# sprites.
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	for m in world._loaded_placements.values():
@@ -129,26 +129,12 @@ func _init() -> void:
 			if m._shapes[i] == Shape.SPRITE:
 				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
 	# Clay has no sprite: its outcrops stay hexagons, everything else is a sprite.
-	# Members without a sprite: clay and salt outcrops (hexagons), shells and
-	# mud (circles). Everything else is a sprite.
-	var hex_expected := 0
-	for c in world._loaded_chunks:
-		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS]:
-			if inst["id"] in ["clay", "salt"]:
-				hex_expected += 1
-	var circle_expected := 0
-	for c in world._loaded_chunks:
-		for inst in world._place_stack_chunk(c * world.CHUNK_SIZE, 5)[world.SHORE_FEATURES]:
-			if inst["id"] in ["shells", "mud"]:
-				circle_expected += 1
+	# Every placed resource has a sprite: no fallback shapes left.
 	var all_placed: int = tree_count + guild_counts["surface_rocks"] + outcrops_placed + guild_counts["shrubs"] + guild_counts["wetland_plants"] + guild_counts["shore_features"]
 	check(sprites_ok and tree_count > 0 and guild_counts["shrubs"] > 0 and guild_counts["wetland_plants"] > 0
-		and shape_counts.get(Shape.SPRITE, 0) == all_placed - hex_expected - circle_expected
-		and shape_counts.get(Shape.HEXAGON, 0) == hex_expected
-		and shape_counts.get(Shape.CIRCLE, 0) == circle_expected
-		and shape_counts.get(Shape.DIAMOND, 0) == 0,
-		"resources view: %d sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants, %d shore features), %d hexagons (clay/salt), %d circles (shells/mud)" % [
-			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, guild_counts["shrubs"], guild_counts["wetland_plants"], guild_counts["shore_features"], shape_counts.get(Shape.HEXAGON, 0), shape_counts.get(Shape.CIRCLE, 0)])
+		and shape_counts.get(Shape.SPRITE, 0) == all_placed and shape_counts.size() == 1,
+		"resources view: all %d instances are sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants, %d shore features)" % [
+			shape_counts.get(Shape.SPRITE, 0), tree_count, guild_counts["surface_rocks"], outcrops_placed, guild_counts["shrubs"], guild_counts["wetland_plants"], guild_counts["shore_features"]])
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:

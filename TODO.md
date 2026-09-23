@@ -5,8 +5,6 @@ Keep this list actionable and current.
 ## Current Task
 
 - [ ] Phase 11: disturbance and ecological succession
-- [ ] Sprites for clay/salt outcrops (hexagons) and shells/mud (circles)
-- [ ] Deploy Phase 10 steps 3-4: PR from the phase-10 branch
 
 ## Next
 
