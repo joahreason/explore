@@ -76,7 +76,8 @@ func _is_over_ui(screen_pos: Vector2) -> bool:
 	for child in _ui_root.get_children():
 		if child is OptionButton and child.get_popup().visible:
 			return true
-		if child is Control and child.visible and child.get_global_rect().has_point(screen_pos):
+		# Mouse-ignoring Controls (the position readout) don't block the map.
+		if child is Control and child.visible and child.mouse_filter != Control.MOUSE_FILTER_IGNORE and child.get_global_rect().has_point(screen_pos):
 			return true
 	return false
 

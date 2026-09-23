@@ -9,7 +9,7 @@ extends OptionButton
 
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const PLACEHOLDER := "Go to biome..."
-const SPACING := 12
+const SPACING := 8
 
 @onready var _world := get_node("../..")
 

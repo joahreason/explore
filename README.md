@@ -17,6 +17,7 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 - **Randomize**: generates a fresh random seed and switches to it immediately (reload on web, in-place regenerate on desktop)
 - **Reload** (web only): forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
 - **View mode dropdown**: switches how chunks are rendered (see below)
+- **Position readout** (bottom-left): the tile at the screen center, its chunk, and the zoom - always shown
 - **Go to biome**: pick a biome to move the camera to the nearest place of it; if you are already in that biome, it takes you to the next patch of it instead (repeat to keep hopping onward). Searches up to ~6000 tiles out; says "No <biome> nearby" if none is found
 
 A plain visit with no `?seed=` in the URL gets a new random seed each time; passing `?seed=<anything>` pins it to a specific world (numeric seeds are used directly, other text is hashed to one deterministically).
