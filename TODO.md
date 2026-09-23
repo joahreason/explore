@@ -4,11 +4,11 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 12: merge the first pass (branch `claude/phase-11-start-5kl6xx`); check scars and new species by eye in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
+- [ ] Phase 17 performance (moved up, next after Phase 12): same-seed instance snapshot first, then profile the Resources view switch (~11.2s cold headless, 81 chunks, 9 guilds) and chunk placement; fix the largest costs with output unchanged (prep in PROJECT_STATE.md "Next")
 
 ## Next
 
-- [ ] Phase 17 performance (moved up, next after Phase 12): profile the Resources view switch (~11.2s cold headless, 81 chunks, 9 guilds) and chunk placement; fix the largest costs with output unchanged
+- [ ] By-eye check of Phase 11/12 scars and species in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
 - [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 
 - [ ] Look at the deployed web build (sprites, coasts, Farming Potential, Deposits) - so far only headless renders
