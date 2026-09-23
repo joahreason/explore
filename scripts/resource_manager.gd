@@ -11,8 +11,9 @@ extends RefCounted
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
 ## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
-## plus river/shore/deposition since Phase 10) not listed in required_curves,
-## plus geology/water_body weights, are combined via GEOMETRIC MEAN: still
+## plus river/shore/deposition/salinity since Phase 10) not listed in
+## required_curves, plus geology/water_body weights, are combined via
+## GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
 ## the result - a true requirement), without each additional so-so factor
 ## multiplicatively compounding the penalty the way straight multiplication
@@ -59,6 +60,7 @@ const CURVE_STATE_FIELDS := {
 	"river_curve": "river",
 	"shore_curve": "shore_proximity",
 	"deposition_curve": "deposition",
+	"salinity_curve": "shore_salinity",
 }
 
 static var _patch_noise_cache: Dictionary = {}

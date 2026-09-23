@@ -6,6 +6,7 @@
 [ext_resource type="Resource" path="res://resources/copper.tres" id="4_copper"]
 [ext_resource type="Resource" path="res://resources/coal.tres" id="5_coal"]
 [ext_resource type="Resource" path="res://resources/clay.tres" id="6_clay"]
+[ext_resource type="Resource" path="res://resources/salt.tres" id="7_salt"]
 
 [sub_resource type="Curve" id="Curve_density"]
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.02, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.5), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
@@ -14,7 +15,7 @@ point_count = 5
 [resource]
 script = ExtResource("1_guild")
 id = "ore_outcrops"
-members = Array[ExtResource("2_def")]([ExtResource("3_iron"), ExtResource("4_copper"), ExtResource("5_coal"), ExtResource("6_clay")])
+members = Array[ExtResource("2_def")]([ExtResource("3_iron"), ExtResource("4_copper"), ExtResource("5_coal"), ExtResource("6_clay"), ExtResource("7_salt")])
 cover_field = ""
 density_curve = SubResource("Curve_density")
 species_sharpness = 8.0

@@ -4,6 +4,7 @@
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="2_def"]
 [ext_resource type="Resource" path="res://resources/reed.tres" id="3_reed"]
 [ext_resource type="Resource" path="res://resources/cattail.tres" id="4_cattail"]
+[ext_resource type="Resource" path="res://resources/saltmarsh_grass.tres" id="5_saltmarsh"]
 
 [sub_resource type="Curve" id="Curve_cover"]
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.4, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0.5), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
@@ -12,7 +13,7 @@ point_count = 5
 [resource]
 script = ExtResource("1_guild")
 id = "wetland_plants"
-members = Array[ExtResource("2_def")]([ExtResource("3_reed"), ExtResource("4_cattail")])
+members = Array[ExtResource("2_def")]([ExtResource("3_reed"), ExtResource("4_cattail"), ExtResource("5_saltmarsh")])
 cover_field = "moisture"
 cover_curve = SubResource("Curve_cover")
 base_density = 0.7

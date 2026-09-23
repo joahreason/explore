@@ -352,17 +352,29 @@ func sample(wx: int, wy: int) -> Dictionary:
 	# elevation band with no water anywhere near it, so also require an
 	# actual sub-sea-level tile nearby before counting this as "shore."
 	var shore_proximity := clampf(1.0 - smoothstep(sea_level, sea_level + shore_band, e), 0.0, 1.0)
+	# Phase 10 (shores): which kind of water that shore faces - the share of
+	# the probes that found water whose body is the sea/ocean rather than an
+	# enclosed lake (WaterTopology, same test as water_body below). 0 away
+	# from any shore.
+	var shore_salinity := 0.0
 	if shore_proximity > 0.0:
 		var search_radius := beach_search_radius * (world_scale / 8.0)
-		var near_water := false
+		var wet_probes := 0
+		var salty_probes := 0
 		var directions: Array[Vector2] = [Vector2(1.0, 0.0), Vector2(-1.0, 0.0), Vector2(0.0, 1.0), Vector2(0.0, -1.0)]
 		for dir in directions:
 			var probe: Vector2 = Vector2(fx, fy) + dir * search_radius
 			if elevation(probe.x, probe.y) < sea_level:
-				near_water = true
-				break
-		if not near_water:
+				wet_probes += 1
+				var probe_topo: Dictionary = _water_topology.classify(
+					floori(probe.x), floori(probe.y), elevation, sea_level, flood_fill_budget, strait_probe_distance
+				)
+				if not probe_topo["enclosed"] or probe_topo["connected_to_ocean"]:
+					salty_probes += 1
+		if wet_probes == 0:
 			shore_proximity = 0.0
+		else:
+			shore_salinity = float(salty_probes) / wet_probes
 	var moisture01 := clampf(rainfall01 + orographic + shore_proximity * 0.4 - exposure01 * arid_wind_factor, 0.0, 1.0)
 
 	# --- rivers (approximated, not flow-simulated - see class doc) ---
@@ -591,6 +603,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"water_connected_to_ocean": water_connected_to_ocean,
 		"river": river01,
 		"shore_proximity": shore_proximity,
+		"shore_salinity": shore_salinity,
 		"wind_strength": wind_strength01,
 		"temp_variation": temp_variation01,
 		"precip_seasonality": precip_seasonality01,

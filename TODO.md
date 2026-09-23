@@ -4,9 +4,9 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 10: step 3 river mouths, step 4 shores (salt, shells, beach plants, mangroves, salt marsh) - steps 1 rivers, 2 floodplains done
-- [ ] Sprite for clay outcrops (hexagon fallback now)
-- [ ] Deploy: fast-forward `main` to the phase-10 branch (blocked by session permissions; user to push or allow)
+- [ ] Phase 11: disturbance and ecological succession
+- [ ] Sprites for clay/salt outcrops (hexagons) and shells/mud (circles)
+- [ ] Deploy Phase 10 steps 3-4: PR from the phase-10 branch
 
 ## Next
 
@@ -18,7 +18,7 @@ Keep this list actionable and current.
 
 ## Later
 
-- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~5.7s, Resources ~7.0s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
+- [ ] Placement view switch hitch (Oak ~2s, Tree Placement ~5.7s, Resources ~8.6s cold for 81 chunks headless) - revisit if it bites on web, otherwise Phase 17
 
 ## Bugs
 
