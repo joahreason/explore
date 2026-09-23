@@ -12,7 +12,7 @@ extends RefCounted
 ## makes a single weak factor crater every resource's score. Curve-based
 ## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
 ## plus river/shore/deposition/salinity since Phase 10, succession since
-## Phase 11) not listed in required_curves, plus geology/water_body weights
+## Phase 11, rock_exposure since Phase 12) not listed in required_curves, plus geology/water_body weights
 ## and the succession-gated disturbance_type weight, are combined via
 ## GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
@@ -63,6 +63,7 @@ const CURVE_STATE_FIELDS := {
 	"deposition_curve": "deposition",
 	"salinity_curve": "shore_salinity",
 	"succession_curve": "succession",
+	"rock_exposure_curve": "rock_exposure",
 }
 
 static var _patch_noise_cache: Dictionary = {}

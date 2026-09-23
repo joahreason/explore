@@ -100,9 +100,9 @@ func _init() -> void:
 		summary.append("%s %d @ %.2f" % [id, stats[id][0], mean.call(id)])
 	print("INFO species: count @ mean succession: ", ", ".join(summary))
 	var scar_only := true
-	for id in ["dead_tree", "fallen_log", "mushrooms", "pioneer_grass", "fireweed", "young_tree"]:
+	for id in ["dead_tree", "fallen_log", "pioneer_grass", "fireweed", "young_tree"]:
 		scar_only = scar_only and stats.has(id) and stats[id][0] >= 10 and stats[id][2] == 0
-	check(scar_only, "deadwood, pioneers and young trees: >= 10 each, none on undisturbed land")
+	check(scar_only, "dead trees, logs, pioneers and young trees: >= 10 each, none on undisturbed land (mushrooms also grow on the forest floor since Phase 12)")
 	var pioneer: float = (mean.call("pioneer_grass") + mean.call("fireweed")) * 0.5
 	check(mean.call("dead_tree") < pioneer and pioneer < mean.call("berry_bush") and pioneer < mean.call("young_tree")
 		and mean.call("young_tree") < mean.call("oak") and mean.call("young_tree") < mean.call("pine"),
