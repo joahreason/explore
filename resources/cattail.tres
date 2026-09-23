@@ -64,3 +64,6 @@ water_body_weights = {
 }
 placement_type = "cluster"
 debug_color = Color(0.5, 0.3, 0.12, 1)
+sprite_tile = Vector2i(6, 9)
+sprite_color = Color(0.62, 0.48, 0.26, 1)
+sprite_size = 1.0

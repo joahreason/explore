@@ -516,7 +516,8 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 
 
 ## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
-## instances of, as [source, marker shape] pairs in draw order (empty = no
+## instances of, as [source, marker shape(, shape for members without a
+## sprite when drawing SPRITE)] in draw order (empty = no
 ## placement markers in this view). Placement views keep the matching
 ## density heatmap as their base image, so each marker can be read against
 ## the field it was drawn from; the Resources view draws every guild over
@@ -541,8 +542,8 @@ func _placement_layers() -> Array:
 			return [
 				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
-				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.DIAMOND],
-				[SHRUBS, circle],
+				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
+				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],
 				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
 			]
 		_:
@@ -580,7 +581,8 @@ func _generate_placement_chunk(chunk_coord: Vector2i) -> void:
 		var source: Resource = layer[0]
 		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
-		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source))
+		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
+		markers.add_instances(instances, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
@@ -667,11 +669,11 @@ func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> 
 
 
 ## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
-## debug_color, or sprite_color when drawn as sprites.
+## debug_color, or sprite_color for members drawn as sprites.
 func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
 	var colors := {}
 	for member in (source.members if source is ResourceGuild else [source]):
-		colors[member.id] = member.sprite_color if as_sprites else member.debug_color
+		colors[member.id] = member.sprite_color if as_sprites and member.sprite_tile.x >= 0 else member.debug_color
 	return colors
 
 

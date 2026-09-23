@@ -40,9 +40,9 @@ static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
 ## (ResourceDefinition.debug_color). shape: TRIANGLE reads as a tree,
 ## SQUARE as a rock, DIAMOND as a wetland plant, HEXAGON as an ore outcrop,
 ## CIRCLE is the plain marker. SPRITE draws sprites[id] = {"tile": sheet
-## tile (Vector2i), "size": width in tiles}; an id without an entry falls
-## back to TRIANGLE.
-func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE, sprites: Dictionary = {}) -> void:
+## tile (Vector2i), "size": width in tiles}; an id without an entry is
+## drawn as `fallback` instead.
+func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE, sprites: Dictionary = {}, fallback: Shape = Shape.TRIANGLE) -> void:
 	# Kept under half the minimum spacing (+ outline), so markers of one
 	# layer never overlap.
 	var radius := maxf(footprint_tiles * tile_size * 0.35, 2.0)
@@ -55,7 +55,7 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 				texture = sprite_texture(sprites[inst["id"]]["tile"])
 				sprite_px = float(sprites[inst["id"]]["size"]) * tile_size
 			else:
-				inst_shape = Shape.TRIANGLE
+				inst_shape = fallback
 		_positions.append(((inst["position"] as Vector2) - Vector2(origin_tile)) * tile_size)
 		_fills.append(colors.get(inst["id"], DEFAULT_FILL))
 		_radii.append(radius)
