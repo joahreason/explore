@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 9 — Geological Resources. Step 1 (deposit fields: "exists" vs. "exposed", iron/copper/coal, Deposits + Rock Exposure views) is done on `claude/phase-9-continuation-76teqg`, not yet on `main`. Step 2 (placed ore outcrops where deposits are exposed) is next. Phase 8 is done except step 6, sprites instead of debug markers, which the user deferred in favor of starting Phase 9.
+Phase 9 — Geological Resources. Step 1 (deposit fields: "exists" vs. "exposed", iron/copper/coal, Deposits + Rock Exposure views) is done and on `main` (deployed). Step 2 (placed ore outcrops where deposits are exposed) is next. Phase 8 is done except step 6, sprites instead of debug markers, which the user deferred in favor of starting Phase 9.
 
 ## Completed
 
@@ -65,7 +65,7 @@ Phase 9 — Geological Resources. Step 1 (deposit fields: "exists" vs. "exposed"
 
 ## In Progress
 
-- (none - Phase 9 step 1 is committed on `claude/phase-9-continuation-76teqg`; Phase 8 step 6, sprites, is deferred, not in progress.)
+- (none - Phase 9 step 1 is on `main`; step 2 not started. Phase 8 step 6, sprites, is deferred, not in progress.)
 
 ## Next
 
@@ -143,7 +143,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- Phase 9 step 1 (`1342d62`: deposit fields, iron/copper/coal, Deposits + Rock Exposure views; see Completed) on branch `claude/phase-9-continuation-76teqg` (cloud session), pushed there only - not fast-forwarded into `main`, so not deployed. `main` was identical to this branch's base (`50a451f`), so it can be fast-forwarded when the user OKs a deploy.
+- Phase 9 step 1 (`1342d62`: deposit fields, iron/copper/coal, Deposits + Rock Exposure views; see Completed) plus handoff `d456f2a` were fast-forwarded into `main` and pushed with the user's go-ahead (2026-09-23), which started Web Build run #33 (in progress at handoff; check https://github.com/joahreason/explore/actions). Branch `claude/phase-9-continuation-76teqg` is identical to `main`. Local clones (e.g. the Windows machine) need `git fetch` / `git pull` on `main`.
 - Phases 0-7 plus Phase 8 so far (canopy-tree guild: oak/pine/palm, Tree Cover / Tree Placement / Vegetation views) and the world-gen balance pass (temperature contrast/offset, heat-x-dryness vegetation, even land-biome shares, Wetland = waterlogged, cold-only Alpine Snow) are on `main`, fast-forwarded from `claude/phase-8-continuation-xk9cwo` (cloud session) and deployed by the push. `main` is the integration branch - branch new work from `main`.
 - World-gen changes shifted every biome view; land-only biome shares (4 seeds, 60k-tile sample) are now Forest 21.5, Grassland 18.4, Plains 11.4, Tundra 10.6, Desert 9.2, Rainforest 8.0, Wetland 5.8, Savanna 5.4, Badlands 4.9, Alpine Snow 4.9 %. None of this has been looked at in the running game/web build yet - only headless renders.
 - Phase 8 step 4 (`0fa7ec7`, surface-rock + shrub guilds) and step 5 (`38c65fb`, cross-guild footprint stack), plus handoff commit `2c35dba`, were fast-forwarded into `main` and pushed with the user's go-ahead (this deploys the web build). Branch `phase8-rocks-berries` is now identical to `main` and can be deleted. Phase 8 step 6 (sprites) is deferred.
@@ -152,8 +152,8 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Fast-forward `main` to `claude/phase-9-continuation-76teqg` once the user OKs it (deploys the web build), then look at the Deposits and Rock Exposure views in the running game.
-- Then Phase 9 step 2 (exposed ore outcrops as placed instances; see Next). Run `tests/run_tests.sh` before every commit (on Windows set `GODOT`, see below).
+- Branch new work from `main`. Confirm Web Build run #33 succeeded, then (after ~10 min of Pages cache) look at the Deposits and Rock Exposure views in the web build - they've only been checked in headless renders.
+- Next: Phase 9 step 2 (exposed ore outcrops as placed instances; see Next). That finishes Phase 9; after it comes Phase 10 (rivers, shores, special habitats - read `docs/resource-generation-plan.md` Phase 10 first). Run `tests/run_tests.sh` before every commit (on Windows set `GODOT`, see below).
 - Still owed: a by-eye look at the deployed Resources view (formerly Vegetation) (and its view-switch hitch, ~4.9s headless when cold) in the web build. It was tried this session, but the browser kept getting the previous build: GitHub Pages serves with a ~10 min cache, so check some minutes after the deploy finishes, not right after.
 - Biome-share numbers above came from ad hoc stride-sampling scripts (not committed). `tests/resource_by_biome.gd` now covers 4 spread-out 300x300 regions per seed, but that is still only 16 regions in total.
 
