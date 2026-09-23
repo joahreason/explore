@@ -47,6 +47,9 @@ extends Resource
 @export var river_curve: Curve
 @export var shore_curve: Curve
 @export var deposition_curve: Curve
+## WorldGen's `shore_salinity`: 0 on a lake shore (or no shore) .. 1 on a sea
+## shore. Salt, shells, mangroves and salt marsh require it.
+@export var salinity_curve: Curve
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -134,6 +137,7 @@ const CURVE_FIELD_RANGES := {
 	"river_curve": Vector2(0.0, 1.0),
 	"shore_curve": Vector2(0.0, 1.0),
 	"deposition_curve": Vector2(0.0, 1.0),
+	"salinity_curve": Vector2(0.0, 1.0),
 }
 
 

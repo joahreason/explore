@@ -38,6 +38,7 @@ var water_area: int
 var water_compactness: float
 var water_connected_to_ocean: bool
 var shore_proximity: float
+var shore_salinity: float  # Phase 10: 0 lake shore .. 1 sea shore
 
 var wind_strength: float
 var exposure: float
@@ -90,6 +91,7 @@ static func from_sample(s: Dictionary):
 	state.water_compactness = s["water_compactness"]
 	state.water_connected_to_ocean = s["water_connected_to_ocean"]
 	state.shore_proximity = s["shore_proximity"]
+	state.shore_salinity = s["shore_salinity"]
 
 	state.wind_strength = s["wind_strength"]
 	state.exposure = s["exposure"]

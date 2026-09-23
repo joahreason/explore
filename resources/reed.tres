@@ -17,7 +17,7 @@ _data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.3, 0.4), 0.0, 0.0, 0, 0, Vec
 point_count = 4
 
 [sub_resource type="Curve" id="Curve_river"]
-_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.05, 0), 0.0, 0.0, 0, 0, Vector2(0.15, 0.6), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.03, 0), 0.0, 0.0, 0, 0, Vector2(0.12, 0.6), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 5
 
 [resource]
@@ -37,6 +37,7 @@ water_body_weights = {
 "sea": 0.0,
 "swamp": 0.6
 }
+shore_affinity = 0.3
 placement_type = "cluster"
 debug_color = Color(0.8, 0.72, 0.38, 1)
 sprite_tile = Vector2i(3, 9)
