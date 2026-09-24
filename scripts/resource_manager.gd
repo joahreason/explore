@@ -43,6 +43,15 @@ extends RefCounted
 ## clamping) gives real empty/full patches; tuned visually in Phase 5.
 const PATCH_CONTRAST := 1.8
 
+## Phase 14: the patch value exceeded on a share of all tiles
+## (PATCH_AREA_SHARES[i] -> PATCH_AREA_THRESHOLDS[i], linear between) -
+## measured quantiles of the stretched patch noise (seed 4242, canopy
+## scale; FBM simplex keeps that shape at any scale). The ends reach past
+## the clamped 0..1 range so a share of 0 admits no tile and 1 every tile.
+## See get_stand_membership().
+const PATCH_AREA_SHARES: Array[float] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+const PATCH_AREA_THRESHOLDS: Array[float] = [1.1, 0.903, 0.826, 0.723, 0.640, 0.567, 0.5, 0.432, 0.359, 0.277, 0.174, 0.098, -0.1]
+
 ## Biome membership = score^sharpness, normalized. Raw classifier scores are
 ## soft (Plains keeps a constant 0.2 floor on every land tile), so a plain
 ## linear share would blur every biome by its neighbors; the exponent keeps
@@ -202,6 +211,31 @@ static func get_guild_patch_modifier(guild: ResourceGuild, world_seed: int, wx: 
 	return _patch_value(guild.id, guild.cluster_scale, guild.cluster_strength, world_seed, wx, wy, guild.cluster_curve)
 
 
+## Phase 14 clustering: for a guild with cover_sets_area, whether this tile
+## lies in a stand (1), a gap (0) or on a stand's soft edge. Cover decides
+## how much of the ground the stands occupy, not how thin they are: the
+## tile is in a stand where the guild's raw patch noise is above the value
+## that a `cover` share of all tiles exceeds, so sparse country gets a few
+## dense clumps with clear ground between instead of a thin even scatter,
+## and dense country gets stands broken by clearings. get_guild_density()
+## passes cover x the best member's score, so marginal ground also means
+## fewer stands rather than thinner ones. That value comes from the patch
+## noise's measured quantiles (PATCH_AREA_THRESHOLDS: 20% of tiles are above
+## ~0.72, 80% above ~0.28); guild.stand_edge is the half-width of the fade
+## in patch units.
+## cluster_strength and cluster_curve don't apply in this mode.
+static func get_stand_membership(guild: ResourceGuild, cover: float, world_seed: int, wx: int, wy: int) -> float:
+	var patch := _patch_value(guild.id, guild.cluster_scale, 1.0, world_seed, wx, wy)
+	var share := clampf(cover, 0.0, 1.0)
+	var i := 1
+	while i < PATCH_AREA_SHARES.size() - 1 and share > PATCH_AREA_SHARES[i]:
+		i += 1
+	var t := (share - PATCH_AREA_SHARES[i - 1]) / (PATCH_AREA_SHARES[i] - PATCH_AREA_SHARES[i - 1])
+	var threshold := lerpf(PATCH_AREA_THRESHOLDS[i - 1], PATCH_AREA_THRESHOLDS[i], t)
+	var edge := maxf(guild.stand_edge, 0.001)
+	return smoothstep(threshold - edge, threshold + edge, patch)
+
+
 static func _patch_value(id: String, cluster_scale: float, cluster_strength: float, world_seed: int, wx: int, wy: int, cluster_curve: Curve = null) -> float:
 	if cluster_strength <= 0.0:
 		return 1.0
@@ -311,7 +345,10 @@ static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: flo
 
 ## Guild counterpart of get_density(): cover(cover_field) * base_density *
 ## the guild's patch noise * the best member's score (get_member_scores():
-## suitability, or exposed deposit for ores). An empty cover_field means full
+## suitability, or exposed deposit for ores). With guild.cover_sets_area
+## (Phase 14) it is base_density * get_stand_membership() at an area share
+## of cover * best instead: stands are dense, and cover and suitability set
+## how much ground they take. An empty cover_field means full
 ## cover (the members' scores alone decide). guild.density_curve, if set,
 ## reshapes the result. The environment sets how much can grow; the
 ## best-member cap keeps the guild off tiles none of its members tolerate
@@ -322,17 +359,26 @@ static func get_guild_density(
 ) -> float:
 	var field := 1.0 if guild.cover_field == "" else clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
 	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
-	var patch := get_guild_patch_modifier(guild, world_seed, wx, wy)
 	# Cheap factors first: member suitabilities are the costly part, and most
 	# tiles have no cover for guilds like wetland plants (dry ground).
-	if cover <= 0.0 or patch <= 0.0:
+	if cover <= 0.0:
+		return 0.0
+	# Stand mode: membership at `cover` bounds the one at cover * best (it
+	# only grows with the area share), so gaps skip the member scores too.
+	var amount := get_stand_membership(guild, cover, world_seed, wx, wy) if guild.cover_sets_area \
+		else cover * get_guild_patch_modifier(guild, world_seed, wx, wy)
+	if amount <= 0.0:
 		return 0.0
 	var best := 0.0
 	for s in get_member_scores(state, guild, world_seed, wx, wy, classified):
 		best = maxf(best, s)
 	if best <= 0.0:
 		return 0.0
-	var density := clampf(cover * clampf(guild.base_density, 0.0, 1.0) * patch * best, 0.0, 1.0)
+	if guild.cover_sets_area:
+		amount = get_stand_membership(guild, cover * best, world_seed, wx, wy)
+	else:
+		amount *= best
+	var density := clampf(amount * clampf(guild.base_density, 0.0, 1.0), 0.0, 1.0)
 	if guild.density_curve != null:
 		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
 	return density

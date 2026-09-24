@@ -9,4 +9,4 @@ category = "quality"
 richness_from_deposit = true
 jitter = 0.05
 tier_names = PackedStringArray("poor", "normal", "rich")
-tier_thresholds = PackedFloat32Array(0.2, 0.55)
+tier_thresholds = PackedFloat32Array(0.3, 0.65)

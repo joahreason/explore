@@ -23,4 +23,4 @@ fertility_curve = SubResource("Curve_fert")
 shade_curve = SubResource("Curve_shade")
 jitter = 0.1
 tier_names = PackedStringArray("sparse", "normal", "abundant")
-tier_thresholds = PackedFloat32Array(0.42, 0.8)
+tier_thresholds = PackedFloat32Array(0.45, 0.93)

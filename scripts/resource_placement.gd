@@ -214,15 +214,13 @@ static func _place(
 ) -> Array[Dictionary]:
 	var spacing := maxf(minimum_spacing, 0.5)
 	var resource_seed := _resource_seed(id, world_seed)
-
-	var c0 := Vector2i(floori(tile_rect.position.x / spacing), floori(tile_rect.position.y / spacing))
-	var c1 := Vector2i(floori(tile_rect.end.x / spacing), floori(tile_rect.end.y / spacing))
+	var cells := _cell_range(spacing, tile_rect)
 
 	# Candidates for every cell the rect touches plus a one-cell ring (the
 	# spacing filter's neighborhood), each density-tested once.
 	var survivors := {}  # Vector2i cell -> Dictionary candidate
-	for cy in range(c0.y - 1, c1.y + 2):
-		for cx in range(c0.x - 1, c1.x + 2):
+	for cy in range(cells.position.y, cells.end.y):
+		for cx in range(cells.position.x, cells.end.x):
 			# Accept roll first: jitter and priority are only hashed for
 			# candidates that can still pass.
 			var cell := Vector2i(cx, cy)
@@ -249,6 +247,32 @@ static func _place(
 			continue
 		result.append({"id": id, "cell": cell, "position": pos})
 	return result
+
+
+## Phase 14: the tiles at which placing `id` in `tile_rect` calls density_fn
+## (candidates whose accept roll is below density_bound, the one-cell ring
+## included) - so a caller can evaluate that density ahead, in smaller steps
+## (chunk_manager.gd's no-thread fallback), and the placement then only
+## reads it back. Same seed/spacing/rect/bound as the placement call.
+static func candidate_tiles(id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_bound: float = 1.0) -> Array[Vector2i]:
+	var spacing := maxf(minimum_spacing, 0.5)
+	var resource_seed := _resource_seed(id, world_seed)
+	var cells := _cell_range(spacing, tile_rect)
+	var tiles: Array[Vector2i] = []
+	for cy in range(cells.position.y, cells.end.y):
+		for cx in range(cells.position.x, cells.end.x):
+			var cell := Vector2i(cx, cy)
+			if _cell_unit(resource_seed, cell, _SALT_ACCEPT) < density_bound:
+				tiles.append(Vector2i(_jittered(resource_seed, spacing, cell).floor()))
+	return tiles
+
+
+## Cells (end-exclusive) holding a candidate for a placement in tile_rect:
+## every cell the rect touches plus the one-cell ring.
+static func _cell_range(spacing: float, tile_rect: Rect2i) -> Rect2i:
+	var c0 := Vector2i(floori(tile_rect.position.x / spacing), floori(tile_rect.position.y / spacing))
+	var c1 := Vector2i(floori(tile_rect.end.x / spacing), floori(tile_rect.end.y / spacing))
+	return Rect2i(c0 - Vector2i.ONE, c1 - c0 + Vector2i(3, 3))
 
 
 static func _is_suppressed(candidate: Dictionary, survivors: Dictionary, min_dist_sq: float) -> bool:

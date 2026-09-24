@@ -106,6 +106,9 @@ const INLINE_BUDGET_USEC := 5000
 ## Phase 13.5: choosing each tile's ground costs ~50 us, so a 4-row band was
 ## ~4.5 ms on desktop - too big a step for the web fallback.
 const IMAGE_BAND_ROWS := 2
+## Tile rows per density-warming step ahead of a guild's chunk placement in
+## the no-thread fallback (_warm_guild_density): 4 bands per chunk.
+const WARM_DENSITY_ROWS := 4
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
 
@@ -981,6 +984,9 @@ func _chunk_job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
 					steps.append(_warm_env_rows.bind(c, y0, y0 + IMAGE_BAND_ROWS))
 		for i in depth:
 			for c in _chunks_in_rect(rect.grow(margins[i])):
+				if fine:
+					for y0 in range(0, CHUNK_SIZE, WARM_DENSITY_ROWS):
+						steps.append(_warm_guild_density.bind(GUILD_STACK[i], c, y0))
 				steps.append(_raw_guild_chunk.bind(GUILD_STACK[i], c))
 		steps.append(func() -> void: data["placements"] = _placement_chunk(chunk))
 	return steps
@@ -1269,6 +1275,19 @@ func _raw_guild_in_rect(guild: ResourceGuild, rect: Rect2i) -> Array:
 			if rect.has_point(Vector2i(floori(pos.x), floori(pos.y))):
 				result.append(inst)
 	return result
+
+
+## Phase 14 (no-thread fallback): evaluates a guild's density at the
+## placement candidates of rows y0..y0+WARM_DENSITY_ROWS of a chunk ahead of
+## _raw_guild_chunk(), which then reads it from the memo - the same values,
+## in smaller steps (a dense canopy chunk is ~20 ms of density work in one
+## go). Nothing to do once the chunk's placement is cached.
+func _warm_guild_density(guild: ResourceGuild, chunk: Vector2i, y0: int) -> void:
+	if _raw_guild_chunks.has([guild.id, chunk]):
+		return
+	var band := Rect2i(chunk * CHUNK_SIZE + Vector2i(0, y0), Vector2i(CHUNK_SIZE, WARM_DENSITY_ROWS))
+	for tile in ResourcePlacementScript.candidate_tiles(guild.id, guild.minimum_spacing, world_seed, band, ResourceManagerScript.get_guild_density_bound(guild)):
+		_guild_density(guild, tile.x, tile.y)
 
 
 ## One guild's raw placement in one chunk, from _raw_guild_chunks or placed

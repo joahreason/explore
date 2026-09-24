@@ -12,7 +12,7 @@
 [ext_resource type="Resource" path="res://resources/birch.tres" id="10_birch"]
 
 [sub_resource type="Curve" id="Curve_cover"]
-_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.15), 0.0, 0.0, 0, 0, Vector2(0.2, 0.4), 0.0, 0.0, 0, 0, Vector2(0.3, 0.8), 0.0, 0.0, 0, 0, Vector2(0.4, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.12), 0.0, 0.0, 0, 0, Vector2(0.2, 0.35), 0.0, 0.0, 0, 0, Vector2(0.3, 0.65), 0.0, 0.0, 0, 0, Vector2(0.4, 0.8), 0.0, 0.0, 0, 0, Vector2(1, 0.8), 0.0, 0.0, 0, 0]
 point_count = 6
 
 [resource]
@@ -22,7 +22,9 @@ members = Array[ExtResource("4_def")]([ExtResource("2_oak"), ExtResource("3_pine
 cover_field = "vegetation_potential"
 cover_curve = SubResource("Curve_cover")
 species_sharpness = 4.0
-cluster_scale = 48.0
-cluster_strength = 0.8
-minimum_spacing = 2.0
+cluster_scale = 32.0
+minimum_spacing = 1.2
 footprint_radius = 0.7
+cover_sets_area = true
+stand_edge = 0.05
+base_density = 0.7

@@ -7,12 +7,16 @@ _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.6, 0.15), 0.0, 0.0, 0, 0, Vect
 point_count = 4
 
 [sub_resource type="Curve" id="Curve_fert"]
-_data = [Vector2(0, 0.3), 0.0, 0.0, 0, 0, Vector2(0.4, 0.55), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0.2), 0.0, 0.0, 0, 0, Vector2(0.45, 0.35), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 4
 
 [sub_resource type="Curve" id="Curve_shade"]
-_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.1, 0.3), 0.0, 0.0, 0, 0, Vector2(0.35, 0.8), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.35, 0.35), 0.0, 0.0, 0, 0, Vector2(0.6, 0.85), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 5
+
+[sub_resource type="Curve" id="Curve_moist"]
+_data = [Vector2(0, 0.3), 0.0, 0.0, 0, 0, Vector2(0.35, 0.45), 0.0, 0.0, 0, 0, Vector2(0.75, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
 
 [resource]
 script = ExtResource("1_quality")
@@ -24,4 +28,5 @@ shade_curve = SubResource("Curve_shade")
 required_curves = PackedStringArray("succession_curve", "shade_curve")
 jitter = 0.1
 tier_names = PackedStringArray("young", "mature", "old growth")
-tier_thresholds = PackedFloat32Array(0.18, 0.6)
+tier_thresholds = PackedFloat32Array(0.31, 0.75)
+moisture_curve = SubResource("Curve_moist")
