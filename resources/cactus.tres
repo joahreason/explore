@@ -8,7 +8,11 @@ _data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(0.05, 0), 0.0, 0.0, 0, 0, Vecto
 point_count = 5
 
 [sub_resource type="Curve" id="Curve_cactusmois"]
-_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.15, 1), 0.0, 0.0, 0, 0, Vector2(0.25, 0.4), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.15, 1), 0.0, 0.0, 0, 0, Vector2(0.22, 0.4), 0.0, 0.0, 0, 0, Vector2(0.28, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_cactusveg"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.15, 0.3), 0.0, 0.0, 0, 0, Vector2(0.18, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
 point_count = 5
 
 [sub_resource type="Curve" id="Curve_cactuselev"]
@@ -23,21 +27,28 @@ category = "vegetation"
 temperature_curve = SubResource("Curve_cactustemp")
 moisture_curve = SubResource("Curve_cactusmois")
 elevation_curve = SubResource("Curve_cactuselev")
-required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve")
+vegetation_curve = SubResource("Curve_cactusveg")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "vegetation_curve")
 biome_weights = {
 "Alpine Snow": 0.0,
-"Badlands": 0.6,
-"Beach": 0.05,
+"Badlands": 0.0,
+"Beach": 0.0,
 "Desert": 1.0,
-"Forest": 0.05,
-"Grassland": 0.2,
-"Plains": 0.2,
+"Forest": 0.0,
+"Frozen Sea": 0.0,
+"Grassland": 0.0,
+"Lake": 0.0,
+"Ocean": 0.0,
+"Plains": 0.0,
 "Rainforest": 0.0,
-"Savanna": 0.25,
+"River": 0.0,
+"Savanna": 0.0,
+"Sea": 0.0,
 "Swamp": 0.0,
 "Tundra": 0.0,
 "Wetland": 0.0
 }
+strict_biomes = true
 water_body_weights = {
 "lake": 0.0,
 "none": 1.0,

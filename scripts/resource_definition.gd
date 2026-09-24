@@ -148,6 +148,11 @@ var curve_plan = null
 ## sea_level), while a Phase 10 river/shore plant sets the opposite weights.
 @export_group("Categorical Weights")
 @export var biome_weights: Dictionary = {}
+## biome_weights normally blend across biome edges (by each biome's
+## membership score); strict = only the tile's own base_biome counts, so a
+## resource with weight 0 elsewhere never strays past its biome's edge
+## (cactus: deserts only).
+@export var strict_biomes: bool = false
 @export var subtype_weights: Dictionary = {}
 @export var geology_weights: Dictionary = {}
 @export var water_body_weights: Dictionary = {}

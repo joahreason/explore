@@ -12,6 +12,7 @@ const GROUND_COVER := preload("res://resources/ground_cover.tres")
 const CANOPY := preload("res://resources/canopy_trees.tres")
 const DEADWOOD := preload("res://resources/deadwood.tres")
 const ROCKS := preload("res://resources/surface_rocks.tres")
+const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
 ## Plan Phase 12's list -> the ids that cover it ("shrubs" = berry_bush,
 ## "grass" = meadow_grass/pioneer_grass, "fallen trees" = fallen_log).
 const PLAN_IDS := [
@@ -117,6 +118,26 @@ func _init() -> void:
 	check(bad["exposed_stone"] == 0, "exposed stone only where rock_exposure >= 0.5 (%d off)" % bad["exposed_stone"])
 	var gravel_off: float = float(bad["gravel"]) / maxf(total.call("gravel"), 1)
 	check(gravel_off < 0.15, "gravel mostly on eroded ground (erosion >= 0.15) or river banks: %.0f%% elsewhere" % (100 * gravel_off))
+
+	# Cacti: hot deserts only - strict_biomes, so none past a desert's edge
+	# (seed 1337's hot, dry country around (1900, -2980)).
+	var cwg := WorldGen.new()
+	cwg.configure(1337)
+	var cactus_density := func(x: int, y: int) -> float:
+		var s := cwg.sample(x, y)
+		return ResourceManager.get_guild_density(EnvironmentalState.from_sample(s), DESERT_PLANTS, 1337, x, y, BiomeClassifier.classify_full(s))
+	var cactus_shares := func(x: int, y: int) -> PackedFloat32Array:
+		return PackedFloat32Array([1.0])
+	var cacti := 0
+	var cacti_off := 0
+	for inst in ResourcePlacement.place_guild_in_rect(DESERT_PLANTS, 1337, Rect2i(Vector2i(1750, -3130), Vector2i(300, 300)), cactus_density, cactus_shares):
+		var p: Vector2 = inst["position"]
+		var s := cwg.sample(floori(p.x), floori(p.y))
+		cacti += 1
+		if BiomeClassifier.classify(s) != "Desert" or s["temperature"] < 0.05:
+			cacti_off += 1
+	check(DESERT_PLANTS.get_curve_domain_warnings().is_empty() and cacti >= 50 and cacti_off == 0,
+		"cacti only in hot deserts: %d placed, %d elsewhere" % [cacti, cacti_off])
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
