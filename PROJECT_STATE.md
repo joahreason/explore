@@ -226,7 +226,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 - Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
 - Same branch, user request: "Go to biome" dropdown under the view dropdown - moves the camera to the nearest tile of a base biome, or to the next patch if already in one (`BiomeFinder`, threaded, own WorldGen copy; see docs/architecture.md §5). Covered by test_world_scene (two Desert trips from the origin land on two different desert patches, ~0.4 s each). Web (no threads) runs the search inline - not measured there. Commit c01fd23; desktop seed UI 439f0c7; smaller UI + position readout 01aa142.
 - Same branch: Phase 17 step 6 (chunk jobs as small steps for the no-thread web fallback) 274f036 - all pushed to `main` (web deploy).
-- Phase 17 closed for now (user checked web panning by eye after step 6: "almost on par with desktop"); handoff prepared for Phase 13. Commit: this handoff commit on `main`.
+- Phase 17 closed for now (user checked web panning by eye after step 6: "almost on par with desktop"); handoff prepared for Phase 13. Commit 88819ef on `main`, pushed.
 - Earlier: Phase 17 guard + steps 1-4 (PR #8, merged to `main` as a22a1eb); Phases 0-12 (PRs #1-#6).
 
 ### Next Action
