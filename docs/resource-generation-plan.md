@@ -970,6 +970,8 @@ Nearby:
 
 > **Amendment (2026-09-23): moved up, runs next after Phase 12.** At the user's request, performance work comes before Phases 13-16. Measured baseline (headless, 81 loaded chunks, cold cache): switching to the Resources view with 9 guilds takes ~11.2s, Tree Placement ~6.3s, Oak Placement ~2.3s, and every added guild has made it slower. Known cheap wins recorded during Phases 8-12: `place_guild_in_rect` re-samples and re-classifies every surviving candidate in `shares_fn` after `density_fn` already did; each candidate evaluates every member's suitability even when geology or succession rules most of them out; lower guilds in the stack re-place the guilds above them. Profile first, then fix the largest costs, with the output unchanged (same seed gives the same instances) unless a change is agreed.
 
+> **Amendment (2026-09-23): closed for now, before Phases 13-16.** Done with output unchanged: shared per-tile environment and density caches, candidate skipping, cheaper suitability (cold Resources switch 13.6s -> ~4.5s of total work); chunk content built as queued jobs, nearest chunk first, on a worker thread on desktop, and as small per-frame steps on the thread-less web build, so panning and view/LOD switches no longer freeze (web checked by eye). The "far away: aggregated vegetation" LOD sketch above was not needed yet (zoomed-out views already skip placed objects) and stays open, as do multi-worker throughput and cheaper per-chunk density. Details in `PROJECT_STATE.md`.
+
 ---
 
 # Phase 18 — Developer Tooling
