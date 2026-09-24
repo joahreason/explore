@@ -10,7 +10,8 @@ var _fails := 0
 var _passes := 0
 var rig: Node2D
 var cam: Camera2D
-var clicks := 0
+var clicks := 0  # harvest_clicked: left click / tap
+var infos := 0  # info_clicked: right click / long press
 
 
 func check(cond: bool, msg: String) -> void:
@@ -69,7 +70,8 @@ func _init() -> void:
 		control.visible = false
 	rig = world.get_node("CameraRig")
 	cam = rig.get_node("Camera2D")
-	rig.clicked.connect(func(_p): clicks += 1)
+	rig.harvest_clicked.connect(func(_p): clicks += 1)
+	rig.info_clicked.connect(func(_p): infos += 1)
 	var center: Vector2 = root.get_viewport().get_visible_rect().size * 0.5
 	var map_point := center + Vector2(-150, 60)  # off-centre
 
@@ -157,7 +159,18 @@ func _init() -> void:
 	touch(0, map_point, true)
 	touch(0, map_point, false)
 	await process_frame
-	check(after_pinch == 0 and clicks == 1, "pinch fires no tap (%d); a tap fires one (%d)" % [after_pinch, clicks - after_pinch])
+	check(after_pinch == 0 and clicks == 1 and infos == 0, "pinch fires no tap (%d); a tap fires one harvest (%d), no info (%d)" % [after_pinch, clicks - after_pinch, infos])
+
+	# Long press (Phase 16): a finger held still fires info while still down,
+	# and its release is not also a tap.
+	clicks = 0
+	infos = 0
+	touch(0, map_point, true)
+	await create_timer(rig.LONG_PRESS_SEC + 0.2).timeout
+	var info_while_held := infos
+	touch(0, map_point, false)
+	await process_frame
+	check(info_while_held == 1 and infos == 1 and clicks == 0, "long press fires info once while held (%d), no harvest on release (%d)" % [infos, clicks])
 
 	# A real mouse (not emulated) still drags 1:1 and clicks.
 	await reset(4.0)
@@ -177,6 +190,21 @@ func _init() -> void:
 	_send(release)
 	await process_frame
 	check(rig.global_position.is_equal_approx(Vector2(-10, 0)) and clicks == 0, "mouse drag pans once (%s, expect (-10, 0)), no click" % rig.global_position)
+
+	# Mouse buttons (Phase 16): left click harvests, right click shows info.
+	clicks = 0
+	infos = 0
+	for button in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		var down := InputEventMouseButton.new()
+		down.button_index = button
+		down.pressed = true
+		down.position = map_point
+		_send(down)
+		var up := down.duplicate()
+		up.pressed = false
+		_send(up)
+		await process_frame
+	check(clicks == 1 and infos == 1, "left click harvests (%d), right click shows info (%d)" % [clicks, infos])
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

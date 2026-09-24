@@ -998,6 +998,13 @@ This avoids storing the entire world.
 
 > **Amendment (2026-09-22): generation changes vs. saved state.** Procedural output is deterministic for a given seed *and content version*, not forever. Retuning a curve, or adding a species to a guild (Phase 8 amendment), moves or re-species instances. Gameplay overrides must therefore be keyed by the stable placement key `(resource/guild id, placement cell)` from Phase 7 **and** record the resource id they applied to, and must be dropped or re-validated when the generated instance at that key no longer matches, never silently applied to a different object.
 
+> **Amendment (2026-09-24): as implemented, with the first mechanic (user decisions).**
+> * **Controls:** left click / tap harvests the resource under it; right click / long press (0.5 s, finger still) opens the info panel (was: click/tap = info). `CameraRig` signals `harvest_clicked` / `info_clicked`.
+> * **Gameplay state:** `WorldChanges` (`scripts/world_changes.gd`) = `key -> {resource_id, harvest_state}`, the key being `ResourceInstance.key` ("<guild id>:<cell>"). Every read re-validates the resource id (`is_harvested()`, `apply()`), so a change whose key now holds a different resource (after a generation change) is never applied to it - it simply stops applying. Procedural state is untouched: placement, density, shade and the stack's footprints still see the harvested object (nothing regrows; the space stays empty).
+> * **Saved automatically** after every harvest, per seed, as JSON (`user://world_changes/<seed>.json`, format version 1; `user://` is IndexedDB-backed storage on web); loaded on start and on a seed change. Only changes are stored, never the world.
+> * **Harvesting** is available for every placed resource and just removes it: the chunk's markers are redrawn without it (filtered when marker nodes are built, so a chunk generated before the harvest can't bring it back), its record reports `harvested` with health 0, and a second click there harvests whatever else still stands. No yields/inventory yet (Phase 19).
+> * Tests never touch the player's saves: under a scripted test SceneTree the default save dir is not used (in-memory only) unless a test sets its own.
+
 ---
 
 # Phase 17 — Performance and Chunk Integration
