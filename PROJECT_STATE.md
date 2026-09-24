@@ -257,7 +257,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 15 groundwork is on branch `claude/phase-14-start-4zcb39` (not merged). Next: the first mechanic (e.g. click-to-harvest with session-only changes) needs Phase 16's override store keyed by `ResourceInstance.key` + `resource_id`; or tune `max_health` per resource type once a mechanic uses it. Phase 14 is on `main` (PR #9, #10); the user checks the clustered World view by eye.
+- Phase 15 groundwork is on `main` (PR #11, web deployed). Next: the first mechanic (e.g. click-to-harvest with session-only changes) needs Phase 16's override store keyed by `ResourceInstance.key` + `resource_id`; or tune `max_health` per resource type once a mechanic uses it. Phase 14 is on `main` (PR #9, #10); the user checks the clustered World view by eye.
 
 ### Things To Watch Out For
 
