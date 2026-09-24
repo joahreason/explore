@@ -25,10 +25,19 @@ extends Resource
 
 # --- Elevation / topography ---
 @export_group("Elevation")
-@export var elevation_frequency: float = 0.004
+# Continent scale: low, so oceans and landmasses are large and coherent.
+@export var elevation_frequency: float = 0.0012
 @export var elevation_octaves: int = 5
 @export var ridge_frequency: float = 0.012
 @export var ridge_weight: float = 0.3
+# Ridges are mountains: they fade out where the continent-scale base is low
+# (fully off below x, fully on above y), their term replaced there by
+# lowland_ridge_level - otherwise their troughs would scatter the lowlands
+# with small water bodies instead of letting coastlines follow the large
+# base shapes. The level (about the ridge term's mean, 0.4, lowered a
+# little) keeps land at ~85% of the world, as before.
+@export var lowland_ridge_fade: Vector2 = Vector2(-0.15, 0.25)
+@export var lowland_ridge_level: float = 0.28
 
 # --- Temperature ---
 @export_group("Climate")
@@ -55,28 +64,20 @@ extends Resource
 @export var arid_wind_factor: float = 0.35
 # Water-body typing: elevation alone still decides what's wet: this just
 # labels the wet/waterlogged tiles as ocean/sea/lake/swamp for color+overlay.
-# Ocean/sea/lake identity comes from its OWN dedicated, much-lower-frequency
-# noise rather than the terrain-shape elevation noise - reusing the terrain
-# noise meant the classification threshold crossed back and forth at the
-# same small scale as the coastline itself, so one connected body of water
-# could get patchily mislabeled ocean/sea/lake instead of one clean type.
-@export var water_region_frequency: float = 0.0006   # regional - stretched by world_scale
-@export var ocean_depth_threshold: float = 0.25   # how far below sea_level on the water-region noise counts as ocean rather than a shallower sea
 # Swamp is NOT "the strip right at the coast" - that's a beach. A swamp is a
 # warm, very wet, flat, low-lying spot, which can form far inland (a
 # floodplain, a low basin) just as easily as near a shore. Cold, steep, or
 # dry ground never becomes a swamp no matter how low its elevation is.
 @export var swamp_max_elevation: float = 0.2      # swamp potential fades out above this elevation
 @export var swamp_min_temperature: float = -0.15  # colder than this and it won't support marsh/wetland ecology
-@export var swamp_threshold: float = 0.32         # combined moisture*lowland*warmth*flatness must clear this
+@export var swamp_threshold: float = 0.42         # combined moisture*lowland*warmth*flatness must clear this (0.42 keeps swamps ~7% of the world with the flatter, continent-scale lowlands)
 
 # --- Water Topology ---
 # Real bounded/cached flood-fill (see water_topology.gd) - the only piece of
 # this generator that isn't a stateless per-tile function. Enclosed bodies
 # (fit within the budget) become Lake or Sea (if a strait to open water is
-# found nearby); bodies that exceed the budget fall back to the
-# water_region noise above for Ocean-vs-Sea flavor, since a capped fill's
-# shape isn't reliable for that.
+# found nearby); bodies that exceed the budget are Ocean. Seas are thus
+# only enclosed bodies joined to open water - rare, and distinct from it.
 @export_group("Water Topology")
 @export var flood_fill_budget: int = 3500      # tiles; first-touch cost into a large body scales with this
 @export var strait_probe_distance: int = 60    # tiles; how far past an enclosed shore to look for open water
@@ -230,7 +231,6 @@ var _resource_vein := FastNoiseLite.new()
 var _micro := FastNoiseLite.new()
 var _river_line := FastNoiseLite.new()
 var _river_warp := FastNoiseLite.new()
-var _water_region := FastNoiseLite.new()
 var _temp_variation := FastNoiseLite.new()
 var _precip_seasonality := FastNoiseLite.new()
 
@@ -243,7 +243,7 @@ var _configured_seed: int = -1
 # elev_ridge, +3 climate, +4 rainfall, +5 wind_strength, +6 wind_dir,
 # +7 geology, +8 disturbance/disturbance_cell (shared), +9 resource_vein,
 # +10 micro, +11 disturbance_warp, +12 river_line, +13 river_warp,
-# +14 water_region, +15 temp_variation, +16 precip_seasonality,
+# +14 (unused - was water_region), +15 temp_variation, +16 precip_seasonality,
 # +17 per-resource distribution/patch noise (not owned here - see
 # ResourceManager.get_patch_modifier(), which derives one seed per
 # ResourceDefinition.id from world_seed + this offset), +18 per-resource
@@ -279,7 +279,6 @@ func configure(world_seed: int) -> void:
 	_geology.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
 	_setup(_river_line, world_seed + 12, FastNoiseLite.TYPE_SIMPLEX, river_frequency / world_scale, 2)
 	_setup(_river_warp, world_seed + 13, FastNoiseLite.TYPE_SIMPLEX, river_frequency * 3.0 / world_scale, 2)
-	_setup(_water_region, world_seed + 14, FastNoiseLite.TYPE_SIMPLEX, water_region_frequency / world_scale, 2)
 	_setup(_temp_variation, world_seed + 15, FastNoiseLite.TYPE_SIMPLEX, temp_variation_frequency / world_scale, 2)
 	_setup(_precip_seasonality, world_seed + 16, FastNoiseLite.TYPE_SIMPLEX, precip_seasonality_frequency / world_scale, 2)
 
@@ -308,7 +307,8 @@ func _setup(n: FastNoiseLite, s: int, type: FastNoiseLite.NoiseType, freq: float
 func elevation(wx: float, wy: float) -> float:
 	var base := _elev_base.get_noise_2d(wx, wy)
 	var ridge := 1.0 - absf(_elev_ridge.get_noise_2d(wx, wy))
-	var h := base * (1.0 - ridge_weight) + (ridge * 2.0 - 1.0) * ridge_weight
+	var mountains := smoothstep(lowland_ridge_fade.x, lowland_ridge_fade.y, base)
+	var h := base * (1.0 - ridge_weight) + lerpf(lowland_ridge_level, ridge * 2.0 - 1.0, mountains) * ridge_weight
 	return clampf(h, -1.0, 1.0)
 
 
@@ -469,11 +469,9 @@ func sample(wx: int, wy: int) -> Dictionary:
 	# Real bounded/cached flood-fill (water_topology.gd) decides enclosure
 	# and, for enclosed bodies, whether a nearby strait reaches open water -
 	# genuine topology, not a size threshold. A body that exceeds the fill
-	# budget is "open/unbounded" by definition, and for THAT case only we
-	# fall back to the existing dedicated low-frequency noise field to pick
-	# an Ocean-vs-Sea flavor, since a capped fill's shape depends on which
-	# tile triggered it and isn't trustworthy for anything position-specific
-	# (see water_topology.gd's doc comment).
+	# budget is "open/unbounded" by definition - the ocean (a capped fill's
+	# shape depends on which tile triggered it, so nothing finer is read
+	# from it; see water_topology.gd's doc comment).
 	var water_body := "none"
 	var water_enclosed := false
 	var water_area := -1
@@ -490,8 +488,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 		if water_enclosed:
 			water_body = "sea" if water_connected_to_ocean else "lake"
 		else:
-			var region := _water_region.get_noise_2d(fx, fy)
-			water_body = "ocean" if region < sea_level - ocean_depth_threshold else "sea"
+			water_body = "ocean"
 	elif river01 > river_threshold:
 		water_body = "river"
 	else:
