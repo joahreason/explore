@@ -12,6 +12,17 @@ extends Node2D
 const SeedReloadScript := preload("res://scripts/seed_reload.gd")
 
 @export var zoom_factor: float = 1.15  # multiplicative per scroll notch
+## Polish: a flicked pan keeps gliding after release, slowing by
+## MOMENTUM_DECAY per second (exponential); a drag that had stopped before
+## release doesn't glide. Tests of exact pan distances turn it off.
+@export var momentum: bool = true
+const MOMENTUM_DECAY := 6.0
+## Below this speed (world px / s) a glide stops, and a release starts none.
+const MOMENTUM_MIN_SPEED := 20.0
+## Drag motion older than this at release doesn't count towards the flick.
+const MOMENTUM_WINDOW_MSEC := 80
+## Wheel zoom eases towards its target at this rate (per second).
+const ZOOM_EASE := 14.0
 @export var min_zoom: float = 0.2
 @export var max_zoom: float = 6.0
 
@@ -55,6 +66,12 @@ signal info_clicked(world_pos: Vector2)
 @onready var _ui_root: Node = get_node(ui_root_path) if ui_root_path != NodePath() else null
 
 var _dragging: bool = false
+## Current glide velocity (world px / s) and the recent drag samples
+## [msec, world delta] it is measured from.
+var _glide := Vector2.ZERO
+var _drag_samples: Array = []
+## Wheel zoom target (eased towards in _process); <= 0 = none pending.
+var _zoom_target: float = -1.0
 var _press_position: Vector2 = Vector2.ZERO
 var _touches: Dictionary = {}   # touch index -> last Vector2 position
 var _touch_press_positions: Dictionary = {}  # touch index -> Vector2 at press
@@ -77,7 +94,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion and _dragging:
-		global_position -= event.relative / camera.zoom.x
+		_pan_by(-event.relative / camera.zoom.x)
 	elif event is InputEventScreenTouch:
 		_handle_touch(event)
 	elif event is InputEventScreenDrag:
@@ -112,19 +129,22 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if _is_over_ui(event.position):
 				return
 			SeedReloadScript.close_keyboard(self)
+			_stop_glide()
 			_dragging = true
 			_press_position = event.position
 		elif _dragging:
 			_dragging = false
 			if event.position.distance_to(_press_position) < CLICK_DRAG_THRESHOLD:
 				harvest_clicked.emit(get_global_mouse_position())
+			else:
+				_start_glide()
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
 		if event.pressed and not _is_over_ui(event.position):
 			info_clicked.emit(get_global_mouse_position())
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
-		_set_zoom(camera.zoom.x * zoom_factor)
+		_ease_zoom(zoom_factor)
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		_set_zoom(camera.zoom.x / zoom_factor)
+		_ease_zoom(1.0 / zoom_factor)
 
 
 func _handle_touch(event: InputEventScreenTouch) -> void:
@@ -135,6 +155,7 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 			return
 		# A tap on the map closes the on-screen keyboard (seed field).
 		SeedReloadScript.close_keyboard(self)
+		_stop_glide()
 		_touches[event.index] = event.position
 		_touch_press_positions[event.index] = event.position
 		_touch_press_msec[event.index] = Time.get_ticks_msec()
@@ -161,6 +182,8 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 			_multi_touch = false
 		if was_single_touch and not _long_press_fired and event.position.distance_to(press_position) < CLICK_DRAG_THRESHOLD:
 			harvest_clicked.emit(_screen_to_world(event.position))
+		elif was_single_touch:
+			_start_glide()
 
 	_reset_pinch()
 
@@ -173,7 +196,7 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 	_touches[event.index] = event.position
 
 	if _touches.size() == 1:
-		global_position -= event.relative / camera.zoom.x
+		_pan_by(-event.relative / camera.zoom.x)
 	elif _touches.size() == 2:
 		# Zoom by the change in finger distance and pan so the world point
 		# that was under the fingers' midpoint stays under it (like any map
@@ -191,7 +214,8 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 ## Long press: one finger, the only one of its gesture, held still for
 ## LONG_PRESS_SEC - fires info once, while still held (so the panel opens
 ## without lifting), and turns the release into a non-tap.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	_update_glide_and_zoom(delta)
 	if _touches.size() != 1 or _multi_touch or _long_press_fired:
 		return
 	var index: int = _touches.keys()[0]
@@ -201,6 +225,59 @@ func _process(_delta: float) -> void:
 	if Time.get_ticks_msec() - int(_touch_press_msec.get(index, Time.get_ticks_msec())) >= LONG_PRESS_SEC * 1000.0:
 		_long_press_fired = true
 		info_clicked.emit(_screen_to_world(pos))
+
+
+## A one-pointer pan step (world px), remembered for the release's flick.
+func _pan_by(world_delta: Vector2) -> void:
+	global_position += world_delta
+	_drag_samples.append([Time.get_ticks_msec(), world_delta])
+	if _drag_samples.size() > 16:
+		_drag_samples.pop_front()
+
+
+## On release: glide at the drag's recent velocity (MOMENTUM_WINDOW_MSEC),
+## if momentum is on and it was moving fast enough.
+func _start_glide() -> void:
+	var now := Time.get_ticks_msec()
+	var moved := Vector2.ZERO
+	var oldest := now
+	for sample in _drag_samples:
+		if now - int(sample[0]) <= MOMENTUM_WINDOW_MSEC:
+			moved += sample[1]
+			oldest = mini(oldest, int(sample[0]))
+	_drag_samples.clear()
+	var span := maxf(float(now - oldest), 16.0) / 1000.0
+	var velocity := moved / span
+	_glide = velocity if momentum and velocity.length() >= MOMENTUM_MIN_SPEED else Vector2.ZERO
+
+
+func _stop_glide() -> void:
+	_glide = Vector2.ZERO
+	_drag_samples.clear()
+
+
+## Wheel zoom: multiply the target (from the current target while easing).
+func _ease_zoom(factor: float) -> void:
+	var from := _zoom_target if _zoom_target > 0.0 else camera.zoom.x
+	_zoom_target = clampf(from * factor, min_zoom, max_zoom)
+
+
+func _update_glide_and_zoom(delta: float) -> void:
+	if _glide != Vector2.ZERO:
+		global_position += _glide * delta
+		_glide *= exp(-MOMENTUM_DECAY * delta)
+		if _glide.length() < MOMENTUM_MIN_SPEED:
+			_glide = Vector2.ZERO
+	if _zoom_target > 0.0:
+		var z := lerpf(camera.zoom.x, _zoom_target, 1.0 - exp(-ZOOM_EASE * delta))
+		if absf(z - _zoom_target) < 0.001:
+			z = _zoom_target
+			_zoom_target = -1.0
+		_set_zoom(z)
+
+
+func is_gliding() -> bool:
+	return _glide != Vector2.ZERO
 
 
 func _screen_to_world(screen_pos: Vector2) -> Vector2:
@@ -244,6 +321,7 @@ func _notification(what: int) -> void:
 		_touch_over_ui.clear()
 		_touch_press_msec.clear()
 		_long_press_fired = false
+		_stop_glide()
 		_pinch_distance = 0.0
 		_multi_touch = false
 
