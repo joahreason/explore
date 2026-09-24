@@ -152,6 +152,10 @@ enum ViewMode {
 	SUCCESSION_PLACEMENT,
 	SHADE,
 	QUALITY,
+	DEBUG_SUITABILITY,
+	DEBUG_DENSITY,
+	DEBUG_PATCH,
+	DEBUG_PLACEMENT,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -191,6 +195,10 @@ var _definitions: Dictionary = {} # instance id -> ResourceDefinition (see _defi
 ## by generation under it and by marker building on the main thread.
 var _changes = WorldChangesScript.new()
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
+## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
+## by generation under _gen_mutex), and member id -> its guild.
+var _debug_resource: ResourceDefinition = OAK_RESOURCE
+var _guild_of_member: Dictionary = {}
 ## Phase 13.5: the default "live game" view is the terrain with every placed
 ## resource on it (RESOURCES); MATERIAL is the bare terrain.
 var _view_mode: ViewMode = ViewMode.RESOURCES
@@ -524,8 +532,11 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
 	var ground := _surface_at(sample, tile.x, tile.y)
+	var debug_lines: Array = []
+	if is_debug_view():
+		debug_lines = debug_breakdown(tile.x, tile.y)
 	_gen_mutex.unlock()
-	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "")
+	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "", debug_lines)
 
 
 ## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
@@ -796,6 +807,12 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
 			return _deposit_color(sample, wx, wy)
+		ViewMode.DEBUG_SUITABILITY:
+			return HeatmapColorizerScript.resource_suitability(_debug_values(wx, wy, sample)["score"])
+		ViewMode.DEBUG_DENSITY, ViewMode.DEBUG_PLACEMENT:
+			return HeatmapColorizerScript.resource_density(_debug_values(wx, wy, sample)["density"])
+		ViewMode.DEBUG_PATCH:
+			return HeatmapColorizerScript.resource_density(_debug_values(wx, wy, sample)["patch"])
 		ViewMode.FARMING_POTENTIAL:
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, FARMLAND))
 		_:
@@ -1127,6 +1144,8 @@ func _placement_layers() -> Array:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.QUALITY:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON], [CANOPY_TREES, circle], [SHRUBS, circle]]
+		ViewMode.DEBUG_PLACEMENT:
+			return [[debug_guild(), circle]]
 		ViewMode.RESOURCES:
 			return [
 				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.HEXAGON],
@@ -1161,6 +1180,8 @@ func _placement_chunk(chunk_coord: Vector2i) -> Array:
 		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
 		if _view_mode == ViewMode.QUALITY:
 			instances = _quality_markers(instances)
+		elif _view_mode == ViewMode.DEBUG_PLACEMENT:
+			instances = instances.filter(func(inst): return inst["id"] == _debug_resource.id)
 		result.append([layer, instances])
 	return result
 
@@ -1424,3 +1445,90 @@ func _redraw_markers(chunk_coord: Vector2i) -> void:
 	var markers := _marker_node(chunk_coord * CHUNK_SIZE, _chunk_placements[chunk_coord])
 	resources_root.add_child(markers)
 	_loaded_placements[chunk_coord] = markers
+
+
+## Phase 18 (developer tooling): whether a view is one of the Debug views,
+## which show _debug_resource's suitability / density / patch noise /
+## placement and add its factor breakdown to the inspector.
+func is_debug_view(mode: ViewMode = _view_mode) -> bool:
+	return mode in [ViewMode.DEBUG_SUITABILITY, ViewMode.DEBUG_DENSITY, ViewMode.DEBUG_PATCH, ViewMode.DEBUG_PLACEMENT]
+
+
+## Every resource the Debug views can show: each GUILD_STACK member, in
+## stack order.
+func debug_resources() -> Array[ResourceDefinition]:
+	var list: Array[ResourceDefinition] = []
+	for guild in GUILD_STACK:
+		for member in guild.members:
+			list.append(member)
+	return list
+
+
+func debug_resource() -> ResourceDefinition:
+	return _debug_resource
+
+
+## The guild the debug resource is placed with.
+func debug_guild() -> ResourceGuild:
+	if _guild_of_member.is_empty():
+		for guild in GUILD_STACK:
+			for member in guild.members:
+				_guild_of_member[member.id] = guild
+	return _guild_of_member[_debug_resource.id]
+
+
+## Picks the resource the Debug views show; rebuilds them if one is showing.
+func set_debug_resource(definition: ResourceDefinition) -> void:
+	if definition == _debug_resource:
+		return
+	_gen_mutex.lock()
+	_debug_resource = definition
+	debug_guild()
+	_gen_mutex.unlock()
+	if is_debug_view():
+		_invalidate_chunks()
+
+
+## The debug resource at a tile, as the guild sees it:
+##   score   - its member score (suitability; exposed deposit for an ore),
+##   cover   - the guild's cover (environment: how much can grow),
+##   patch   - the guild's patch factor: stand membership at full suitability
+##             for a stand-mode guild (Phase 14), else its patch modifier,
+##   best    - the best member's score (caps the guild),
+##   share   - this resource's species share of the guild,
+##   density - guild density x share (its expected instances per cell).
+func _debug_values(wx: int, wy: int, sample: Dictionary = {}) -> Dictionary:
+	var guild := debug_guild()
+	var env := _tile_env(wx, wy, sample)
+	if not env[0].shade_known and guild.reads_shade():
+		env[0].shade = _guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample)
+		env[0].shade_known = true
+	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(env[0], guild, world_seed, wx, wy, env[1])
+	var index := guild.members.find(_debug_resource)
+	var best := 0.0
+	for s in scores:
+		best = maxf(best, s)
+	var cover := ResourceManagerScript.get_guild_cover(env[0], guild)
+	var patch := ResourceManagerScript.get_stand_membership(guild, cover, world_seed, wx, wy) if guild.cover_sets_area \
+		else ResourceManagerScript.get_guild_patch_modifier(guild, world_seed, wx, wy)
+	var share: float = ResourceManagerScript.get_species_shares(scores, guild.species_sharpness)[index]
+	return {"score": scores[index], "cover": cover, "patch": patch, "best": best, "share": share,
+		"density": _guild_density(guild, wx, wy, sample) * share}
+
+
+## Phase 18: the inspector's breakdown of the debug resource at a tile - its
+## suitability factor by factor (ResourceManager.explain_suitability()), then
+## how the guild turns that into density. Call with _gen_mutex held.
+func debug_breakdown(wx: int, wy: int) -> Array[String]:
+	var guild := debug_guild()
+	var v := _debug_values(wx, wy)
+	var env := _tile_env(wx, wy)
+	var lines: Array[String] = ["[b]%s[/b] (%s)" % [String(_debug_resource.id).capitalize(), String(guild.id).capitalize()]]
+	lines.append_array(ResourceManagerScript.explain_suitability(env[0], _debug_resource, env[1])["lines"])
+	if _debug_resource.vein_scale > 0.0:
+		lines.append("member score (exposed deposit): %.3f" % v["score"])
+	lines.append("guild cover (%s): %.2f" % [guild.cover_field if guild.cover_field != "" else "full", v["cover"]])
+	lines.append("%s: %.2f" % ["stand membership" if guild.cover_sets_area else "patch modifier", v["patch"]])
+	lines.append("best member score: %.2f   species share: %.2f" % [v["best"], v["share"]])
+	lines.append("guild density: %.3f   %s density: %.3f" % [_guild_density(guild, wx, wy), _debug_resource.id, v["density"]])
+	return lines

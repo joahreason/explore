@@ -22,13 +22,19 @@ func _ready() -> void:
 ## ResourceManager.get_exposure())). farming: Phase 10 farming potential
 ## (0..1), or < 0 to leave the line out. shade: Phase 13 canopy shade
 ## (ResourceManager.get_shade()), < 0 = left out. ground: Phase 13.5 surface
-## material name (TerrainSurface), "" on water.
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0, shade: float = -1.0, ground: String = "") -> void:
+## material name (TerrainSurface), "" on water. debug_lines: Phase 18's
+## factor breakdown of the Debug views' resource (ChunkManager.
+## debug_breakdown()), shown first; [] outside the Debug views.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0, shade: float = -1.0, ground: String = "", debug_lines: Array = []) -> void:
 	visible = true
 
 	var lines: Array[String] = []
 	lines.append("[b]Tile (%d, %d)[/b]" % [tile.x, tile.y])
 	lines.append("")
+	if not debug_lines.is_empty():
+		for line in debug_lines:
+			lines.append(line)
+		lines.append("")
 	if ground != "":
 		lines.append("[b]Ground:[/b] %s" % ground)
 	if resource.is_empty():

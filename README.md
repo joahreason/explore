@@ -19,11 +19,14 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 - **Reload** (web only): forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
 - **View mode dropdown**: switches how chunks are rendered (see below)
 - **Position readout** (bottom-left): the tile at the screen center, its chunk, and the zoom - always shown
+- **Debug resource** (only in the Debug views): the resource the Debug views show, e.g. "Oak (Canopy Trees)"
 - **Go to biome**: pick a biome to move the camera to the nearest place of it; if you are already in that biome, it takes you to the next patch of it instead (repeat to keep hopping onward). Searches up to ~6000 tiles out; says "No <biome> nearby" if none is found
 
 A plain visit with no `?seed=` in the URL gets a new random seed each time; passing `?seed=<anything>` pins it to a specific world (numeric seeds are used directly, other text is hashed to one deterministically).
 
 ## View modes
+
+**Debug views** (balancing, Phase 18): *Debug: Suitability / Density / Patch Noise / Placement* show the resource picked in the Debug resource dropdown - its score, its expected density (the guild's density x its species share), its guild's patch or stand value, and its placed instances. Right-clicking a tile in one of them adds a factor-by-factor breakdown to the info panel (every curve with the field value and its factor, required ones marked, the geometric mean, biome/subtype modifiers, affinities, then guild cover, patch/stand value, best member, species share and density).
 
 - **World** (default) - the live game view: the terrain ground (below) with every placed natural object on it (see "What World places" below)
 - **Terrain Only** - just the ground: every land tile is one surface material (grass, dry grass, dirt, forest floor, mud, marsh, sand, beach sand, gravel, rock, snow, burnt ground) chosen from its environment and mixed in organic patches, so a grassland has dirt spots and mud by the water and a swamp mixes marsh, mud and grass; colours vary with moisture, cold, geology and so on. Water bodies keep their depth colouring
