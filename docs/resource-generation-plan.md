@@ -957,6 +957,13 @@ This will make it possible to later support:
 * player modification
 * persistence
 
+> **Amendment (2026-09-24): groundwork as implemented (user decisions).** Scope is the data model only - no harvesting or other mechanic yet (there is no player or tool to act), no saving (Phase 16).
+> * `ResourceInstance` (`scripts/resource_instance.gd`): `key` ("<guild id>:<cell x>,<cell y>", the stable Phase 7/8 placement key), `guild_id`, `cell`, `resource_id`, `world_position`, `quality` + `tier` (Phase 14), `size`, `max_health`, `health`, `harvest_state` (`"available"`).
+> * **Built on demand** (user decision): `ChunkManager.get_resource_instance(placement instance)` is the one lookup point - used by the tile inspector and the Quality view - and records are never stored for every placed object. Every field is a pure function of (seed, key, tile fields, data), so a rebuilt record is identical.
+> * **Size is data only** (user decision: sprites are not scaled): `ResourceDefinition.base_size` x the quality profile's `size_by_quality` range at the instance's quality (trees 0.5-1.5: young 0.71, mature 0.96, old growth 1.32 on average; berries and ore 0.7-1.3); `base_size` without a profile.
+> * **Health** = `ResourceDefinition.max_health` (default 100, untuned) x size, starting full.
+> * The renderer stays separate: markers still draw from placement output; the inspector shows "Size / Health / State" for a clicked object.
+
 ---
 
 # Phase 16 — Add World Persistence

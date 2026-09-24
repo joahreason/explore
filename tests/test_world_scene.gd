@@ -290,8 +290,9 @@ func _init() -> void:
 	var tree_quality: float = world._instance_quality(q_tree) if not q_tree.is_empty() else -1.0
 	var q_tier := ResourceManager.get_quality_tier(world._definitions_by_id().get(q_tree.get("id", ""), world.OAK_RESOURCE), tree_quality)
 	check(quality_markers > 100 and quality_fills.size() > 20 and tree_quality >= 0.0
-		and world._inspector_panel.label.text.contains("[b]Quality:[/b] %s (%.2f)" % [q_tier, tree_quality]),
-		"quality view: %d markers in %d fills; a clicked %s shows its tier '%s' (%.2f)" % [quality_markers, quality_fills.size(), q_tree.get("id", "?"), q_tier, tree_quality])
+		and world._inspector_panel.label.text.contains("[b]Quality:[/b] %s (%.2f)" % [q_tier, tree_quality])
+		and world._inspector_panel.label.text.contains("[b]State:[/b] available"),
+		"quality view: %d markers in %d fills; a clicked %s shows its tier '%s' (%.2f) and its entity line" % [quality_markers, quality_fills.size(), q_tree.get("id", "?"), q_tier, tree_quality])
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 

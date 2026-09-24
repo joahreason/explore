@@ -30,3 +30,4 @@ jitter = 0.1
 tier_names = PackedStringArray("young", "mature", "old growth")
 tier_thresholds = PackedFloat32Array(0.31, 0.75)
 moisture_curve = SubResource("Curve_moist")
+size_by_quality = Vector2(0.5, 1.5)

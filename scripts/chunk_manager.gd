@@ -28,6 +28,7 @@ const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
+const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -1152,12 +1153,24 @@ func _placement_chunk(chunk_coord: Vector2i) -> Array:
 func _quality_markers(instances: Array) -> Array:
 	var result := []
 	for inst in instances:
-		var quality := _instance_quality(inst)
-		if quality >= 0.0:
+		var entity = get_resource_instance(inst)
+		if entity != null and entity.quality >= 0.0:
 			var marker: Dictionary = inst.duplicate()
-			marker["fill"] = HeatmapColorizerScript.quality(quality)
+			marker["fill"] = HeatmapColorizerScript.quality(entity.quality)
 			result.append(marker)
 	return result
+
+
+## Phase 15: the gameplay record (ResourceInstance) of a placed instance -
+## the one place views, the inspector and later gameplay get an instance's
+## quality, size, health and harvest state from. Built on demand (pure, so
+## rebuilding gives the same record); null for an unknown resource id. Call
+## with _gen_mutex held or the worker idle, like other generation queries.
+func get_resource_instance(inst: Dictionary):
+	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
+	if definition == null:
+		return null
+	return ResourceInstanceScript.create(inst, definition, _instance_quality(inst))
 
 
 ## Phase 14: ResourceManager.get_quality() for a placed instance (-1.0 = its
@@ -1233,8 +1246,8 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 ## see resource_marker_chunk.gd), else the nearest instance whose debug
 ## marker covers the point (marker radius = 0.35 x its guild's spacing).
 ## Works in any view - instances exist whether or not their markers are
-## drawn. Adds "guild_name" and "name" for display, and "quality" / "tier"
-## (Phase 14) when the resource has a quality profile.
+## drawn. Adds "guild_name" and "name" for display, and "entity": its
+## ResourceInstance (Phase 15: quality, size, health, harvest state).
 func _resource_at(point: Vector2) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
@@ -1253,10 +1266,7 @@ func _resource_at(point: Vector2) -> Dictionary:
 	if not best.is_empty():
 		best["name"] = String(best["id"]).capitalize()
 		best["guild_name"] = String(best["guild"]).capitalize()
-		var quality := _instance_quality(best)
-		if quality >= 0.0:
-			best["quality"] = quality
-			best["tier"] = ResourceManagerScript.get_quality_tier(_definitions_by_id()[best["id"]], quality)
+		best["entity"] = get_resource_instance(best)
 	return best
 
 

@@ -24,3 +24,4 @@ shade_curve = SubResource("Curve_shade")
 jitter = 0.1
 tier_names = PackedStringArray("sparse", "normal", "abundant")
 tier_thresholds = PackedFloat32Array(0.45, 0.93)
+size_by_quality = Vector2(0.7, 1.3)
