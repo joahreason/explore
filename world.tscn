@@ -13,6 +13,7 @@
 [ext_resource type="Script" path="res://scripts/debug_resource_dropdown.gd" id="11"]
 [ext_resource type="Script" path="res://scripts/day_night.gd" id="12"]
 [ext_resource type="Script" path="res://scripts/clock_label.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/time_controls.gd" id="14"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -104,6 +105,34 @@ clip_text = true
 theme_override_font_sizes/font_size = 18
 fit_to_longest_item = false
 script = ExtResource("11")
+
+[node name="TimeControls" type="HBoxContainer" parent="UI"]
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -108.0
+offset_right = 184.0
+offset_bottom = -70.0
+theme_override_constants/separation = 8
+script = ExtResource("14")
+
+[node name="Rewind" type="Button" parent="UI/TimeControls"]
+custom_minimum_size = Vector2(52, 36)
+toggle_mode = true
+theme_override_font_sizes/font_size = 18
+text = "<<"
+
+[node name="PlayPause" type="Button" parent="UI/TimeControls"]
+custom_minimum_size = Vector2(52, 36)
+toggle_mode = false
+theme_override_font_sizes/font_size = 18
+text = "||"
+
+[node name="FastForward" type="Button" parent="UI/TimeControls"]
+custom_minimum_size = Vector2(52, 36)
+toggle_mode = true
+theme_override_font_sizes/font_size = 18
+text = ">>"
 
 [node name="ClockLabel" type="Label" parent="UI"]
 anchor_top = 1.0

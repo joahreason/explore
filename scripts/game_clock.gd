@@ -31,11 +31,69 @@ const LIGHT_COLORS: Array[Color] = [
 	Color(0.34, 0.38, 0.62),
 ]
 
+## Time controls (TimeControls, time_controls.gd): fast-forward and rewind
+## each step through SPEEDS; play/pause pauses at normal speed, or returns
+## to normal speed from fast-forward / rewind.
+const SPEEDS: Array[float] = [4.0, 16.0, 64.0]
+
 var minutes: float = START_MINUTES
+var paused: bool = false
+## 0 normal speed, 1 fast-forward, -1 rewind; speed_level indexes SPEEDS.
+var direction: int = 0
+var speed_level: int = 0
 
 
+## Runs the clock for `real_seconds` of real time at the current rate
+## (rate()); rewinding stops at the very start (minute 0).
 func advance(real_seconds: float) -> void:
-	minutes += maxf(real_seconds, 0.0) * MINUTES_PER_SECOND
+	minutes = maxf(minutes + maxf(real_seconds, 0.0) * MINUTES_PER_SECOND * rate(), 0.0)
+
+
+## Multiplier on real time: 0 paused, 1 normal, +-SPEEDS[speed_level].
+func rate() -> float:
+	if paused:
+		return 0.0
+	if direction == 0:
+		return 1.0
+	return direction * SPEEDS[speed_level]
+
+
+func fast_forward() -> void:
+	_step_speed(1)
+
+
+func rewind() -> void:
+	_step_speed(-1)
+
+
+## Pauses or resumes at normal speed; from fast-forward / rewind it goes
+## back to normal speed (playing).
+func play_pause() -> void:
+	if direction != 0:
+		direction = 0
+		paused = false
+	else:
+		paused = not paused
+
+
+## "Paused", ">> x16", "<< x4", or "" at normal speed.
+func speed_text() -> String:
+	if paused:
+		return "Paused"
+	if direction == 0:
+		return ""
+	return "%s x%d" % [">>" if direction > 0 else "<<", int(SPEEDS[speed_level])]
+
+
+## Pressing the same direction again steps to the next speed (wrapping);
+## switching direction starts at the first speed.
+func _step_speed(dir: int) -> void:
+	if direction == dir:
+		speed_level = (speed_level + 1) % SPEEDS.size()
+	else:
+		direction = dir
+		speed_level = 0
+	paused = false
 
 
 ## Hour of the day as a fraction, 0 <= h < 24.

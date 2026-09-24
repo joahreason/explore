@@ -41,6 +41,32 @@ func _init() -> void:
 	c.advance(-50.0)
 	check(c.time_text() == "00:00", "time never runs backwards")
 
+	# Speed controls.
+	var sc := GameClock.new()
+	var steps: Array[String] = []
+	for press in ["ff", "ff", "ff", "ff", "rw", "rw", "play", "play", "play", "rw", "play"]:
+		match press:
+			"ff": sc.fast_forward()
+			"rw": sc.rewind()
+			"play": sc.play_pause()
+		steps.append("%s=%s" % [press, sc.rate()])
+	check(", ".join(steps) == "ff=4.0, ff=16.0, ff=64.0, ff=4.0, rw=-4.0, rw=-16.0, play=1.0, play=0.0, play=1.0, rw=-4.0, play=1.0",
+		"speeds: >> steps x4 -> x16 -> x64 -> x4, << likewise backwards, play returns to x1, then toggles pause (%s)" % ", ".join(steps))
+	sc.minutes = 600.0
+	sc.fast_forward()
+	sc.fast_forward()
+	sc.fast_forward()
+	sc.advance(1.0)
+	var ff_ok := is_equal_approx(sc.minutes, 600.0 + 64.0 * GameClock.MINUTES_PER_SECOND)
+	sc.play_pause()
+	sc.play_pause()
+	sc.advance(10.0)
+	var pause_ok := is_equal_approx(sc.minutes, 600.0 + 64.0 * GameClock.MINUTES_PER_SECOND) and sc.speed_text() == "Paused"
+	sc.rewind()
+	sc.advance(1000.0)
+	check(ff_ok and pause_ok and sc.minutes == 0.0 and sc.speed_text() == "<< x4",
+		"x64 runs an in-game hour per real second, pause holds the time, rewind stops at the very start")
+
 	# Daylight.
 	var noon := GameClock.light_at(12.0)
 	var night := GameClock.light_at(0.0)
@@ -82,6 +108,30 @@ func _init() -> void:
 	check(tint.color == world.clock.light() and tint.color.get_luminance() < 0.5, "World view is tinted by the time (night: %s)" % tint.color)
 	check(label.text == "%s · %s" % [world.clock.date_text(), world.clock.time_text()] and label.text.begins_with("Spring 1, Year 1 · 02:0"),
 		"clock label shows date and time (%s)" % label.text)
+	# The buttons drive the clock; the label shows the speed.
+	var controls: Node = world.get_node("UI/TimeControls")
+	controls.get_node("FastForward").pressed.emit()
+	controls.get_node("FastForward").pressed.emit()
+	await process_frame
+	var ff_label := label.text
+	var ff_pressed: bool = controls.get_node("FastForward").button_pressed
+	controls.get_node("PlayPause").pressed.emit()
+	await process_frame
+	var play_text: String = controls.get_node("PlayPause").text
+	controls.get_node("PlayPause").pressed.emit()
+	await process_frame
+	var paused_label := label.text
+	var paused_text: String = controls.get_node("PlayPause").text
+	var held: float = world.clock.minutes
+	for f in 5:
+		await process_frame
+	var held_ok: bool = world.clock.minutes == held
+	controls.get_node("Rewind").pressed.emit()
+	await process_frame
+	check(ff_label.ends_with(">> x16") and ff_pressed and play_text == "||" and paused_label.ends_with("Paused") and paused_text == ">"
+		and held_ok and world.clock.rate() == -4.0 and controls.get_node("Rewind").button_pressed and not controls.get_node("FastForward").button_pressed,
+		"buttons: >> twice = x16 (label '%s'), play -> normal ('||'), again -> paused ('%s', clock held), << -> x-4" % [ff_label, paused_label])
+	world.clock.play_pause()
 	world.set_view_mode(CM.ViewMode.TEMPERATURE)
 	await process_frame
 	check(tint.color == Color(1, 1, 1), "data views stay untinted")

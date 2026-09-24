@@ -2,6 +2,8 @@
 # Headless test runner for the resource-generation work.
 #
 #   tests/run_tests.sh              run the pass/fail suites
+#   tests/run_tests.sh clock touch  run only suites whose name contains one
+#                                   of the words (test_game_clock.gd, ...)
 #   tests/run_tests.sh --by-biome   also print the per-biome placement breakdown
 #   OUT_PNG=/tmp/p.png tests/run_tests.sh   also render the placement view
 #
@@ -25,8 +27,16 @@ fi
 # which only the editor (re)builds - a short headless editor run does it.
 "$GODOT" --headless --path . --editor --quit-after 30 >/dev/null 2>&1 || true
 
+filters=()
+for a in "$@"; do [[ "$a" != --* ]] && filters+=("$a"); done
+
 status=0
 for t in tests/test_*.gd; do
+  if (( ${#filters[@]} )); then
+    match=0
+    for f in "${filters[@]}"; do [[ "$t" == *"$f"* ]] && match=1; done
+    (( match )) || continue
+  fi
   echo "== $t"
   out=$(timeout 900 "$GODOT" --headless --path . --script "res://$t" 2>&1) || status=1
   echo "$out" | grep -E "^(PASS|FAIL|INFO|RESULT)|SCRIPT ERROR|ERROR:" || true
