@@ -263,7 +263,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 18 is on branch `claude/phase-14-start-4zcb39` (merging via PR deploys it). Next in the plan: Phase 19 (gameplay loop: harvest yields from quality/size, inventory, crafting, building - the player learns environmental patterns). Use the Debug views for the open first-pass tuning (shade, quality tiers, clustering density, ore abundance).
+- Phase 18 is on `main` (PR #13, web deployed). Next in the plan: Phase 19 (gameplay loop: harvest yields from quality/size, inventory, crafting, building - the player learns environmental patterns). Use the Debug views for the open first-pass tuning (shade, quality tiers, clustering density, ore abundance).
 
 ### Things To Watch Out For
 
