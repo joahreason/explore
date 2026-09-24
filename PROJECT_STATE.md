@@ -253,6 +253,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
+- Bug fix (user report, mobile): lifting one finger of a pinch snapped the camera toward the other finger. Cause: one-finger panning used event.relative, and after a lift the browser can renumber the remaining finger (or report its motion relative to the lifted one) - a jump by the finger gap. camera_rig.gd now pans by its own stored finger positions, re-baselines remaining fingers after any lift (`_settle`: first move after a lift doesn't pan), and adopts a renumbered / unknown-index finger as the nearest tracked one. test_camera_touch +1 check (fails on the old code). Not reproducible on a real phone here - user to confirm.
 - This session, continued: in-game time - day/night tint, clock and date (see In Progress).
 - User request (after Phase 18): mobile web on-screen keyboard for the seed field - export preset `html/experimental_virtual_keyboard=true` (was false: no keyboard appeared); `SeedReload.close_keyboard()` (release GUI focus + `DisplayServer.virtual_keyboard_hide()`) on seed submit / Randomize / Reload and on any map press (camera_rig.gd). test_camera_touch +1 check (focus released by map tap, map click, seed action). The keyboard itself is only testable on a phone (headless has none) - user to check on iOS/Android.
 - This session, continued: Phase 18 developer tooling (see In Progress). Phase 16 confirmed by the user on the web build (right click and reload persistence work).
