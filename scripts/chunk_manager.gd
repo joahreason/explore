@@ -124,8 +124,10 @@ const WARM_DENSITY_ROWS := 4
 ## Polish pass 2: tile codes in the gameplay views' chunk images (alpha,
 ## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass
 ## ground takes the season's tint - and the ground materials that count as
-## grass.
-const WATER_CODE := 254
+## grass. Water codes run WATER_CODE_ICE..WATER_CODE for how liquid it is
+## (0..1); solid ice carries no code and stays still.
+const WATER_CODE := 220
+const WATER_CODE_ICE := 200
 const GRASS_CODE := 253
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
@@ -785,8 +787,10 @@ func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 	var water: Variant = TerrainSurfaceScript.water_color(sample)
 	if water != null:
 		var w: Color = water
-		if coded:
-			w.a = WATER_CODE / 255.0
+		var liquid := TerrainSurfaceScript.water_liquid(sample)
+		# Frozen water gets no code: no waves, no glints.
+		if coded and liquid > 0.0:
+			w.a = (WATER_CODE_ICE + roundf(liquid * (WATER_CODE - WATER_CODE_ICE))) / 255.0
 		return w
 	var state := _surface_state(sample, wx, wy)
 	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)

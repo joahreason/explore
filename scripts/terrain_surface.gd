@@ -150,5 +150,19 @@ static func _tint(color: Color, state: EnvironmentalState, field: String, field_
 static func _water(elevation: float, temperature: float, depth_range: float, shallow: Color, deep: Color) -> Color:
 	var depth_t := clampf(inverse_lerp(SEA_LEVEL, SEA_LEVEL - depth_range, elevation), 0.0, 1.0)
 	var color := shallow.lerp(deep, depth_t)
-	var frozen_t := clampf(smoothstep(-0.15, -0.55, temperature), 0.0, 1.0)
-	return color.lerp(ICE, frozen_t)
+	return color.lerp(ICE, _frozen(temperature))
+
+
+static func _frozen(temperature: float) -> float:
+	return clampf(smoothstep(-0.15, -0.55, temperature), 0.0, 1.0)
+
+
+## How liquid a water body tile is, 1 open water .. 0 solid ice (the same
+## freezing blend as its colour); 0 for ground. Rivers never freeze here.
+static func water_liquid(s: Dictionary) -> float:
+	match s["water_body"]:
+		"ocean", "sea", "lake":
+			return 1.0 - _frozen(s["temperature"])
+		"river":
+			return 1.0
+	return 0.0
