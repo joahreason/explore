@@ -41,6 +41,14 @@ extends Resource
 # erosion, cliffs and exposed rock).
 @export var lowland_ridge_fade: Vector2 = Vector2(-0.15, 0.25)
 @export var lowland_ridge_level: float = 0.2
+# Lakes: the hills above no longer leave ponds in ridge troughs, so lakes
+# are their own feature - scattered basins where this noise peaks above
+# lake_threshold, sunk to just under sea level (small enough for the
+# flood fill to call them lakes, or seas if a strait reaches the ocean).
+# Only up to lake_max_elevation, so they sit in lowlands and valleys.
+@export var lake_frequency: float = 0.012        # local scale - not stretched by world_scale
+@export var lake_threshold: float = 0.87
+@export var lake_max_elevation: float = 0.35
 
 # --- Temperature ---
 @export_group("Climate")
@@ -236,6 +244,7 @@ var _river_line := FastNoiseLite.new()
 var _river_warp := FastNoiseLite.new()
 var _temp_variation := FastNoiseLite.new()
 var _precip_seasonality := FastNoiseLite.new()
+var _lake := FastNoiseLite.new()
 
 const WaterTopologyScript := preload("res://scripts/water_topology.gd")
 var _water_topology = WaterTopologyScript.new()
@@ -255,7 +264,8 @@ var _configured_seed: int = -1
 # ResourceManager.get_vein_value()).
 # +20 surface-material patch noise (Phase 13.5; not owned here - see
 # TerrainSurface, one noise per material id).
-# Next free offset: +21.
+# +21 lake basins.
+# Next free offset: +22.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 const RESOURCE_PLACEMENT_SEED_OFFSET := 18
 const DEPOSIT_VEIN_SEED_OFFSET := 19
@@ -295,6 +305,7 @@ func configure(world_seed: int) -> void:
 	_setup(_disturbance_warp, world_seed + 11, FastNoiseLite.TYPE_SIMPLEX, disturbance_frequency * 2.5, 2)
 	_setup(_resource_vein, world_seed + 9, FastNoiseLite.TYPE_SIMPLEX, resource_frequency, 2)
 	_setup(_micro, world_seed + 10, FastNoiseLite.TYPE_SIMPLEX, 0.05, 1)
+	_setup(_lake, world_seed + 21, FastNoiseLite.TYPE_SIMPLEX, lake_frequency, 1)
 
 
 func _setup(n: FastNoiseLite, s: int, type: FastNoiseLite.NoiseType, freq: float, octaves: int) -> void:
@@ -320,6 +331,13 @@ func elevation(wx: float, wy: float) -> float:
 	var coast_base := (sea_level - lowland_ridge_level * ridge_weight) / (1.0 - ridge_weight)
 	var term := lerpf(lowland_ridge_level, land_term, smoothstep(coast_base - COAST_FADE, coast_base, base))
 	var h := base * (1.0 - ridge_weight) + term * ridge_weight
+	# Lake basins: a bowl easing down to just under sea level at the peak.
+	var basin := smoothstep(lake_threshold, lake_threshold + 0.12, _lake.get_noise_2d(wx, wy))
+	if basin > 0.0 and h > sea_level:
+		# Not in the coastal flats (a basin there would just join the sea),
+		# nor high up.
+		basin *= smoothstep(sea_level + 0.02, sea_level + 0.08, h) * (1.0 - smoothstep(lake_max_elevation - 0.1, lake_max_elevation, h))
+		h = lerpf(h, sea_level - 0.02, basin)
 	return clampf(h, -1.0, 1.0)
 
 

@@ -153,7 +153,7 @@ const CORNER_EDGES := [1 | 4, 2 | 4, 1 | 8, 2 | 8]
 ## Sea shallower than SHALLOW_DEPTH gets whitecaps.
 const SHORE_ELEVATION_MARGIN := 0.03
 const SEA_BODIES := ["ocean", "sea"]
-const SHALLOW_DEPTH := 0.03
+const SHALLOW_DEPTH := 0.008
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
