@@ -1,6 +1,7 @@
 extends SceneTree
 
-## Polish pass 2: seasonal colours (Seasons), water shimmer / grass tint on
+## Polish pass 2: seasonal colours (Seasons), water shimmer, shore foam /
+## swash and grass tint on
 ## the terrain (codes in the gameplay views' chunk images, read by
 ## shaders/terrain.gdshader) and ambient particles by place, time, season
 ## and wind (AmbientParticles.weights()). Visuals were checked on a real
@@ -91,13 +92,57 @@ func _init() -> void:
 	var sprite: Sprite2D = world._loaded_chunks.values()[0]
 	check(water_ok and grass_ok and sprite.material == world.terrain_material and sprite.texture.get_image().get_format() == Image.FORMAT_RGBA8,
 		"World view: water and grass tiles carry their codes; chunks use the terrain shader")
+	# Shoreline: open water beside land carries FOAM_CODE + its land-side
+	# mask, sandy ground beside open water WASH_CODE + its water-side mask
+	# (bit 1 -x, 2 +x, 4 -y, 8 +y); tiles off the shoreline get neither.
+	var sea: float = world._world_gen.sea_level
+	var steps := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+	var open_water := Vector2i(1 << 30, 0)
+	var shore_water := Vector2i(1 << 30, 0)
+	var foam_seen := 0
+	var wash_seen := 0
+	var masks_ok := true
+	for y in range(-150, 150):
+		for x in range(-150, 150):
+			var is_wet: bool = world._world_gen.elevation(x, y) < sea
+			var mask := 0
+			for i in steps.size():
+				if (world._world_gen.elevation(x + steps[i].x, y + steps[i].y) < sea) != is_wet:
+					mask |= 1 << i
+			if mask == 0:
+				if is_wet and open_water.x == 1 << 30:
+					open_water = Vector2i(x, y)
+				continue
+			if foam_seen >= 30 and wash_seen >= 30:
+				continue
+			var ss: Dictionary = world._world_gen.sample(x, y)
+			var code8 := roundi(world._terrain_color(ss, x, y).a * 255.0)
+			if is_wet and TerrainSurface.water_liquid(ss) >= 1.0:
+				masks_ok = masks_ok and code8 == world.FOAM_CODE + mask
+				foam_seen += 1
+				if shore_water.x == 1 << 30:
+					shore_water = Vector2i(x, y)
+			elif not is_wet and code8 > world.WASH_CODE and code8 < world.WASH_CODE + 16:
+				masks_ok = masks_ok and code8 == world.WASH_CODE + mask and world._surface_at(ss, x, y).id in world.WASH_GROUND
+				wash_seen += 1
+	check(masks_ok and foam_seen >= 30 and wash_seen >= 30 and open_water.x != 1 << 30,
+		"shoreline codes: %d foam water tiles and %d swashed sand tiles, each masked toward the shore" % [foam_seen, wash_seen])
 	# Frozen water: no code (no waves, no glints); partly frozen: a code in
-	# between; rivers and open water: fully liquid.
+	# between; rivers and open water: fully liquid. Only fully open water
+	# foams at the shore.
 	var lake := {"water_body": "lake", "elevation": -0.2, "temperature": 0.3}
 	var codes := []
 	for t in [0.3, -0.35, -0.8]:
 		lake["temperature"] = t
-		codes.append(roundi(world._terrain_color(lake, 0, 0).a * 255.0))
+		codes.append(roundi(world._terrain_color(lake, open_water.x, open_water.y).a * 255.0))
+	var shore_codes := []
+	for t in [0.3, -0.35]:
+		lake["temperature"] = t
+		shore_codes.append(roundi(world._terrain_color(lake, shore_water.x, shore_water.y).a * 255.0))
+	var shore_river := {"water_body": "river", "elevation": -0.2, "temperature": 0.3}
+	check(shore_codes[0] > world.FOAM_CODE and shore_codes[0] < world.FOAM_CODE + 16 and shore_codes[1] < world.WATER_CODE
+		and roundi(world._terrain_color(shore_river, shore_water.x, shore_water.y).a * 255.0) == world.WATER_CODE,
+		"only open sea / lake water foams: half-frozen %d and river %d at a shore tile don't" % [shore_codes[1], world.WATER_CODE])
 	var river := {"water_body": "river", "elevation": 0.1, "temperature": -0.9}
 	check(codes[0] == world.WATER_CODE and codes[1] > world.WATER_CODE_ICE and codes[1] < world.WATER_CODE and codes[2] == 255
 		and roundi(world._terrain_color(river, 0, 0).a * 255.0) == world.WATER_CODE,
