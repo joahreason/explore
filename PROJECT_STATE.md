@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 14 — Resource Quality and Variants is complete (2026-09-24, branch `claude/phase-14-start-4zcb39`): part 1, quality, merged to `main` (PR #9); part 2, clustering of trees/rocks/ore, implemented on the branch (see In Progress). Phase 15 (gameplay entities) is next in the plan. Phase 13.5 — Terrain Surface Layer is complete (f9eafe7, 2026-09-24) and merged to `main` and pushed with the sprite size/outline/centring pass. Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 14 — Resource Quality and Variants is complete (2026-09-24, branch `claude/phase-14-start-4zcb39`): part 1, quality, merged to `main` (PR #9); part 2, clustering of trees/rocks/ore, merged to `main` (PR #10, d57a0f0, web deployed; see In Progress). Phase 15 (gameplay entities) is next in the plan. Phase 13.5 — Terrain Surface Layer is complete (f9eafe7, 2026-09-24) and merged to `main` and pushed with the sprite size/outline/centring pass. Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
 
 ## Completed
 
@@ -254,7 +254,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 14 is complete; part 2 (clustering) is on branch `claude/phase-14-start-4zcb39` - merging it (a PR to `main`) deploys the web build. The user checks the clustered World view and Quality view by eye. Next in the plan: Phase 15 (convert generated objects into gameplay entities; quality can feed yields).
+- Phase 14 is complete and on `main` (PR #9 quality, PR #10 clustering; web deployed). The user checks the clustered World view and Quality view by eye. Next in the plan: Phase 15 (convert generated objects into gameplay entities; quality can feed yields).
 
 ### Things To Watch Out For
 
