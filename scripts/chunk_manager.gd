@@ -30,6 +30,7 @@ const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WorldChangesScript := preload("res://scripts/world_changes.gd")
+const GameClockScript := preload("res://scripts/game_clock.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -194,6 +195,9 @@ var _definitions: Dictionary = {} # instance id -> ResourceDefinition (see _defi
 ## for the current seed - written on the main thread under _gen_mutex, read
 ## by generation under it and by marker building on the main thread.
 var _changes = WorldChangesScript.new()
+## In-game time (GameClock), advanced every frame, saved with _changes;
+## DayNight tints the world by it and the clock label shows it.
+var clock = GameClockScript.new()
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
 ## by generation under _gen_mutex), and member id -> its guild.
@@ -242,7 +246,7 @@ func _ready() -> void:
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
-	_changes.load_file(changes_path(), world_seed)
+	_load_gameplay_state()
 
 	# A guild's warnings include its members' (oak among them).
 	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
@@ -323,10 +327,11 @@ func regenerate(seed_text: String) -> void:
 	_inspector_panel.visible = false  # it describes a tile of the old world
 
 	_gen_mutex.lock()  # generation reads world_seed and the caches
+	_save_gameplay_state()  # the old seed's time, before switching
 	world_seed = _seed_from_text(text)
 	_world_gen.configure(world_seed)
 	clear_generation_caches()
-	_changes.load_file(changes_path(), world_seed)
+	_load_gameplay_state()
 	_gen_mutex.unlock()
 
 	for c in _loaded_chunks.keys():
@@ -422,7 +427,11 @@ func set_view_mode(mode: ViewMode) -> void:
 
 ## Without a target (target_path unset) the area around the origin stays
 ## loaded, as the initial load always did.
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	var hour_before := floori(clock.minutes / 60.0)
+	clock.advance(delta)
+	if floori(clock.minutes / 60.0) != hour_before:
+		_save_gameplay_state()  # the clock, about once a real minute
 	if _finder_thread != null and not _finder_thread.is_alive():
 		_finder_thread.wait_to_finish()
 		_finder_thread = null
@@ -1429,7 +1438,7 @@ func _on_harvest_clicked(world_pos: Vector2):
 	if entity != null:
 		_changes.harvest(entity.key, entity.resource_id)
 		_changes.apply(entity)
-		_changes.save(changes_path(), world_seed)
+		_save_gameplay_state()
 	_gen_mutex.unlock()
 	if entity != null:
 		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
@@ -1532,3 +1541,26 @@ func debug_breakdown(wx: int, wy: int) -> Array[String]:
 	lines.append("best member score: %.2f   species share: %.2f" % [v["best"], v["share"]])
 	lines.append("guild density: %.3f   %s density: %.3f" % [_guild_density(guild, wx, wy), _debug_resource.id, v["density"]])
 	return lines
+
+
+## This seed's saved changes and time (a new world: none, START_MINUTES).
+func _load_gameplay_state() -> void:
+	_changes.load_file(changes_path(), world_seed)
+	clock.minutes = _changes.time_minutes if _changes.time_minutes >= 0.0 else GameClockScript.START_MINUTES
+
+
+## Saves the changes and the current time for this seed (nothing under a
+## test harness with the default dir - see changes_path()).
+func _save_gameplay_state() -> void:
+	_changes.time_minutes = clock.minutes
+	_changes.save(changes_path(), world_seed)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		_save_gameplay_state()
+
+
+## Views the day/night cycle tints (DayNight): the gameplay views only.
+func is_time_tinted_view() -> bool:
+	return _view_mode == ViewMode.RESOURCES or _view_mode == ViewMode.MATERIAL

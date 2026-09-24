@@ -11,6 +11,8 @@
 [ext_resource type="Script" path="res://scripts/biome_travel_dropdown.gd" id="9"]
 [ext_resource type="Script" path="res://scripts/position_label.gd" id="10"]
 [ext_resource type="Script" path="res://scripts/debug_resource_dropdown.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/day_night.gd" id="12"]
+[ext_resource type="Script" path="res://scripts/clock_label.gd" id="13"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -21,6 +23,9 @@ target_path = NodePath("CameraRig")
 [node name="Resources" type="Node2D" parent="."]
 
 [node name="Overlay" type="Node2D" parent="."]
+
+[node name="DayNight" type="CanvasModulate" parent="."]
+script = ExtResource("12")
 
 [node name="CameraRig" type="Node2D" parent="."]
 script = ExtResource("2")
@@ -99,6 +104,19 @@ clip_text = true
 theme_override_font_sizes/font_size = 18
 fit_to_longest_item = false
 script = ExtResource("11")
+
+[node name="ClockLabel" type="Label" parent="UI"]
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -64.0
+offset_right = 412.0
+offset_bottom = -38.0
+mouse_filter = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 18
+script = ExtResource("13")
 
 [node name="PositionLabel" type="Label" parent="UI"]
 anchor_top = 1.0

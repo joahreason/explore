@@ -22,6 +22,9 @@ const FORMAT_VERSION := 1
 
 ## key -> {"resource_id": String, "harvest_state": String}
 var _changes: Dictionary = {}
+## The world's in-game time (GameClock.minutes) when last saved, -1 = none
+## (a new world). Saved in the same per-seed file as the changes.
+var time_minutes: float = -1.0
 
 
 func is_empty() -> bool:
@@ -70,10 +73,14 @@ func apply(record) -> void:
 
 func clear() -> void:
 	_changes.clear()
+	time_minutes = -1.0
 
 
 func to_dict(world_seed: int) -> Dictionary:
-	return {"version": FORMAT_VERSION, "seed": world_seed, "changes": _changes.duplicate(true)}
+	var data := {"version": FORMAT_VERSION, "seed": world_seed, "changes": _changes.duplicate(true)}
+	if time_minutes >= 0.0:
+		data["time"] = time_minutes
+	return data
 
 
 ## Loads a to_dict() result; returns false (and stays empty) if it is for
@@ -85,6 +92,9 @@ func from_dict(data: Dictionary, world_seed: int) -> bool:
 	var changes = data.get("changes", {})
 	if not changes is Dictionary:
 		return false
+	var time = data.get("time", -1.0)
+	if time is float or time is int:
+		time_minutes = maxf(float(time), -1.0)
 	for key in changes:
 		var change = changes[key]
 		if change is Dictionary and change.has("resource_id") and change.has("harvest_state"):
