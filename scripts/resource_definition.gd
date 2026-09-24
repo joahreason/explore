@@ -148,6 +148,11 @@ var curve_plan = null
 ## sea_level), while a Phase 10 river/shore plant sets the opposite weights.
 @export_group("Categorical Weights")
 @export var biome_weights: Dictionary = {}
+## biome_weights normally blend across biome edges (by each biome's
+## membership score); strict = only the tile's own base_biome counts, so a
+## resource with weight 0 elsewhere never strays past its biome's edge
+## (cactus: deserts only).
+@export var strict_biomes: bool = false
 @export var subtype_weights: Dictionary = {}
 @export var geology_weights: Dictionary = {}
 @export var water_body_weights: Dictionary = {}
@@ -190,6 +195,10 @@ var curve_plan = null
 ## grass). The sway shader (shaders/sway.gdshader) bends the sprite's top,
 ## its base stays planted; Wind (scripts/wind.gd) sets direction and gusts.
 @export_range(0.0, 1.0) var sway: float = 0.0
+## Whether the sprite casts a shadow in the World view (its silhouette,
+## thrown by the sun or moon - SunShadow): trees, shrubs, grass, flowers and
+## cacti do; rocks, ore, logs and mushrooms sit flat.
+@export var casts_shadow: bool = false
 ## Seasonal colour class (Seasons): "deciduous", "evergreen", "grass",
 ## "flower", or "" = the same all year (rocks, ore, logs...).
 @export var season_class: String = ""

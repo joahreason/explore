@@ -123,7 +123,7 @@ static func get_suitability(
 
 	if not classified.is_empty():
 		if not definition.biome_weights.is_empty():
-			suitability *= _biome_modifier(definition.biome_weights, classified)
+			suitability *= _biome_modifier(definition.biome_weights, classified, definition.strict_biomes)
 		if not definition.subtype_weights.is_empty():
 			var subtype_modifier: float = definition.subtype_weights.get(classified.get("subtype", ""), 1.0)
 			suitability *= subtype_modifier
@@ -161,9 +161,9 @@ static func _curve_plan(definition: ResourceDefinition) -> Array:
 ## Membership-weighted biome modifier (see BIOME_MEMBERSHIP_SHARPNESS).
 ## Water/Beach tiles carry no scores - they are categorical facts decided
 ## upstream - so they fall back to the label's weight.
-static func _biome_modifier(weights: Dictionary, classified: Dictionary) -> float:
+static func _biome_modifier(weights: Dictionary, classified: Dictionary, strict: bool = false) -> float:
 	var scores: Dictionary = classified.get("scores", {})
-	if scores.is_empty():
+	if strict or scores.is_empty():
 		return weights.get(classified.get("base_biome", ""), 1.0)
 	var total := 0.0
 	var weighted := 0.0
@@ -579,7 +579,7 @@ static func explain_suitability(
 	var result := 0.0 if zeroed or requirement <= 0.0 else requirement * mean
 	if result > 0.0 and not classified.is_empty():
 		if not definition.biome_weights.is_empty():
-			var m := _biome_modifier(definition.biome_weights, classified)
+			var m := _biome_modifier(definition.biome_weights, classified, definition.strict_biomes)
 			result *= m
 			lines.append("biome modifier (%s): x%.2f" % [classified.get("base_biome", "?"), m])
 		if not definition.subtype_weights.is_empty():

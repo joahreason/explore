@@ -26,4 +26,3 @@ minimum_spacing = 1.2
 footprint_radius = 0.5
 cover_sets_area = true
 stand_edge = 0.05
-shadow_size = 0.8

@@ -71,3 +71,4 @@ sprite_size = 1.0
 quality_profile = ExtResource("q_profile")
 sway = 0.45
 season_class = "deciduous"
+casts_shadow = true

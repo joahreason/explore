@@ -51,6 +51,8 @@ const SHORE_FEATURES := preload("res://resources/shore_features.tres")
 ## and pioneer grass/herbs recolonizing them.
 const DEADWOOD := preload("res://resources/deadwood.tres")
 const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
+## Cacti on hot, dry ground (deserts, badlands, dry savanna).
+const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
 ## Phase 12: meadow grass, herbs and wildflowers on established ground.
 const GROUND_COVER := preload("res://resources/ground_cover.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
@@ -72,10 +74,10 @@ const FARMLAND := preload("res://resources/farmland.tres")
 ## ore outcrops and rocks are geology and were there first, then trees,
 ## then wetland plants (Phase 10) that own the wet margins, then shore
 ## features (shells, beach grass, mud flats), then deadwood left by the
-## disturbance (Phase 11), the shrubs that fill in around all of them, and
-## last the pioneer plants and ground cover (Phase 12) on what open ground
-## remains.
-const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, PIONEER_PLANTS, GROUND_COVER]
+## disturbance (Phase 11), the shrubs that fill in around all of them, then
+## cacti on dry ground, and last the pioneer plants and ground cover (Phase
+## 12) on what open ground remains.
+const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, DESERT_PLANTS, PIONEER_PLANTS, GROUND_COVER]
 
 const TILE_SIZE := 12          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -1289,6 +1291,7 @@ func _placement_layers() -> Array:
 				[GROUND_COVER, ResourceMarkerChunkScript.Shape.SPRITE],
 				[PIONEER_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[DEADWOOD, ResourceMarkerChunkScript.Shape.SPRITE],
+				[DESERT_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
 				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],
 				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
 			]
@@ -1396,9 +1399,15 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
 		var first: int = markers.instance_count()
-		markers.add_instances(_unchanged(entry[1]), base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
-		if as_sprites and source is ResourceGuild and source.shadow_size > 0.0:
-			markers.add_shadows(first, shadow_material)
+		var kept := _unchanged(entry[1])
+		markers.add_instances(kept, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		if as_sprites and source is ResourceGuild:
+			var defs := _definitions_by_id()
+			var casts: Array[bool] = []
+			for inst in kept:
+				casts.append(defs[inst["id"]].casts_shadow)
+			if casts.has(true):
+				markers.add_shadows(first, shadow_material, casts)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	var shadows: Node2D = markers.shadow_layer()
 	if shadows != null:

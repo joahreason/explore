@@ -44,16 +44,20 @@ func _init() -> void:
 		all_opaque = all_opaque and world._loaded_chunks[c].modulate.a == 1.0 and world._loaded_placements.get(c, world._loaded_chunks[c]).modulate.a == 1.0
 	check(faded == seen.size() and faded > 0 and all_opaque, "new chunks fade in (%d of %d caught mid-fade on arrival), all fully shown after %.1f s" % [faded, seen.size(), world.FADE_IN_SEC])
 
-	# Shadows: guild data, and drawn only for guilds that cast them.
-	check(world.CANOPY_TREES.shadow_size > 0.0 and world.SURFACE_ROCKS.shadow_size > 0.0 and world.ORE_OUTCROPS.shadow_size > 0.0
-		and world.SHRUBS.shadow_size > 0.0 and world.GROUND_COVER.shadow_size == 0.0 and world.PIONEER_PLANTS.shadow_size == 0.0
-		and world.WETLAND_PLANTS.shadow_size == 0.0, "shadows under trees, rocks, ore and shrubs; none under grass, flowers or reeds")
+	# Shadows: per-resource data, and drawn only for resources that cast them.
+	var defs: Dictionary = world._definitions_by_id()
+	var casting := func(ids: Array) -> bool: return ids.all(func(i): return defs[i].casts_shadow)
+	var flat := func(ids: Array) -> bool: return ids.all(func(i): return not defs[i].casts_shadow)
+	check(casting.call(["oak", "pine", "palm", "dead_tree", "berry_bush", "meadow_grass", "wildflowers", "pioneer_grass", "fireweed", "beach_grass", "cactus"])
+		and flat.call(["granite", "basalt", "gravel", "iron", "coal", "fallen_log", "mushrooms", "shells", "mud"]),
+		"shadows under trees, shrubs, grass, flowers and cacti; none under rocks, ore, logs or mushrooms")
 	var shadows := 0
 	var casters := 0
 	for c in world._chunk_placements:
 		for entry in world._chunk_placements[c]:
-			if entry[0][0] is ResourceGuild and entry[0][0].shadow_size > 0.0:
-				casters += world._unchanged(entry[1]).size()
+			if entry[0][0] is ResourceGuild and entry[0][1] == world.ResourceMarkerChunkScript.Shape.SPRITE:
+				for inst in world._unchanged(entry[1]):
+					casters += 1 if defs[inst["id"]].casts_shadow else 0
 		shadows += world._loaded_placements[c].shadow_count()
 	var layer_ok := true
 	for m in world._loaded_placements.values():

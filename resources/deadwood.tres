@@ -22,4 +22,3 @@ cluster_scale = 24.0
 cluster_strength = 0.6
 minimum_spacing = 2.0
 footprint_radius = 0.5
-shadow_size = 0.7
