@@ -32,6 +32,7 @@ const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const GameClockScript := preload("res://scripts/game_clock.gd")
 const WindScript := preload("res://scripts/wind.gd")
+const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -116,6 +117,8 @@ const IMAGE_BAND_ROWS := 2
 ## Tile rows per density-warming step ahead of a guild's chunk placement in
 ## the no-thread fallback (_warm_guild_density): 4 bands per chunk.
 const WARM_DENSITY_ROWS := 4
+## Seconds a newly streamed-in chunk takes to fade in.
+const FADE_IN_SEC := 0.2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
 
@@ -1055,7 +1058,8 @@ func _apply_chunk_data(data: Dictionary) -> void:
 	var lod_step: int = data["lod"]
 	var base := chunk_coord * CHUNK_SIZE
 	var sprite: Sprite2D = _loaded_chunks.get(chunk_coord)
-	if sprite == null:
+	var fresh := sprite == null
+	if fresh:
 		sprite = Sprite2D.new()
 		sprite.centered = false
 		sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
@@ -1081,6 +1085,13 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		var markers := _marker_node(base, data["placements"])
 		resources_root.add_child(markers)
 		_loaded_placements[chunk_coord] = markers
+	# Polish: a chunk that newly streams in fades in (FADE_IN_SEC) instead of
+	# popping; rebuilding one already on screen (view change) swaps in place.
+	if fresh:
+		for node in [sprite, _loaded_overlays.get(chunk_coord), _loaded_placements.get(chunk_coord)]:
+			if node != null:
+				node.modulate.a = 0.0
+				node.create_tween().tween_property(node, "modulate:a", 1.0, FADE_IN_SEC)
 
 
 func _free_chunk_node(nodes: Dictionary, chunk_coord: Vector2i) -> void:
@@ -1284,7 +1295,10 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 		var source: Resource = layer[0]
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
-		markers.add_instances(_unchanged(entry[1]), base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		var shown := _unchanged(entry[1])
+		markers.add_instances(shown, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		if as_sprites and source is ResourceGuild:
+			markers.add_shadows(shown, base, TILE_SIZE, source.shadow_size)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	return markers
 
@@ -1470,7 +1484,24 @@ func _on_harvest_clicked(world_pos: Vector2):
 	_gen_mutex.unlock()
 	if entity != null:
 		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
+		_spawn_harvest_effect(entity)
 	return entity
+
+
+## Polish: the pop-and-specks feedback at a harvested object's tile centre
+## (where its sprite was drawn), in its sprite colour.
+func _spawn_harvest_effect(entity) -> void:
+	var definition: ResourceDefinition = _definitions_by_id().get(entity.resource_id)
+	if definition == null:
+		return
+	var effect := HarvestEffectScript.new()
+	var has_sprite := definition.sprite_tile.x >= 0
+	var texture: Texture2D = ResourceMarkerChunkScript.sprite_texture(definition.sprite_tile) if has_sprite else null
+	var color: Color = definition.sprite_color if has_sprite else definition.debug_color
+	effect.setup(texture, color, definition.sprite_size * TILE_SIZE, entity.key)
+	effect.position = (entity.world_position.floor() + Vector2(0.5, 0.5)) * TILE_SIZE
+	effect.name = "HarvestEffect"
+	resources_root.add_child(effect)
 
 
 ## Rebuilds one loaded chunk's marker node from its stored placements (no
@@ -1592,3 +1623,12 @@ func _notification(what: int) -> void:
 ## Views the day/night cycle tints (DayNight): the gameplay views only.
 func is_time_tinted_view() -> bool:
 	return _view_mode == ViewMode.RESOURCES or _view_mode == ViewMode.MATERIAL
+
+
+## Polish (HoverHighlight): the resource a left click at `point` (tile
+## units) would harvest - _resource_at() without harvested ones - or {}.
+func hover_target(point: Vector2) -> Dictionary:
+	_gen_mutex.lock()
+	var inst := _resource_at(point, false)
+	_gen_mutex.unlock()
+	return inst

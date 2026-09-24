@@ -21,3 +21,4 @@ density_curve = SubResource("Curve_density")
 species_sharpness = 8.0
 minimum_spacing = 1.5
 footprint_radius = 0.6
+shadow_size = 0.8

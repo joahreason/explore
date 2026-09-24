@@ -49,6 +49,8 @@ func world_under(screen: Vector2) -> Vector2:
 
 
 func reset(zoom: float) -> void:
+	rig._stop_glide()
+	rig._zoom_target = -1.0
 	rig.global_position = Vector2.ZERO
 	cam.zoom = Vector2(zoom, zoom)
 	await process_frame
@@ -70,6 +72,7 @@ func _init() -> void:
 		control.visible = false
 	rig = world.get_node("CameraRig")
 	cam = rig.get_node("Camera2D")
+	rig.momentum = false  # exact pan distances below; momentum is checked at the end
 	rig.harvest_clicked.connect(func(_p): clicks += 1)
 	rig.info_clicked.connect(func(_p): infos += 1)
 	var center: Vector2 = root.get_viewport().get_visible_rect().size * 0.5
@@ -205,6 +208,49 @@ func _init() -> void:
 		_send(up)
 		await process_frame
 	check(clicks == 1 and infos == 1, "left click harvests (%d), right click shows info (%d)" % [clicks, infos])
+
+	# Momentum (polish): a flick glides on after release and slows to a stop;
+	# a drag that stopped before release doesn't glide.
+	rig.momentum = true
+	await reset(4.0)
+	p = map_point
+	touch(0, p, true)
+	for k in 5:
+		drag(0, p, p + Vector2(30, 0))
+		p += Vector2(30, 0)
+		await process_frame
+	touch(0, p, false)
+	var at_release := rig.global_position
+	var gliding: bool = rig.is_gliding()
+	for k in 5:
+		await process_frame
+	var after_glide := rig.global_position
+	await create_timer(1.5).timeout
+	var stopped: bool = not rig.is_gliding()
+	check(gliding and after_glide.x < at_release.x - 0.5 and stopped,
+		"a flick keeps gliding the same way after release (%.1f -> %.1f) and comes to a stop" % [at_release.x, after_glide.x])
+	await reset(4.0)
+	p = map_point
+	touch(0, p, true)
+	drag(0, p, p + Vector2(40, 0))
+	await create_timer(0.3).timeout
+	touch(0, p + Vector2(40, 0), false)
+	check(not rig.is_gliding(), "a drag that stopped before release doesn't glide")
+
+	# Wheel zoom eases to its target instead of jumping.
+	await reset(2.0)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = map_point
+	_send(wheel)
+	var first := cam.zoom.x
+	await process_frame
+	var eased := cam.zoom.x
+	await create_timer(0.8).timeout
+	check(first == 2.0 and eased > 2.0 and eased < 2.0 * rig.zoom_factor and is_equal_approx(cam.zoom.x, 2.0 * rig.zoom_factor),
+		"wheel zoom eases (2.00 -> %.3f -> %.3f, target %.3f)" % [eased, cam.zoom.x, 2.0 * rig.zoom_factor])
+	rig.momentum = false
 
 	# On-screen keyboard (mobile web): a tap or click on the map releases a
 	# focused text field (hiding the keyboard), and so does applying a seed.

@@ -75,6 +75,48 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 	queue_redraw()
 
 
+## Soft ground shadows under sprites (a first-pass polish): ellipses at the
+## base of each instance's tile, drawn by a child node behind this one
+## (show_behind_parent) that has no material, so they neither sway with the
+## sprites nor carry the sway encoding. shadow_size scales the ellipse (1 =
+## a tree); positions as in add_instances().
+const SHADOW_COLOR := Color(0, 0, 0, 0.28)
+
+
+func add_shadows(instances: Array, origin_tile: Vector2i, tile_size: int, shadow_size: float) -> void:
+	if shadow_size <= 0.0 or instances.is_empty():
+		return
+	if _shadows == null:
+		_shadows = _ShadowLayer.new()
+		_shadows.name = "Shadows"
+		_shadows.show_behind_parent = true
+		add_child(_shadows)
+	var radii := Vector2(0.42, 0.15) * shadow_size * tile_size
+	for inst in instances:
+		var tile_center := Vector2((inst["position"] as Vector2).floor()) + Vector2(0.5, 0.5)
+		var center := (tile_center - Vector2(origin_tile)) * tile_size + Vector2(0.08, 0.36) * tile_size
+		_shadows.ellipses.append(Rect2(center - radii, radii * 2.0))
+	_shadows.queue_redraw()
+
+
+var _shadows: _ShadowLayer = null
+
+
+class _ShadowLayer extends Node2D:
+	var ellipses: Array[Rect2] = []
+
+	func _draw() -> void:
+		for r in ellipses:
+			var poly := PackedVector2Array()
+			for k in 12:
+				poly.append(r.get_center() + Vector2.from_angle(TAU * k / 12.0) * r.size * 0.5)
+			draw_colored_polygon(poly, SHADOW_COLOR)
+
+
+func shadow_count() -> int:
+	return 0 if _shadows == null else _shadows.ellipses.size()
+
+
 func _draw() -> void:
 	for i in _positions.size():
 		if _shapes[i] == Shape.SPRITE:

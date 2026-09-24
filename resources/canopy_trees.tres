@@ -28,3 +28,4 @@ footprint_radius = 0.7
 cover_sets_area = true
 stand_edge = 0.05
 base_density = 0.7
+shadow_size = 1.0

@@ -6,8 +6,9 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 
 ## Controls
 
-- **Pan**: click-and-drag (mouse), one-finger drag (touch)
-- **Zoom**: scroll wheel (mouse), pinch (touch)
+- **Pan**: click-and-drag (mouse), one-finger drag (touch); a flick keeps gliding briefly
+- **Zoom**: scroll wheel (mouse, eased), pinch (touch)
+- **Hover** (mouse only): the object a left click would harvest gets a thin outline
 - **Harvest**: left-click / tap a placed resource (without dragging) to harvest it - it disappears and stays gone: harvests are saved automatically per world seed (`user://world_changes/<seed>.json`; browser storage on web)
 - **Inspect a tile**: right-click / long-press it to open a panel showing the placed resource under the click (e.g. "Oak (Canopy Trees)"), its full generated field data plus classified biome/subtype/modifiers
 - **B**: toggle the Base Biome overlay (region outlines + labels)
