@@ -51,7 +51,7 @@ const SHORE_FEATURES := preload("res://resources/shore_features.tres")
 ## and pioneer grass/herbs recolonizing them.
 const DEADWOOD := preload("res://resources/deadwood.tres")
 const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
-## Cacti on hot, dry ground (deserts, badlands, dry savanna).
+## Cacti in hot deserts, sagebrush in the cold Barrens.
 const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
 ## Phase 12: meadow grass, herbs and wildflowers on established ground.
 const GROUND_COVER := preload("res://resources/ground_cover.tres")

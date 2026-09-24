@@ -6,7 +6,8 @@ extends SceneTree
 ## country, herbs in woodland), birch only where it is cool, mushrooms on the
 ## forest floor too, limestone/shale/sandstone only on sedimentary rock,
 ## exposed stone only on bare bedrock, gravel only on eroded ground or river
-## banks, and none of it on open water. Run via tests/run_tests.sh.
+## banks, and none of it on open water. Also: cacti only in (warm) Desert,
+## and cool dry land is Barrens. Run via tests/run_tests.sh.
 
 const GROUND_COVER := preload("res://resources/ground_cover.tres")
 const CANOPY := preload("res://resources/canopy_trees.tres")
@@ -119,25 +120,53 @@ func _init() -> void:
 	var gravel_off: float = float(bad["gravel"]) / maxf(total.call("gravel"), 1)
 	check(gravel_off < 0.15, "gravel mostly on eroded ground (erosion >= 0.15) or river banks: %.0f%% elsewhere" % (100 * gravel_off))
 
-	# Cacti: hot deserts only - strict_biomes, so none past a desert's edge
-	# (seed 1337's hot, dry country around (1900, -2980)).
+	# Cacti: hot deserts only, sagebrush: Barrens only - both strict_biomes,
+	# so none past their biome's edge (seed 1337's hot, dry country around
+	# (1900, -2980) and cold, dry country around (1250, -2250)).
 	var cwg := WorldGen.new()
 	cwg.configure(1337)
-	var cactus_density := func(x: int, y: int) -> float:
+	var desert_density := func(x: int, y: int) -> float:
 		var s := cwg.sample(x, y)
 		return ResourceManager.get_guild_density(EnvironmentalState.from_sample(s), DESERT_PLANTS, 1337, x, y, BiomeClassifier.classify_full(s))
-	var cactus_shares := func(x: int, y: int) -> PackedFloat32Array:
-		return PackedFloat32Array([1.0])
-	var cacti := 0
-	var cacti_off := 0
-	for inst in ResourcePlacement.place_guild_in_rect(DESERT_PLANTS, 1337, Rect2i(Vector2i(1750, -3130), Vector2i(300, 300)), cactus_density, cactus_shares):
-		var p: Vector2 = inst["position"]
-		var s := cwg.sample(floori(p.x), floori(p.y))
-		cacti += 1
-		if BiomeClassifier.classify(s) != "Desert" or s["temperature"] < 0.05:
-			cacti_off += 1
-	check(DESERT_PLANTS.get_curve_domain_warnings().is_empty() and cacti >= 50 and cacti_off == 0,
-		"cacti only in hot deserts: %d placed, %d elsewhere" % [cacti, cacti_off])
+	var desert_shares := func(x: int, y: int) -> PackedFloat32Array:
+		var s := cwg.sample(x, y)
+		return ResourceManager.get_species_shares(ResourceManager.get_member_scores(EnvironmentalState.from_sample(s), DESERT_PLANTS, 1337, x, y, BiomeClassifier.classify_full(s)), DESERT_PLANTS.species_sharpness)
+	var placed := {"cactus": 0, "sagebrush": 0}
+	var off := {"cactus": 0, "sagebrush": 0}
+	for rect in [Rect2i(Vector2i(1750, -3130), Vector2i(300, 300)), Rect2i(Vector2i(1100, -2400), Vector2i(300, 300))]:
+		for inst in ResourcePlacement.place_guild_in_rect(DESERT_PLANTS, 1337, rect, desert_density, desert_shares):
+			var p: Vector2 = inst["position"]
+			var s := cwg.sample(floori(p.x), floori(p.y))
+			var id: String = inst["id"]
+			var biome := BiomeClassifier.classify(s)
+			placed[id] += 1
+			if (id == "cactus" and (biome != "Desert" or s["temperature"] < 0.05)) or (id == "sagebrush" and biome != "Barrens"):
+				off[id] += 1
+	check(DESERT_PLANTS.get_curve_domain_warnings().is_empty() and placed["cactus"] >= 50 and off["cactus"] == 0,
+		"cacti only in hot deserts: %d placed, %d elsewhere" % [placed["cactus"], off["cactus"]])
+	check(placed["sagebrush"] >= 50 and off["sagebrush"] == 0,
+		"sagebrush only in Barrens: %d placed, %d elsewhere" % [placed["sagebrush"], off["sagebrush"]])
+
+	# Dry, bare land splits by warmth: Desert is warm (cactus country),
+	# Barrens takes the frozen/cool rest (wide lattice, 2 seeds).
+	var desert_temps := []
+	var cold_temps := []
+	for seed in [4242, 1337]:
+		var dwg := WorldGen.new()
+		dwg.configure(seed)
+		for iy in range(-30, 30):
+			for ix in range(-30, 30):
+				var s := dwg.sample(ix * 750, iy * 750)
+				match BiomeClassifier.classify(s):
+					"Desert":
+						desert_temps.append(s["temperature"])
+					"Barrens":
+						cold_temps.append(s["temperature"])
+	desert_temps.sort()
+	cold_temps.sort()
+	check(desert_temps.size() >= 50 and cold_temps.size() >= 20 and desert_temps[0] >= -0.2 and cold_temps[-1] <= 0.05
+		and desert_temps[desert_temps.size() / 10] >= 0.05,
+		"Desert warm (min %.2f, p10 %.2f, %d tiles), Barrens cool (max %.2f, %d tiles)" % [desert_temps[0], desert_temps[desert_temps.size() / 10], desert_temps.size(), cold_temps[-1], cold_temps.size()])
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

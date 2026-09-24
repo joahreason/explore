@@ -46,6 +46,7 @@ biome_weights = {
 "Alpine Snow": 0.1,
 "Badlands": 0.1,
 "Beach": 0.1,
+"Barrens": 0.05,
 "Desert": 0.05,
 "Forest": 1.0,
 "Grassland": 0.6,

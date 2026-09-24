@@ -42,6 +42,7 @@ succession_curve = SubResource("Curve_succ")
 required_curves = PackedStringArray("temperature_curve", "elevation_curve", "moisture_curve", "erosion_curve", "succession_curve")
 biome_weights = {
 "Beach": 0.3,
+"Barrens": 0.1,
 "Desert": 0.1,
 "Rainforest": 1.0,
 "Savanna": 0.4,

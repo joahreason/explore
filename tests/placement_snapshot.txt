@@ -1,6 +1,6 @@
 canopy_trees 829 efbc5f9c75f82ac88a63bd88a9b79c4d
 deadwood 153 4fc95a0606a521034cdd3c8acc39aa0c
-ground_cover 117 a3733f0760e968a894591756e6016682
+ground_cover 118 34b5b3ebacf8ac6b057cd9e3ef8c448f
 image_deposits 14 1b77d6e0e7db0b007a1d7dc91cdf2d07
 image_material 14 2cf7fd76290db0622086a4fcf21a1221
 image_resource_placement_oak 14 a990ab330324a22bda752386facdc3ce

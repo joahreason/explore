@@ -48,9 +48,9 @@ func _init() -> void:
 	var defs: Dictionary = world._definitions_by_id()
 	var casting := func(ids: Array) -> bool: return ids.all(func(i): return defs[i].casts_shadow)
 	var flat := func(ids: Array) -> bool: return ids.all(func(i): return not defs[i].casts_shadow)
-	check(casting.call(["oak", "pine", "palm", "dead_tree", "berry_bush", "meadow_grass", "wildflowers", "pioneer_grass", "fireweed", "beach_grass", "cactus"])
+	check(casting.call(["oak", "pine", "palm", "dead_tree", "berry_bush", "meadow_grass", "wildflowers", "pioneer_grass", "fireweed", "beach_grass", "cactus", "sagebrush"])
 		and flat.call(["granite", "basalt", "gravel", "iron", "coal", "fallen_log", "mushrooms", "shells", "mud"]),
-		"shadows under trees, shrubs, grass, flowers and cacti; none under rocks, ore, logs or mushrooms")
+		"shadows under trees, shrubs, grass, flowers, cacti and sagebrush; none under rocks, ore, logs or mushrooms")
 	var shadows := 0
 	var casters := 0
 	for c in world._chunk_placements:

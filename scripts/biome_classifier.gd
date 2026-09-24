@@ -29,6 +29,9 @@ const TUNDRA_COLD_FULL := 0.75
 ## 4 seeds: no land biome above ~22%).
 const FOREST_VEG := Vector2(0.27, 0.37)
 const GRASS_VEG := Vector2(0.2, 0.3)
+## Temperature ramp (start, full) from Barrens to Desert. Cacti need
+## >= 0.05 (cactus.tres); Desert only wins from about -0.1 up.
+const BARRENS_TEMP := Vector2(-0.2, 0.05)
 
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
@@ -42,6 +45,7 @@ const BIOME_COLORS := {
 	"Tundra": Color(0.7, 0.78, 0.72, 0.55),
 	"Badlands": Color(0.55, 0.42, 0.3, 0.55),
 	"Desert": Color(0.9, 0.8, 0.4, 0.55),
+	"Barrens": Color(0.68, 0.66, 0.58, 0.55),
 	"Wetland": Color(0.25, 0.32, 0.2, 0.55),
 	"Rainforest": Color(0.05, 0.45, 0.15, 0.55),
 	"Forest": Color(0.15, 0.5, 0.2, 0.55),
@@ -127,14 +131,23 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 	# wooded/grassy biomes so Wetland wins where it's full.
 	var waterlogged := smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.42, 0.55, drainage))
 	var not_wet := 1.0 - 0.5 * waterlogged
+	# Dry, bare ground splits by warmth: a third of it used to be frozen or
+	# too cool for cacti yet was labeled Desert (cold ground is sparse
+	# anyway, and high ground is both cold and wind-dried).
+	var arid := (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation))
+	var warm := smoothstep(BARRENS_TEMP.x, BARRENS_TEMP.y, temperature)
+	var tundra := smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature)
 
 	return {
 		# Needs cold as well as height - by elevation alone, hot highlands
 		# (median temperature +0.22) were labeled snow.
 		"Alpine Snow": smoothstep(0.55, 0.85, elev01) * (1.0 - smoothstep(0.0, 0.3, temperature)),
-		"Tundra": smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature),
+		"Tundra": tundra,
 		"Badlands": maxf(smoothstep(0.15, 0.45, erosion), smoothstep(0.004, 0.009, slope)),
-		"Desert": (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation)),
+		"Desert": arid * warm,
+		# Halved where Tundra is full so the deep cold goes to Tundra rather
+		# than being decided by dictionary order.
+		"Barrens": arid * (1.0 - warm) * (1.0 - 0.5 * tundra),
 		"Wetland": waterlogged,
 		# The hot variants split their generic biome by climate instead of
 		# multiplying it down - as a bare product (forest * hot * wet) they
