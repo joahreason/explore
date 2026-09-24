@@ -227,6 +227,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
+- This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, NOT pushed - the user decides on push/merge; pushing `main` deploys): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. A baseline worktree is at `../explore-baseline` (HEAD eb23a75 minus Phase 13; delete with `git worktree remove ../explore-baseline` when no longer needed).
 - This session (local Windows, branch `claude/phase-17-chunk-streaming`, fast-forwarded into `main` and pushed as 274f036): Phase 17 step 5 - threaded, nearest-first chunk streaming with a main-thread fallback; view/LOD rebuilds through the same queue; `tests/bench_pan.gd`. Commit d311baa. All suites pass except the pre-existing Windows snapshot-hash mismatch (see Things To Watch Out For).
 - Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
 - Same branch, user request: "Go to biome" dropdown under the view dropdown - moves the camera to the nearest tile of a base biome, or to the next patch if already in one (`BiomeFinder`, threaded, own WorldGen copy; see docs/architecture.md §5). Covered by test_world_scene (two Desert trips from the origin land on two different desert patches, ~0.4 s each). Web (no threads) runs the search inline - not measured there. Commit c01fd23; desktop seed UI 439f0c7; smaller UI + position readout 01aa142.
@@ -236,7 +237,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Start Phase 13 (Correlated Ecosystems) from `main` - see "Phase 13 prep" under Next. First: agree the shade/canopy-cover design with the user (where the field lives, which species read it); fix the snapshot golden's Windows mismatch so the guard runs on this machine; then implement, record the agreed new snapshot, and report bench_views/bench_pan before/after.
+- The user reviews Phase 13 on its branch (check the Shade and Resources views by eye; shade curves are first pass), then merges/pushes. After that: Phase 14 (Resource Quality and Variants) - read the plan section and write prep notes first.
 
 ### Things To Watch Out For
 
