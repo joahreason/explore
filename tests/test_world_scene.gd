@@ -156,7 +156,9 @@ func _init() -> void:
 	var sprite_colors := {}
 	for g in [world.CANOPY_TREES, world.SURFACE_ROCKS, world.ORE_OUTCROPS, world.SHRUBS, world.WETLAND_PLANTS, world.SHORE_FEATURES, world.DEADWOOD, world.PIONEER_PLANTS, world.GROUND_COVER]:
 		for member in g.members:
-			sprite_colors[member.sprite_color] = true
+			var tinted: Color = member.sprite_color
+			tinted.a = world.sway_alpha(member.sway)  # the sway shader's input
+			sprite_colors[tinted] = true
 	for m in world._loaded_placements.values():
 		for i in m._shapes.size():
 			if m._shapes[i] == Shape.SPRITE:

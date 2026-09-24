@@ -61,3 +61,4 @@ debug_color = Color(0.62, 0.72, 0.32, 1)
 sprite_tile = Vector2i(15, 5)
 sprite_color = Color(0.62, 0.72, 0.32, 1)
 sprite_size = 1.0
+sway = 1.0
