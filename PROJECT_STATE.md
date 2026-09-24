@@ -246,6 +246,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
+- User request (after Phase 18): mobile web on-screen keyboard for the seed field - export preset `html/experimental_virtual_keyboard=true` (was false: no keyboard appeared); `SeedReload.close_keyboard()` (release GUI focus + `DisplayServer.virtual_keyboard_hide()`) on seed submit / Randomize / Reload and on any map press (camera_rig.gd). test_camera_touch +1 check (focus released by map tap, map click, seed action). The keyboard itself is only testable on a phone (headless has none) - user to check on iOS/Android.
 - This session, continued: Phase 18 developer tooling (see In Progress). Phase 16 confirmed by the user on the web build (right click and reload persistence work).
 - This session, continued: Phase 16 persistence + click-to-harvest (see In Progress).
 - This session, continued: Phase 15 groundwork (see In Progress).

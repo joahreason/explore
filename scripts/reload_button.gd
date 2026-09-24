@@ -26,5 +26,6 @@ func _ready() -> void:
 
 
 func _on_pressed() -> void:
+	SeedReloadScript.close_keyboard(self)
 	var seed_input := get_node("../SeedInput") as LineEdit
 	SeedReloadScript.reload_with_seed(seed_input.text if seed_input else "")

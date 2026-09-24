@@ -14,7 +14,7 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 
 ## UI panel (top-right)
 
-- **Seed field**: shows the seed currently in use; type a seed and press Enter to switch to it (web: reloads the page with it; desktop: regenerates the world in place)
+- **Seed field**: shows the seed currently in use; type a seed and press Enter to switch to it (web: reloads the page with it; desktop: regenerates the world in place). On mobile web, tapping it opens the on-screen keyboard; submitting, Randomize, Reload or a tap on the map closes it
 - **Randomize**: generates a fresh random seed and switches to it immediately (reload on web, in-place regenerate on desktop)
 - **Reload** (web only): forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
 - **View mode dropdown**: switches how chunks are rendered (see below)
