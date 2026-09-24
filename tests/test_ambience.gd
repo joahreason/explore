@@ -117,48 +117,66 @@ func _init() -> void:
 	var shallow_seen := 0
 	var shallow_ok := true
 	var masks_ok := true
-	for y in range(-150, 150):
-		for x in range(-150, 150):
-			var is_wet: bool = world._world_gen.elevation(x, y) < world._world_gen.sea_level
-			var mask := 0
-			for i in steps.size():
-				if i >= 4 and mask & world.CORNER_EDGES[i - 4]:
+	# Around the ocean coasts nearest the origin (walk in from open ocean),
+	# on to the next until one has grassy shore too (most are all beach).
+	var coasts: Array[Vector2i] = []
+	var oceans_seen: Array = []
+	for attempt in 3:
+		var ocean_at = BiomeFinder.find(world._world_gen, "Ocean", Vector2i.ZERO, oceans_seen)
+		if ocean_at == null:
+			break
+		var ocean_tile: Vector2i = ocean_at if ocean_at is Vector2i else ocean_at["tile"]
+		oceans_seen.append(ocean_tile)
+		var inward := Vector2(-ocean_tile).normalized()
+		var walk := Vector2(ocean_tile)
+		while world._world_gen.elevation(walk.x, walk.y) < world._world_gen.sea_level:
+			walk += inward
+		coasts.append(Vector2i(walk.round()))
+	for coast in coasts:
+		if wash_grass_seen > 0:
+			break
+		for y in range(coast.y - 150, coast.y + 150):
+			for x in range(coast.x - 150, coast.x + 150):
+				var is_wet: bool = world._world_gen.elevation(x, y) < world._world_gen.sea_level
+				var mask := 0
+				for i in steps.size():
+					if i >= 4 and mask & world.CORNER_EDGES[i - 4]:
+						continue
+					if (world._world_gen.elevation(x + steps[i].x, y + steps[i].y) < world._world_gen.sea_level) != is_wet:
+						mask |= 1 << i
+				if mask == 0:
+					if is_wet and open_water.x == 1 << 30:
+						open_water = Vector2i(x, y)
+					var depth: float = world._world_gen.sea_level - world._world_gen.elevation(x, y)
+					if is_wet and depth > 0.0 and depth < world.SHALLOW_DEPTH and shallow_seen < 40:
+						var sw: Dictionary = world._world_gen.sample(x, y)
+						if TerrainSurface.water_liquid(sw) >= 1.0 and sw["water_body"] in world.SEA_BODIES:
+							var level: int = roundi(world._terrain_color(sw, x, y).a * 255.0) - world.SHALLOW_CODE
+							shallow_ok = shallow_ok and level == roundi(7.0 * (1.0 - depth / world.SHALLOW_DEPTH))
+							shallow_seen += 1
 					continue
-				if (world._world_gen.elevation(x + steps[i].x, y + steps[i].y) < world._world_gen.sea_level) != is_wet:
-					mask |= 1 << i
-			if mask == 0:
-				if is_wet and open_water.x == 1 << 30:
-					open_water = Vector2i(x, y)
-				var depth: float = world._world_gen.sea_level - world._world_gen.elevation(x, y)
-				if is_wet and depth > 0.0 and depth < world.SHALLOW_DEPTH and shallow_seen < 40:
-					var sw: Dictionary = world._world_gen.sample(x, y)
-					if TerrainSurface.water_liquid(sw) >= 1.0 and sw["water_body"] in world.SEA_BODIES:
-						var level: int = roundi(world._terrain_color(sw, x, y).a * 255.0) - world.SHALLOW_CODE
-						shallow_ok = shallow_ok and level == roundi(7.0 * (1.0 - depth / world.SHALLOW_DEPTH))
-						shallow_seen += 1
-				continue
-			if foam_seen >= 80 and wash_seen >= 80:
-				continue
-			var shape: int = world.SHORE_SHAPES.find(mask) + 1
-			corner_seen += 1 if mask >= 16 else 0
-			var ss: Dictionary = world._world_gen.sample(x, y)
-			var code8 := roundi(world._terrain_color(ss, x, y).a * 255.0)
-			if is_wet and TerrainSurface.water_liquid(ss) >= 1.0 and ss["water_body"] in world.SEA_BODIES:
-				masks_ok = masks_ok and shape > 0 and code8 == world.FOAM_CODE + shape
-				foam_seen += 1
-				if shore_water.x == 1 << 30 and mask < 16:
-					shore_water = Vector2i(x, y)
-			elif is_wet and ss["water_body"] == "lake":
-				lake_seen += 1
-				masks_ok = masks_ok and code8 <= world.WATER_CODE
-			elif not is_wet and ss["water_body"] == "none" and ss["shore_salinity"] > 0.0 and TerrainSurface.shore_liquid(ss) >= 1.0:
-				# Every ground type washes; grass keeps its seasonal tint.
-				var grass: bool = world._surface_at(ss, x, y).id in world.GRASS_GROUND
-				masks_ok = masks_ok and shape > 0 and code8 == (world.WASH_GRASS_CODE if grass else world.WASH_CODE) + shape
-				wash_seen += 1
-				wash_grass_seen += 1 if grass else 0
+				if foam_seen >= 80 and wash_seen >= 80 and wash_grass_seen > 0:
+					continue
+				var shape: int = world.SHORE_SHAPES.find(mask) + 1
+				corner_seen += 1 if mask >= 16 else 0
+				var ss: Dictionary = world._world_gen.sample(x, y)
+				var code8 := roundi(world._terrain_color(ss, x, y).a * 255.0)
+				if is_wet and TerrainSurface.water_liquid(ss) >= 1.0 and ss["water_body"] in world.SEA_BODIES:
+					masks_ok = masks_ok and shape > 0 and code8 == world.FOAM_CODE + shape
+					foam_seen += 1
+					if shore_water.x == 1 << 30 and mask < 16:
+						shore_water = Vector2i(x, y)
+				elif is_wet and ss["water_body"] == "lake":
+					lake_seen += 1
+					masks_ok = masks_ok and code8 <= world.WATER_CODE
+				elif not is_wet and ss["water_body"] == "none" and ss["shore_salinity"] > 0.0 and TerrainSurface.shore_liquid(ss) >= 1.0:
+					# Every ground type washes; grass keeps its seasonal tint.
+					var grass: bool = world._surface_at(ss, x, y).id in world.GRASS_GROUND
+					masks_ok = masks_ok and shape > 0 and code8 == (world.WASH_GRASS_CODE if grass else world.WASH_CODE) + shape
+					wash_seen += 1
+					wash_grass_seen += 1 if grass else 0
 	check(masks_ok and foam_seen >= 30 and wash_seen >= 30 and wash_grass_seen > 0 and corner_seen > 0 and open_water.x != 1 << 30,
-		"shoreline codes: %d foam sea tiles and %d washed ground tiles (%d grass), %d with diagonal corners, each shaped toward the shore; lake shores (%d) plain" % [foam_seen, wash_seen, wash_grass_seen, corner_seen, lake_seen])
+		"shoreline codes (all shaped toward the shore: %s): %d foam sea tiles and %d washed ground tiles (%d grass), %d with diagonal corners; lake shores (%d) plain" % [masks_ok, foam_seen, wash_seen, wash_grass_seen, corner_seen, lake_seen])
 	check(shallow_ok and shallow_seen >= 10, "shallow water off the shoreline carries its shallowness for whitecaps (%d tiles)" % shallow_seen)
 	# Frozen water: no code (no waves, no glints); partly frozen: a code in
 	# between; rivers and open water: fully liquid. Only fully open sea

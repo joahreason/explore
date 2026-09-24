@@ -13,7 +13,8 @@ const TREES := preload("res://resources/canopy_trees.tres")
 const SALT := preload("res://resources/salt.tres")
 const SEA_ONLY := ["shells", "salt", "mangrove", "saltmarsh_grass"]
 const SEED := 4242
-const CENTERS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(20000, 20000)]
+## The last one holds a lake (its shores and a river running into it).
+const CENTERS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(20000, 20000), Vector2i(-600, 80)]
 
 var _fails := 0
 var _passes := 0

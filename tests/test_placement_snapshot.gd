@@ -18,7 +18,7 @@ extends SceneTree
 const SEED := 4242
 const GOLDEN := "res://tests/placement_snapshot.txt"
 ## Tile centers; each area is AREA_CHUNKS x AREA_CHUNKS chunks around it.
-const AREAS := [Vector2i(0, 0), Vector2i(18000, 8820), Vector2i(-540, -2060), Vector2i(1760, -870), Vector2i(8000, -12000), Vector2i(19946, 20042)]
+const AREAS := [Vector2i(0, 0), Vector2i(18000, 8820), Vector2i(-540, -2060), Vector2i(1760, -870), Vector2i(8000, -12000), Vector2i(19946, 20042), Vector2i(-1920, -2280)]
 const AREA_CHUNKS := 3
 
 var _fails := 0
