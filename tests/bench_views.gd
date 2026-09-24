@@ -10,12 +10,15 @@ extends SceneTree
 ##
 ##   $GODOT --headless --path . --script res://tests/bench_views.gd
 ##
-## BENCH_REPEAT=n repeats each switch n times and reports the minimum.
+## BENCH_REPEAT=n repeats each switch n times and reports the minimum. BENCH_THREADED=0
+## generates on the main thread (the web export's fallback), as bench_pan.gd.
 
 
 func _init() -> void:
 	var world: Node2D = load("res://world.tscn").instantiate()
 	world.world_seed = 4242
+	if OS.get_environment("BENCH_THREADED") == "0" and "threaded_generation" in world:
+		world.threaded_generation = false
 	root.add_child(world)
 	await process_frame
 	await process_frame
