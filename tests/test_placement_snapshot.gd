@@ -116,10 +116,16 @@ func _init() -> void:
 	quit(1 if _fails > 0 else 0)
 
 
+## Positions are written as integer micro-tiles, not "%.6f": far from the
+## origin a float32 position has only ~8-9 fractional bits, so many print as
+## exact decimal ties, and the C runtime rounds those differently (MSVC half
+## away from zero, glibc half to even) - the golden then only matched on the
+## platform it was recorded on. roundi() of the double product is plain IEEE
+## arithmetic, identical everywhere.
 func _add(lines: Dictionary, name: String, instances: Array) -> void:
 	for inst in instances:
 		var pos: Vector2 = inst["position"]
-		_append(lines, name, "%s|%s|%s|%.6f,%.6f" % [inst.get("guild", ""), inst["id"], inst["cell"], pos.x, pos.y])
+		_append(lines, name, "%s|%s|%s|%d,%d" % [inst.get("guild", ""), inst["id"], inst["cell"], roundi(pos.x * 1e6), roundi(pos.y * 1e6)])
 
 
 func _append(lines: Dictionary, name: String, line: String) -> void:
