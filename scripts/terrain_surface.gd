@@ -166,3 +166,9 @@ static func water_liquid(s: Dictionary) -> float:
 		"river":
 			return 1.0
 	return 0.0
+
+
+## How liquid the sea or lake beside a shore tile is, judged by the shore
+## tile's own temperature (same freezing blend as water_liquid).
+static func shore_liquid(s: Dictionary) -> float:
+	return 1.0 - _frozen(s["temperature"])

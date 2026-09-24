@@ -125,10 +125,16 @@ const WARM_DENSITY_ROWS := 4
 ## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass
 ## ground takes the season's tint - and the ground materials that count as
 ## grass. Water codes run WATER_CODE_ICE..WATER_CODE for how liquid it is
-## (0..1); solid ice carries no code and stays still.
+## (0..1); solid ice carries no code and stays still. Open sea / lake tiles
+## on the shoreline carry FOAM_CODE + a mask of their land neighbours, and
+## sandy ground beside open water WASH_CODE + a mask of its water
+## neighbours (_shore_mask: 1 -x, 2 +x, 4 -y, 8 +y) - surf foam and swash.
 const WATER_CODE := 220
 const WATER_CODE_ICE := 200
+const FOAM_CODE := 224
+const WASH_CODE := 180
 const GRASS_CODE := 253
+const WASH_GROUND := ["beach_sand", "sand", "gravel"]
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
@@ -791,13 +797,35 @@ func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 		# Frozen water gets no code: no waves, no glints.
 		if coded and liquid > 0.0:
 			w.a = (WATER_CODE_ICE + roundf(liquid * (WATER_CODE - WATER_CODE_ICE))) / 255.0
+			if liquid >= 1.0 and sample["water_body"] != "river":
+				var land := _shore_mask(wx, wy, true)
+				if land > 0:
+					w.a = (FOAM_CODE + land) / 255.0
 		return w
 	var state := _surface_state(sample, wx, wy)
 	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)
 	var color := TerrainSurfaceScript.color_for(material, state, world_seed, wx, wy)
 	if coded and GRASS_GROUND.has(material.id):
 		color.a = GRASS_CODE / 255.0
+	elif coded and WASH_GROUND.has(material.id) and sample["shore_proximity"] > 0.0 and TerrainSurfaceScript.shore_liquid(sample) >= 1.0:
+		var sea := _shore_mask(wx, wy, false)
+		if sea > 0:
+			color.a = (WASH_CODE + sea) / 255.0
 	return color
+
+
+## Which of a tile's 4 neighbours (bit 1 -x, 2 +x, 4 -y, 8 +y) lie across the
+## sea / lake shoreline from it: land around a water tile (`water`), water
+## around a land tile. Elevation alone decides it, so rivers don't count.
+func _shore_mask(wx: int, wy: int, water: bool) -> int:
+	var mask := 0
+	var sea := _world_gen.sea_level
+	var steps := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
+	for i in steps.size():
+		var n: Vector2i = steps[i]
+		if (_world_gen.elevation(wx + n.x, wy + n.y) < sea) != water:
+			mask |= 1 << i
+	return mask
 
 
 ## The ground material of a tile, or null on a water body (inspector, tests).
