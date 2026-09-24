@@ -53,3 +53,4 @@ sprite_color = Color(0.55, 0.78, 0.45, 1)
 sprite_size = 1.0
 quality_profile = ExtResource("q_profile")
 sway = 0.35
+season_class = "deciduous"

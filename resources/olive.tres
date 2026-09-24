@@ -72,3 +72,4 @@ sprite_color = Color(0.62, 0.66, 0.38, 1)
 sprite_size = 1.0
 quality_profile = ExtResource("q_profile")
 sway = 0.25
+season_class = "evergreen"
