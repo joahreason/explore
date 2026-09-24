@@ -24,6 +24,10 @@ point_count = 6
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.15, 0), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.8), 0.0, 0.0, 0, 0]
 point_count = 5
 
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.25, 1), 0.0, 0.0, 0, 0, Vector2(0.6, 0.55), 0.0, 0.0, 0, 0, Vector2(1, 0.4), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_def")
 id = "berry_bush"
@@ -33,7 +37,8 @@ moisture_curve = SubResource("Curve_moist")
 fertility_curve = SubResource("Curve_fert")
 elevation_curve = SubResource("Curve_elev")
 succession_curve = SubResource("Curve_succ")
-required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve")
+shade_curve = SubResource("Curve_shade")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve", "shade_curve")
 biome_weights = {
 "Alpine Snow": 0.2,
 "Badlands": 0.2,

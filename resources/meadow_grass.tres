@@ -20,6 +20,10 @@ point_count = 6
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.45, 0), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.45, 0.3), 0.0, 0.0, 0, 0, Vector2(1, 0.15), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_def")
 id = "meadow_grass"
@@ -28,7 +32,8 @@ temperature_curve = SubResource("Curve_temperature")
 moisture_curve = SubResource("Curve_moisture")
 elevation_curve = SubResource("Curve_elevation")
 succession_curve = SubResource("Curve_succession")
-required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve")
+shade_curve = SubResource("Curve_shade")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve", "shade_curve")
 water_body_weights = {
 "lake": 0.0,
 "none": 1.0,
@@ -42,10 +47,10 @@ biome_weights = {
 "Badlands": 0.2,
 "Beach": 0.2,
 "Desert": 0.1,
-"Forest": 0.25,
+"Forest": 0.5,
 "Grassland": 1.0,
 "Plains": 1.0,
-"Rainforest": 0.1,
+"Rainforest": 0.25,
 "Savanna": 1.0,
 "Swamp": 0.3,
 "Tundra": 0.6,

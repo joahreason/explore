@@ -12,7 +12,7 @@ extends RefCounted
 ## makes a single weak factor crater every resource's score. Curve-based
 ## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
 ## plus river/shore/deposition/salinity since Phase 10, succession since
-## Phase 11, rock_exposure since Phase 12) not listed in required_curves, plus geology/water_body weights
+## Phase 11, rock_exposure since Phase 12, shade since Phase 13) not listed in required_curves, plus geology/water_body weights
 ## and the succession-gated disturbance_type weight, are combined via
 ## GEOMETRIC MEAN: still
 ## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
@@ -64,7 +64,13 @@ const CURVE_STATE_FIELDS := {
 	"salinity_curve": "shore_salinity",
 	"succession_curve": "succession",
 	"rock_exposure_curve": "rock_exposure",
+	"shade_curve": "shade",
 }
+
+## Phase 13 (correlated ecosystems): the guild whose density IS canopy
+## shade - see get_shade(). Named once here so every shade-reading resource
+## agrees on what shade means (plan Rule 2).
+const SHADE_SOURCE: ResourceGuild = preload("res://resources/canopy_trees.tres")
 
 static var _patch_noise_cache: Dictionary = {}
 static var _vein_noise_cache: Dictionary = {}
@@ -268,9 +274,13 @@ static func get_member_suitabilities(
 ## EXPOSED deposit (Phase 9 step 2: an ore outcrop only appears where ore
 ## exists and bedrock shows - or, for clay, where a river bank cuts into
 ## it). Unexposed tiles skip the deposit math entirely.
+## A guild with a shade-reading member gets the tile's shade attached first
+## (get_shade()), so every guild path sees the same value.
 static func get_member_scores(
 	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
 ) -> PackedFloat32Array:
+	if not state.shade_known and guild.reads_shade():
+		get_shade(state, world_seed, wx, wy, classified)
 	var result := PackedFloat32Array()
 	for member in guild.members:
 		if member.vein_scale <= 0.0:
@@ -325,6 +335,27 @@ static func get_guild_density(
 	if guild.density_curve != null:
 		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
 	return density
+
+
+## Phase 13 of docs/resource-generation-plan.md: canopy shade at a tile,
+## 0 open .. 1 dense canopy, = get_guild_density() of SHADE_SOURCE (the
+## canopy trees). Resources influence each other only through this shared
+## environmental cause: the understory reads the canopy's DENSITY - a pure
+## function of (seed, tile), patch noise included, so shade follows groves
+## and clearings - never which tree instances were placed (that would be
+## an "if oak then X" rule, and would tie lower guilds to the stack filter).
+## Young trees and birch count: they are part of the tree cover the canopy
+## placement draws from, so shade and the trees you see agree.
+## Computed once per state and kept on it (EnvironmentalState.shade /
+## shade_known); shade_known is set before computing, so a canopy member
+## that read shade would see 0 instead of recursing (none does - tests check).
+static func get_shade(
+	state: EnvironmentalState, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> float:
+	if not state.shade_known:
+		state.shade_known = true
+		state.shade = get_guild_density(state, SHADE_SOURCE, world_seed, wx, wy, classified)
+	return state.shade
 
 
 ## Phase 17: an upper bound on get_guild_density() - the clamped

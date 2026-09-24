@@ -24,6 +24,10 @@ point_count = 6
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.45, 0), 0.0, 0.0, 0, 0, Vector2(0.7, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 4
 
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.08, 1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.2), 0.0, 0.0, 0, 0, Vector2(1, 0.1), 0.0, 0.0, 0, 0]
+point_count = 4
+
 [resource]
 script = ExtResource("1_def")
 id = "wildflowers"
@@ -33,7 +37,8 @@ moisture_curve = SubResource("Curve_moisture")
 fertility_curve = SubResource("Curve_fertility")
 elevation_curve = SubResource("Curve_elevation")
 succession_curve = SubResource("Curve_succession")
-required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve")
+shade_curve = SubResource("Curve_shade")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "succession_curve", "shade_curve")
 water_body_weights = {
 "lake": 0.0,
 "none": 1.0,
@@ -47,10 +52,10 @@ biome_weights = {
 "Badlands": 0.1,
 "Beach": 0.1,
 "Desert": 0.05,
-"Forest": 0.3,
+"Forest": 0.6,
 "Grassland": 1.0,
 "Plains": 0.8,
-"Rainforest": 0.2,
+"Rainforest": 0.4,
 "Savanna": 0.4,
 "Swamp": 0.1,
 "Tundra": 0.7,

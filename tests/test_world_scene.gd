@@ -239,6 +239,32 @@ func _init() -> void:
 		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != DebugColorizer.color_for(farm_sample)
 		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
 		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
+
+	# Shade (Phase 13): canopy shade heatmap + the understory guilds that
+	# read it; the inspector shows the tile's shade.
+	world.set_view_mode(CM.ViewMode.SHADE)
+	world.flush_chunk_work()
+	var shade_markers := 0
+	for m in world._loaded_placements.values():
+		shade_markers += m._positions.size()
+	var shade_tile := Vector2i(1 << 30, 0)
+	var shade_value := 0.0
+	for y in range(-32, 32, 2):
+		for x in range(-32, 32, 2):
+			var s: Dictionary = world._world_gen.sample(x, y)
+			shade_value = ResourceManager.get_shade(EnvironmentalState.from_sample(s), world.world_seed, x, y, BiomeClassifier.classify_full(s))
+			if shade_value > 0.3:
+				shade_tile = Vector2i(x, y)
+				break
+		if shade_tile.x != 1 << 30:
+			break
+	world._on_tile_clicked((Vector2(shade_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var shade_sample: Dictionary = world._world_gen.sample(shade_tile.x, shade_tile.y)
+	var want: Color = DebugColorizer.color_for(shade_sample).lerp(HeatmapColorizer.shade(shade_value), world.HEATMAP_OVERLAY_STRENGTH)
+	check(shade_markers > 100 and shade_tile.x != 1 << 30
+		and world._color_for(shade_sample, shade_tile.x, shade_tile.y) == want
+		and world._inspector_panel.label.text.contains("[b]Shade:[/b] %.2f" % shade_value),
+		"shade view: %d understory markers; shaded tile %s colored by its shade %.2f, value in the inspector" % [shade_markers, shade_tile, shade_value])
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 

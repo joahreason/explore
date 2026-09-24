@@ -56,6 +56,9 @@ const BARE_ROCK := Color(0.9, 0.88, 0.85)
 
 const NO_DEPOSIT := Color(0.45, 0.45, 0.45)
 
+const SUNLIT := Color(0.95, 0.9, 0.55)
+const DEEP_SHADE := Color(0.05, 0.2, 0.15)
+
 
 static func temperature(s: Dictionary) -> Color:
 	var t01 := clampf((float(s["temperature"]) + 1.0) * 0.5, 0.0, 1.0)
@@ -142,6 +145,12 @@ static func resource_suitability(value: float) -> Color:
 ## ResourceManager.get_density() (Phase 6).
 static func resource_density(value: float) -> Color:
 	return NO_DENSITY.lerp(HIGH_DENSITY, clampf(value, 0.0, 1.0))
+
+
+## Phase 13 canopy shade (ResourceManager.get_shade()), raw 0..1: sunlit
+## open ground .. deep shade under dense canopy.
+static func shade(value: float) -> Color:
+	return SUNLIT.lerp(DEEP_SHADE, clampf(value, 0.0, 1.0))
 
 
 static func rock_exposure(s: Dictionary) -> Color:

@@ -18,8 +18,9 @@ func _ready() -> void:
 ## or {} when the click hit bare ground. deposits: deposit name ->
 ## Vector2(potential (how much exists here), exposure (how much of it shows,
 ## ResourceManager.get_exposure())). farming: Phase 10 farming potential
-## (0..1), or < 0 to leave the line out.
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0) -> void:
+## (0..1), or < 0 to leave the line out. shade: Phase 13 canopy shade
+## (ResourceManager.get_shade()), < 0 = left out.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0, shade: float = -1.0) -> void:
 	visible = true
 
 	var lines: Array[String] = []
@@ -37,6 +38,8 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 		lines.append("[b]Deposits:[/b] %s" % ", ".join(parts))
 	if farming >= 0.0:
 		lines.append("[b]Farming potential:[/b] %.2f" % farming)
+	if shade >= 0.0:
+		lines.append("[b]Shade:[/b] %.2f" % shade)
 	lines.append("[b]Biome:[/b] %s" % classified["base_biome"])
 
 	var subtype: String = classified["subtype"]

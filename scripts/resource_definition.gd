@@ -98,6 +98,16 @@ extends Resource
 	set(value):
 		rock_exposure_curve = value
 		curve_plan = null
+## Phase 13: canopy shade (EnvironmentalState.shade, 0 open .. 1 dense
+## canopy - the canopy-tree guild's density, ResourceManager.get_shade()).
+## The understory's link to the trees above it: a shared environmental
+## cause, never a rule about which tree stands there. Keep it at 1.0 at
+## shade 0 unless the resource genuinely depends on shade, so open ground
+## behaves as without it. Shade-source (canopy) members must not set it.
+@export var shade_curve: Curve:
+	set(value):
+		shade_curve = value
+		curve_plan = null
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -205,6 +215,7 @@ const CURVE_FIELD_RANGES := {
 	"salinity_curve": Vector2(0.0, 1.0),
 	"succession_curve": Vector2(0.0, 1.0),
 	"rock_exposure_curve": Vector2(0.0, 1.0),
+	"shade_curve": Vector2(0.0, 1.0),
 }
 
 

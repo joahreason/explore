@@ -12,7 +12,10 @@ extends RefCounted
 ## and the Phase 1 decision in the session that added this file).
 ##
 ## Built from one sample() call via from_sample() and never mutated
-## afterward - adds no new per-tile state and no risk to determinism. Since
+## afterward - adds no new per-tile state and no risk to determinism. The one
+## exception is `shade` (Phase 13), which is not a sample() key: it is
+## derived from the canopy guild and attached once, lazily, by
+## ResourceManager.get_shade() (a pure function of seed + tile as well). Since
 ## Phase 17 chunk_manager.gd keeps instances in a bounded per-tile cache
 ## (_tile_env) and shares them between readers, which relies on exactly that.
 
@@ -56,6 +59,16 @@ var disturbance: float
 var disturbance_type: String
 var disturbance_age: float
 var succession: float  # Phase 11: 0 fresh scar .. 1 mature/undisturbed
+
+## Phase 13: canopy shade, 0 open ground .. 1 dense canopy = the density of
+## ResourceManager.SHADE_SOURCE (canopy trees) at this tile. Not part of
+## sample(): ResourceManager.get_shade() computes it on first need and sets
+## shade_known; until then it reads as 0 (open ground). Guild evaluation
+## (ResourceManager.get_member_scores()) attaches it automatically; a caller
+## evaluating a shade-reading definition on its own must call get_shade()
+## first.
+var shade: float = 0.0
+var shade_known: bool = false
 
 
 ## Uses load() on its own path rather than the bare class_name so this

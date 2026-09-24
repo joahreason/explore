@@ -4,8 +4,9 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Phase 13 (Correlated Ecosystems): agree the shade/canopy-cover design with the user (see PROJECT_STATE "Phase 13 prep"), then implement
-- [ ] Before Phase 13 changes output: fix the placement snapshot golden (Linux-recorded, fails on Windows at HEAD with 9 guild hashes) - re-record or make the species-share math platform-independent
+- [ ] Phase 13: user review of branch `claude/phase-13-correlated-ecosystems`, then merge (pushing main deploys the web build)
+- [ ] Phase 13: check shade by eye (Shade view + Resources view, forest edges and groves); tune shade curves (first pass)
+- [ ] Phase 14 (Resource Quality and Variants): read the plan section, prep notes
 
 ## Next
 

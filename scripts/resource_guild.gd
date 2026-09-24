@@ -25,7 +25,24 @@ extends Resource
 ## member's id.
 
 @export var id: String
-@export var members: Array[ResourceDefinition] = []
+@export var members: Array[ResourceDefinition] = []:
+	set(value):
+		members = value
+		_reads_shade = null
+
+## Phase 13: whether any member has a shade_curve (built on first use; reset
+## when members is reassigned - assign a new array rather than mutating it).
+## ResourceManager.get_member_scores() only computes shade for such guilds.
+var _reads_shade = null
+
+
+func reads_shade() -> bool:
+	if _reads_shade == null:
+		_reads_shade = false
+		for member in members:
+			if member.shade_curve != null:
+				_reads_shade = true
+	return _reads_shade
 
 ## EnvironmentalState field (by name) the guild's cover is driven by; empty
 ## = full cover everywhere (ore outcrops: the exposed deposit alone decides).

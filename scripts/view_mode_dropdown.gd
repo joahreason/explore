@@ -28,6 +28,7 @@ const ITEMS := [
 	{"label": "Disturbance Age", "mode": ChunkManagerScript.ViewMode.DISTURBANCE_AGE},
 	{"label": "Disturbance Type", "mode": ChunkManagerScript.ViewMode.DISTURBANCE_TYPE},
 	{"label": "Succession", "mode": ChunkManagerScript.ViewMode.SUCCESSION},
+	{"label": "Shade", "mode": ChunkManagerScript.ViewMode.SHADE},
 	{"label": "Fuel Load", "mode": ChunkManagerScript.ViewMode.FUEL_LOAD},
 	{"label": "Fire Risk", "mode": ChunkManagerScript.ViewMode.FIRE_RISK},
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},

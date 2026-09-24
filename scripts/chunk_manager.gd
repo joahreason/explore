@@ -143,6 +143,7 @@ enum ViewMode {
 	SHORE_PLACEMENT,
 	SUCCESSION,
 	SUCCESSION_PLACEMENT,
+	SHADE,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -495,9 +496,10 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	for ore in potentials:
 		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
 	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
+	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
 	_gen_mutex.unlock()
-	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming)
+	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade)
 
 
 ## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
@@ -728,6 +730,8 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.resource_density(_guild_density(SHORE_FEATURES, wx, wy, sample))
 		ViewMode.SUCCESSION, ViewMode.SUCCESSION_PLACEMENT:
 			return HeatmapColorizerScript.succession(sample)
+		ViewMode.SHADE:
+			return HeatmapColorizerScript.shade(_guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample))
 		ViewMode.ROCK_EXPOSURE:
 			return HeatmapColorizerScript.rock_exposure(sample)
 		ViewMode.DEPOSITS:
@@ -761,12 +765,18 @@ func _resource_density(definition: ResourceDefinition, wx: int, wy: int, sample:
 
 
 ## Phase 8 (guilds): the guild's total density, whatever the species mix.
+## Phase 13: a guild that reads shade gets it from the canopy guild's memo here
+## (the same value ResourceManager.get_shade() would compute), so shade and
+## the Tree Cover / Shade heatmaps share one evaluation per tile.
 func _guild_density(guild: ResourceGuild, wx: int, wy: int, sample: Dictionary = {}) -> float:
 	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
 	var memo := _density_memo(guild.id, chunk)
 	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
 	if is_nan(memo[i]):
 		var env := _tile_env(wx, wy, sample)
+		if not env[0].shade_known and guild.reads_shade():
+			env[0].shade = _guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample)
+			env[0].shade_known = true
 		memo[i] = ResourceManagerScript.get_guild_density(env[0], guild, world_seed, wx, wy, env[1])
 	return memo[i]
 
@@ -1045,6 +1055,8 @@ func _placement_layers() -> Array:
 			return [[SHORE_FEATURES, circle]]
 		ViewMode.SUCCESSION_PLACEMENT:
 			return [[DEADWOOD, circle], [PIONEER_PLANTS, circle]]
+		ViewMode.SHADE:
+			return [[GROUND_COVER, circle], [DEADWOOD, circle], [SHRUBS, circle]]
 		ViewMode.DEPOSITS:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
 		ViewMode.RESOURCES:
