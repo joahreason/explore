@@ -45,7 +45,8 @@ static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
 ## SQUARE as a rock, DIAMOND as a wetland plant, HEXAGON as an ore outcrop,
 ## CIRCLE is the plain marker. SPRITE draws sprites[id] = {"tile": sheet
 ## tile (Vector2i), "size": width in tiles}; an id without an entry is
-## drawn as `fallback` instead.
+## drawn as `fallback` instead. An instance's own "fill" Color, if it has
+## one (Phase 14 Quality view), overrides colors.
 func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE, sprites: Dictionary = {}, fallback: Shape = Shape.TRIANGLE) -> void:
 	# Kept under half the minimum spacing (+ outline), so markers of one
 	# layer never overlap.
@@ -66,7 +67,7 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 			# terrain grid (the exact position stays in the data).
 			pos = Vector2(pos.floor()) + Vector2(0.5, 0.5)
 		_positions.append((pos - Vector2(origin_tile)) * tile_size)
-		_fills.append(colors.get(inst["id"], DEFAULT_FILL))
+		_fills.append(inst["fill"] if inst.has("fill") else colors.get(inst["id"], DEFAULT_FILL))
 		_radii.append(radius)
 		_shapes.append(inst_shape)
 		_textures.append(texture)

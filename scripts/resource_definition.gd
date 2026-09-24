@@ -205,6 +205,14 @@ var curve_plan = null
 @export var exposure_field: String = "rock_exposure"
 @export var exposure_curve: Curve
 
+## Phase 14: a QualityProfile (scripts/quality_profile.gd) rating each placed
+## instance of this resource - tree age, ore richness, berry yield - via
+## ResourceManager.get_quality(). Null = the resource has no quality. Typed
+## Resource rather than QualityProfile only because that class extends this
+## one (it must be a QualityProfile).
+@export_group("Quality")
+@export var quality_profile: Resource
+
 
 ## Real value range of the EnvironmentalState field each curve samples
 ## (docs/architecture.md §2). slope has no fixed upper bound, so only its
@@ -258,4 +266,9 @@ func get_curve_domain_warnings() -> PackedStringArray:
 	for curve_name in required_curves:
 		if not CURVE_FIELD_RANGES.has(curve_name):
 			warnings.append("ResourceDefinition '%s': required_curves names unknown curve '%s'" % [id, curve_name])
+	if quality_profile != null:
+		if quality_profile.has_method("tier_for"):
+			warnings.append_array(quality_profile.get_curve_domain_warnings())
+		else:
+			warnings.append("ResourceDefinition '%s': quality_profile is not a QualityProfile" % id)
 	return warnings

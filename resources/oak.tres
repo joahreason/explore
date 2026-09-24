@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="ResourceDefinition" format=3]
 
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_n2fvo"]
+[ext_resource type="Resource" path="res://resources/quality/tree_age.tres" id="q_profile"]
 
 [sub_resource type="Curve" id="Curve_n2fvo"]
 _limits = [0.0, 1.0, -1.0, 1.0]
@@ -70,3 +71,4 @@ debug_color = Color(0.3, 0.8, 0.2, 1)
 sprite_tile = Vector2i(0, 8)
 sprite_color = Color(0.3, 0.62, 0.22, 1)
 sprite_size = 1.0
+quality_profile = ExtResource("q_profile")

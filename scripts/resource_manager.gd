@@ -434,3 +434,47 @@ static func _vein_noise(id: String, vein_scale: float, world_seed: int) -> FastN
 	noise.fractal_octaves = 2
 	_vein_noise_cache[key] = noise
 	return noise
+
+
+## Phase 14 of docs/resource-generation-plan.md: the quality (0 worst .. 1
+## best) of one placed instance of `definition` standing on this tile, or
+## -1.0 when the definition has no quality_profile. A layer after placement
+## (Rule 4) - it only rates instances that exist, never decides which do.
+##   quality = get_suitability(state, profile) [the drivers: curves over
+##             EnvironmentalState fields, combined like any suitability]
+##             x deposit richness (profile.richness_from_deposit, deposits
+##             only: get_deposit_potential() / base_density)
+##             + (roll - 0.5) * 2 * profile.jitter, clamped to 0..1.
+## `roll` is the instance's own 0..1 hash (ResourcePlacement.instance_roll()),
+## so it is a pure function of (seed, instance key, tile fields) - never of
+## chunk or evaluation order. A profile with a shade_curve gets the tile's
+## shade attached first (get_shade()), as guild evaluation does.
+static func get_quality(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	roll: float,
+	classified: Dictionary = {}
+) -> float:
+	var profile = definition.quality_profile
+	if profile == null:
+		return -1.0
+	if profile.shade_curve != null and not state.shade_known:
+		get_shade(state, world_seed, wx, wy, classified)
+	var quality := get_suitability(state, profile, classified)
+	if profile.richness_from_deposit and definition.vein_scale > 0.0:
+		var base_density := clampf(definition.base_density, 0.0, 1.0)
+		var potential := get_deposit_potential(state, definition, world_seed, wx, wy, classified)
+		quality *= clampf(potential / base_density, 0.0, 1.0) if base_density > 0.0 else 0.0
+	quality += (roll - 0.5) * 2.0 * float(profile.jitter)
+	return clampf(quality, 0.0, 1.0)
+
+
+## The quality tier name ("old growth", "rich", ...) for a get_quality()
+## value, or "" when the definition has no profile or its profile no tiers.
+static func get_quality_tier(definition: ResourceDefinition, quality: float) -> String:
+	if definition.quality_profile == null or quality < 0.0:
+		return ""
+	return definition.quality_profile.tier_for(quality)

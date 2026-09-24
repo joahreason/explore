@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="ResourceDefinition" format=3]
 
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+[ext_resource type="Resource" path="res://resources/quality/berry_yield.tres" id="q_profile"]
 
 [sub_resource type="Curve" id="Curve_temp"]
 _limits = [0.0, 1.0, -1.0, 1.0]
@@ -67,3 +68,4 @@ debug_color = Color(0.78, 0.12, 0.38, 1)
 sprite_tile = Vector2i(0, 10)
 sprite_color = Color(0.8, 0.25, 0.45, 1)
 sprite_size = 1.0
+quality_profile = ExtResource("q_profile")
