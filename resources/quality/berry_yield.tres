@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="QualityProfile" format=3]
+
+[ext_resource type="Script" path="res://scripts/quality_profile.gd" id="1_quality"]
+
+[sub_resource type="Curve" id="Curve_fert"]
+_data = [Vector2(0, 0.1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.3), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_moist"]
+_data = [Vector2(0, 0.05), 0.0, 0.0, 0, 0, Vector2(0.3, 0.2), 0.0, 0.0, 0, 0, Vector2(0.8, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.8), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.4, 0.35), 0.0, 0.0, 0, 0, Vector2(1, 0.2), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_quality")
+id = "berry_yield"
+category = "quality"
+moisture_curve = SubResource("Curve_moist")
+fertility_curve = SubResource("Curve_fert")
+shade_curve = SubResource("Curve_shade")
+jitter = 0.1
+tier_names = PackedStringArray("sparse", "normal", "abundant")
+tier_thresholds = PackedFloat32Array(0.42, 0.8)

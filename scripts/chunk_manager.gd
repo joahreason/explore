@@ -146,6 +146,7 @@ enum ViewMode {
 	SUCCESSION,
 	SUCCESSION_PLACEMENT,
 	SHADE,
+	QUALITY,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -172,6 +173,7 @@ var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource mar
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
 var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
+var _definitions: Dictionary = {} # instance id -> ResourceDefinition (see _definitions_by_id)
 ## Phase 13.5: the default "live game" view is the terrain with every placed
 ## resource on it (RESOURCES); MATERIAL is the bare terrain.
 var _view_mode: ViewMode = ViewMode.RESOURCES
@@ -1098,6 +1100,8 @@ func _placement_layers() -> Array:
 			return [[GROUND_COVER, circle], [DEADWOOD, circle], [SHRUBS, circle]]
 		ViewMode.DEPOSITS:
 			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
+		ViewMode.QUALITY:
+			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON], [CANOPY_TREES, circle], [SHRUBS, circle]]
 		ViewMode.RESOURCES:
 			return [
 				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.HEXAGON],
@@ -1129,8 +1133,50 @@ func _placement_chunk(chunk_coord: Vector2i) -> Array:
 	var result := []
 	for layer in layers:
 		var source: Resource = layer[0]
-		result.append([layer, stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)])
+		var instances: Array = stack[source] if source is ResourceGuild else _place_definition_chunk(source, base)
+		if _view_mode == ViewMode.QUALITY:
+			instances = _quality_markers(instances)
+		result.append([layer, instances])
 	return result
+
+
+## Phase 14 Quality view: only the instances that have a quality, each a
+## copy (the placement caches stay untouched) filled by its quality. Quality
+## is computed here, for shown instances only, never during placement.
+func _quality_markers(instances: Array) -> Array:
+	var result := []
+	for inst in instances:
+		var quality := _instance_quality(inst)
+		if quality >= 0.0:
+			var marker: Dictionary = inst.duplicate()
+			marker["fill"] = HeatmapColorizerScript.quality(quality)
+			result.append(marker)
+	return result
+
+
+## Phase 14: ResourceManager.get_quality() for a placed instance (-1.0 = its
+## resource has no quality), from the cached state of the tile it stands on.
+func _instance_quality(inst: Dictionary) -> float:
+	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
+	if definition == null or definition.quality_profile == null:
+		return -1.0
+	var pos: Vector2 = inst["position"]
+	var wx := floori(pos.x)
+	var wy := floori(pos.y)
+	var env := _tile_env(wx, wy)
+	var roll := ResourcePlacementScript.instance_roll(inst, world_seed)
+	return ResourceManagerScript.get_quality(env[0], definition, world_seed, wx, wy, roll, env[1])
+
+
+## Instance id -> ResourceDefinition for every member of GUILD_STACK (and
+## Oak Placement's single definition), built on first use.
+func _definitions_by_id() -> Dictionary:
+	if _definitions.is_empty():
+		_definitions[OAK_RESOURCE.id] = OAK_RESOURCE
+		for guild in GUILD_STACK:
+			for member in guild.members:
+				_definitions[member.id] = member
+	return _definitions
 
 
 ## A guild's instances depend only on the guilds above it in GUILD_STACK, so
@@ -1181,7 +1227,8 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 ## see resource_marker_chunk.gd), else the nearest instance whose debug
 ## marker covers the point (marker radius = 0.35 x its guild's spacing).
 ## Works in any view - instances exist whether or not their markers are
-## drawn. Adds "guild_name" and "name" for display.
+## drawn. Adds "guild_name" and "name" for display, and "quality" / "tier"
+## (Phase 14) when the resource has a quality profile.
 func _resource_at(point: Vector2) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
@@ -1200,6 +1247,10 @@ func _resource_at(point: Vector2) -> Dictionary:
 	if not best.is_empty():
 		best["name"] = String(best["id"]).capitalize()
 		best["guild_name"] = String(best["guild"]).capitalize()
+		var quality := _instance_quality(best)
+		if quality >= 0.0:
+			best["quality"] = quality
+			best["tier"] = ResourceManagerScript.get_quality_tier(_definitions_by_id()[best["id"]], quality)
 	return best
 
 

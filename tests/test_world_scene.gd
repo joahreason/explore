@@ -269,6 +269,29 @@ func _init() -> void:
 		and world._color_for(shade_sample, shade_tile.x, shade_tile.y) == want
 		and world._inspector_panel.label.text.contains("[b]Shade:[/b] %.2f" % shade_value),
 		"shade view: %d understory markers; shaded tile %s colored by its shade %.2f, value in the inspector" % [shade_markers, shade_tile, shade_value])
+
+	# Quality (Phase 14): markers only for instances with a quality, each
+	# filled by it; clicking a tree names its tier in the inspector.
+	world.set_view_mode(CM.ViewMode.QUALITY)
+	world.flush_chunk_work()
+	var quality_markers := 0
+	var quality_fills := {}
+	for m in world._loaded_placements.values():
+		quality_markers += m._positions.size()
+		for fill in m._fills:
+			quality_fills[fill] = true
+	var q_tree: Dictionary = {}
+	for inst in world._place_stack(Rect2i(-32, -32, 64, 64), 3)[world.CANOPY_TREES]:
+		if inst["id"] != "young_tree":
+			q_tree = inst
+			break
+	var quality_tree_pos: Vector2 = q_tree.get("position", Vector2.ZERO)
+	world._on_tile_clicked((quality_tree_pos.floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var tree_quality: float = world._instance_quality(q_tree) if not q_tree.is_empty() else -1.0
+	var q_tier := ResourceManager.get_quality_tier(world._definitions_by_id().get(q_tree.get("id", ""), world.OAK_RESOURCE), tree_quality)
+	check(quality_markers > 100 and quality_fills.size() > 20 and tree_quality >= 0.0
+		and world._inspector_panel.label.text.contains("[b]Quality:[/b] %s (%.2f)" % [q_tier, tree_quality]),
+		"quality view: %d markers in %d fills; a clicked %s shows its tier '%s' (%.2f)" % [quality_markers, quality_fills.size(), q_tree.get("id", "?"), q_tier, tree_quality])
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 

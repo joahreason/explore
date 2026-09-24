@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="ResourceDefinition" format=3]
 
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+[ext_resource type="Resource" path="res://resources/quality/ore_richness.tres" id="q_profile"]
 
 [sub_resource type="Curve" id="C_temp"]
 _limits = [0.0, 1.0, -1.0, 1.0]
@@ -68,3 +69,4 @@ vein_scale = 40.0
 vein_sharpness = 1.5
 exposure_field = "shore_proximity"
 exposure_curve = SubResource("C_exposure")
+quality_profile = ExtResource("q_profile")

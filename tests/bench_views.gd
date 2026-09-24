@@ -25,7 +25,7 @@ func _init() -> void:
 
 	var CM = world.get_script()
 	var repeat := maxi(int(OS.get_environment("BENCH_REPEAT")), 1)
-	for mode in [CM.ViewMode.RESOURCE_PLACEMENT_OAK, CM.ViewMode.TREE_PLACEMENT, CM.ViewMode.RESOURCES, CM.ViewMode.MATERIAL]:
+	for mode in [CM.ViewMode.RESOURCE_PLACEMENT_OAK, CM.ViewMode.TREE_PLACEMENT, CM.ViewMode.RESOURCES, CM.ViewMode.QUALITY, CM.ViewMode.MATERIAL]:
 		var best := INF
 		for r in repeat:
 			world.set_view_mode(CM.ViewMode.MATERIAL if mode != CM.ViewMode.MATERIAL else CM.ViewMode.TEMPERATURE)

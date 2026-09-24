@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="ResourceDefinition" format=3]
 
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+[ext_resource type="Resource" path="res://resources/quality/ore_richness.tres" id="q_profile"]
 
 [sub_resource type="Curve" id="Curve_district"]
 _data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.55, 0), 0.0, 0.0, 0, 0, Vector2(0.75, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
@@ -34,3 +35,4 @@ sprite_color = Color(0.3, 0.28, 0.36, 1)
 sprite_size = 1.0
 vein_scale = 72.0
 vein_sharpness = 2.5
+quality_profile = ExtResource("q_profile")

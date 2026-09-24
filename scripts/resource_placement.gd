@@ -47,6 +47,7 @@ const _SALT_JITTER_Y := 2
 const _SALT_ACCEPT := 3
 const _SALT_PRIORITY := 4
 const _SALT_SPECIES := 5
+const _SALT_QUALITY := 6
 
 
 ## Returns every instance of `definition` whose position falls inside
@@ -90,6 +91,17 @@ static func place_guild_in_rect(
 		inst["id"] = guild.members[member].id
 		result.append(inst)
 	return result
+
+
+## Phase 14: a 0..1 roll for one placed instance, from its stable key -
+## the guild id (or, for a single definition, its id: the instance's "guild"
+## entry if present, else its "id") and its cell - with its own salt, so it
+## is independent of every placement roll. ResourceManager.get_quality()
+## turns it into the instance's small quality jitter. Pure function of
+## (seed, key): the same instance gets the same roll in any chunk or order.
+static func instance_roll(inst: Dictionary, world_seed: int) -> float:
+	var key_id: String = inst.get("guild", inst["id"])
+	return _cell_unit(_resource_seed(key_id, world_seed), inst["cell"], _SALT_QUALITY)
 
 
 ## Phase 8 step 5: several guilds sharing the ground, e.g. [rocks, trees,

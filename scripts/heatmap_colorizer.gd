@@ -167,3 +167,18 @@ static func deposit(ore_color: Color, potential: float, rock_exposure: float) ->
 	var exposed := ore_color.lightened(0.25)
 	var shade := hidden.lerp(exposed, clampf(rock_exposure, 0.0, 1.0))
 	return NO_DEPOSIT.lerp(shade, clampf(potential * 1.5, 0.0, 1.0))
+
+
+const POOR_QUALITY := Color(0.85, 0.2, 0.15)
+const MID_QUALITY := Color(0.95, 0.85, 0.25)
+const GOOD_QUALITY := Color(0.2, 0.85, 0.3)
+
+
+## Phase 14 Quality view: one placed instance's quality
+## (ResourceManager.get_quality(), 0..1) - red poor/young/sparse, yellow in
+## the middle, green rich/old growth/abundant. A marker fill, not a tile.
+static func quality(value: float) -> Color:
+	var v := clampf(value, 0.0, 1.0)
+	if v < 0.5:
+		return POOR_QUALITY.lerp(MID_QUALITY, v * 2.0)
+	return MID_QUALITY.lerp(GOOD_QUALITY, (v - 0.5) * 2.0)
