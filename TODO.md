@@ -6,7 +6,7 @@ Keep this list actionable and current.
 
 - [ ] Phase 13: check shade by eye (Shade view + Resources view, forest edges and groves); tune shade curves (first pass)
 - [ ] Phase 13.5 (on main): check terrain and sprites by eye (World + Terrain Only views); tune material curves/colours (first pass)
-- [ ] Phase 14 (Resource Quality and Variants, after 13.5): prep notes written (PROJECT_STATE "Phase 14 prep") - settle open questions, implement
+- [ ] Phase 14 (Resource Quality and Variants + tree clumps / rock formations / ore clusters, after 13.5): prep notes written (PROJECT_STATE "Phase 14 prep") - settle open questions, implement
 
 ## Next
 

@@ -897,6 +897,13 @@ Quality can be influenced by:
 
 This creates gameplay variation without requiring entirely new resource types.
 
+> **Amendment (2026-09-24): Phase 14 also covers spatial clustering of trees, rocks and ore (user request).** Alongside quality, make the spatial pattern of existing resources more natural, in data where possible:
+> * **Trees in tighter clumps:** dense stands with clear gaps between them, instead of today's evenly spread groves. Levers already in `resources/canopy_trees.tres`: a smaller `minimum_spacing` (2.0 today; sprites are one tile since Phase 13.5, so ~1-1.2 is possible), a steep `cluster_curve` like the shrub thickets, and `cluster_scale`/`cluster_strength`. Expect knock-on effects through Phase 13 shade (forest floor, understory and ground materials clump with the trees) and the stack's footprint check (clumps crowd out lower guilds).
+> * **Rocks in formations:** boulders gathered into scatters and outcrops rather than evenly sprinkled - `resources/surface_rocks.tres` (spacing 1.5, patch noise scale 24 / strength 0.7, no `cluster_curve` today), following exposed and eroded ground as now.
+> * **Ore in clusters:** outcrops grouped along exposed seams rather than isolated hexes/sprites - `resources/ore_outcrops.tres` (spacing 3.0, no patch noise today; it follows the exposed-deposit field and vein noise).
+> * Out of scope here: RimWorld-style solid rock masses (impassable, mineable walls) - a terrain-layer feature (a Phase 13.5-style surface material plus a "mountain mass" field and edge rendering) for a later phase.
+> * Checks: instance counts per biome stay in a sensible range (`tests/resource_by_biome.gd`), a measurable clustering increase (e.g. nearest-neighbour distance or neighbour counts vs. today), and performance - a smaller tree spacing means ~4x canopy candidates, so compare `tests/bench_views.gd` and `tests/bench_pan.gd` (threaded and `BENCH_THREADED=0`) before and after. Placement output changes by design: re-record the snapshot once agreed.
+
 ---
 
 # Phase 15 — Convert Generated Objects into Gameplay Entities
