@@ -36,6 +36,10 @@ const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
+## Cast shadows under sprites (their silhouettes, thrown by the sun or moon
+## - SunShadow - and swaying with them); one material for every chunk.
+const CAST_SHADOW_SHADER := preload("res://shaders/cast_shadow.gdshader")
+const SunShadowScript := preload("res://scripts/sun_shadow.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -185,6 +189,8 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
 @onready var resources_root: Node2D = $Resources
+## Every chunk's cast shadows, drawn under all resource sprites.
+@onready var shadows_root: Node2D = $ShadowLayer
 @onready var _inspector_panel := $UI/TileInspector
 @onready var _seed_input: LineEdit = $UI/SeedInput
 
@@ -208,6 +214,7 @@ var clock = GameClockScript.new()
 const CLOCK_SAVE_MSEC := 10000
 var wind = WindScript.new()
 var sway_material := ShaderMaterial.new()
+var shadow_material := ShaderMaterial.new()
 var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
@@ -255,6 +262,7 @@ var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (Biom
 
 func _ready() -> void:
 	sway_material.shader = SWAY_SHADER
+	shadow_material.shader = CAST_SHADOW_SHADER
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
@@ -444,6 +452,8 @@ func _process(delta: float) -> void:
 	clock.advance(delta)
 	wind.advance(delta, clock.rate())
 	wind.apply(sway_material, clock.minutes)
+	wind.apply(shadow_material, clock.minutes)
+	SunShadowScript.apply(shadow_material, clock.minutes)
 	# Save the clock when an in-game hour passes (about once a real minute at
 	# normal speed), at most every CLOCK_SAVE_MSEC when fast-forwarding.
 	if floori(clock.minutes / 60.0) != hour_before and Time.get_ticks_msec() - _last_clock_save_msec >= CLOCK_SAVE_MSEC:
@@ -1088,7 +1098,9 @@ func _apply_chunk_data(data: Dictionary) -> void:
 	# Polish: a chunk that newly streams in fades in (FADE_IN_SEC) instead of
 	# popping; rebuilding one already on screen (view change) swaps in place.
 	if fresh:
-		for node in [sprite, _loaded_overlays.get(chunk_coord), _loaded_placements.get(chunk_coord)]:
+		var markers_node = _loaded_placements.get(chunk_coord)
+		var shadow_node = markers_node.shadow_layer() if markers_node != null else null
+		for node in [sprite, _loaded_overlays.get(chunk_coord), markers_node, shadow_node]:
 			if node != null:
 				node.modulate.a = 0.0
 				node.create_tween().tween_property(node, "modulate:a", 1.0, FADE_IN_SEC)
@@ -1295,11 +1307,15 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 		var source: Resource = layer[0]
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
-		var shown := _unchanged(entry[1])
-		markers.add_instances(shown, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
-		if as_sprites and source is ResourceGuild:
-			markers.add_shadows(shown, base, TILE_SIZE, source.shadow_size)
+		var first: int = markers.instance_count()
+		markers.add_instances(_unchanged(entry[1]), base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		if as_sprites and source is ResourceGuild and source.shadow_size > 0.0:
+			markers.add_shadows(first, shadow_material)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
+	var shadows: Node2D = markers.shadow_layer()
+	if shadows != null:
+		shadows.position = markers.position
+		shadows_root.add_child(shadows)
 	return markers
 
 

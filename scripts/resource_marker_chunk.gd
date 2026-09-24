@@ -75,46 +75,64 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 	queue_redraw()
 
 
-## Soft ground shadows under sprites (a first-pass polish): ellipses at the
-## base of each instance's tile, drawn by a child node behind this one
-## (show_behind_parent) that has no material, so they neither sway with the
-## sprites nor carry the sway encoding. shadow_size scales the ellipse (1 =
-## a tree); positions as in add_instances().
-const SHADOW_COLOR := Color(0, 0, 0, 0.28)
-
-
-func add_shadows(instances: Array, origin_tile: Vector2i, tile_size: int, shadow_size: float) -> void:
-	if shadow_size <= 0.0 or instances.is_empty():
-		return
+## Cast shadows (polish): the sprites of the instances added from index
+## `from` on get a shadow - their own silhouette, drawn with `material`
+## (shaders/cast_shadow.gdshader), which flattens it onto the ground away
+## from the sun or moon (SunShadow) and sways it with the plant (the draw
+## colour's alpha carries the same sway as the sprite's). Only sprite
+## instances cast one. The shadows are a separate node (shadow_layer())
+## that the caller parents under every chunk's sprites - a shadow reaching
+## into the next chunk must not cover that chunk's trees; it is freed with
+## this node.
+func add_shadows(from: int, material: Material) -> void:
 	if _shadows == null:
 		_shadows = _ShadowLayer.new()
 		_shadows.name = "Shadows"
-		_shadows.show_behind_parent = true
-		add_child(_shadows)
-	var radii := Vector2(0.42, 0.15) * shadow_size * tile_size
-	for inst in instances:
-		var tile_center := Vector2((inst["position"] as Vector2).floor()) + Vector2(0.5, 0.5)
-		var center := (tile_center - Vector2(origin_tile)) * tile_size + Vector2(0.08, 0.36) * tile_size
-		_shadows.ellipses.append(Rect2(center - radii, radii * 2.0))
+		_shadows.material = material
+		tree_exiting.connect(func(): if is_instance_valid(_shadows): _shadows.queue_free())
+	for i in range(from, _positions.size()):
+		if _shapes[i] != Shape.SPRITE:
+			continue
+		_shadows.textures.append(_textures[i])
+		_shadows.rects.append(sprite_rect(_positions[i], _sprite_sizes[i]))
+		_shadows.colors.append(Color(0, 0, 0, _fills[i].a))
 	_shadows.queue_redraw()
+
+
+## Instances added so far (the next add_instances() starts here).
+func instance_count() -> int:
+	return _positions.size()
 
 
 var _shadows: _ShadowLayer = null
 
 
 class _ShadowLayer extends Node2D:
-	var ellipses: Array[Rect2] = []
+	var textures: Array[Texture2D] = []
+	var rects: Array[Rect2] = []
+	var colors: Array[Color] = []
 
 	func _draw() -> void:
-		for r in ellipses:
-			var poly := PackedVector2Array()
-			for k in 12:
-				poly.append(r.get_center() + Vector2.from_angle(TAU * k / 12.0) * r.size * 0.5)
-			draw_colored_polygon(poly, SHADOW_COLOR)
+		for i in textures.size():
+			draw_texture_rect(textures[i], rects[i], false, colors[i])
 
 
 func shadow_count() -> int:
-	return 0 if _shadows == null else _shadows.ellipses.size()
+	return 0 if _shadows == null else _shadows.textures.size()
+
+
+## The node drawing this chunk's shadows (null if none): parent it under
+## all sprites, at this node's position.
+func shadow_layer() -> Node2D:
+	return _shadows
+
+
+## Where a sprite of `size` px centred at `center` is drawn: its art snapped
+## to whole sprite pixels, grown by the baked outline ring.
+static func sprite_rect(center: Vector2, size: float) -> Rect2:
+	var px := size / SPRITE_SIZE
+	var top_left := ((center - Vector2.ONE * size * 0.5) / px).round() * px
+	return Rect2(top_left, Vector2.ONE * size).grow(px * OUTLINE_PAD)
 
 
 func _draw() -> void:
@@ -124,10 +142,7 @@ func _draw() -> void:
 			# the art stays size x size, snapped to its own pixel grid so every
 			# sprite pixel renders the same width at any zoom. The tint only
 			# darkens the baked outline further.
-			var size := _sprite_sizes[i]
-			var px := size / SPRITE_SIZE
-			var top_left := ((_positions[i] - Vector2.ONE * size * 0.5) / px).round() * px
-			draw_texture_rect(_textures[i], Rect2(top_left, Vector2.ONE * size).grow(px * OUTLINE_PAD), false, _fills[i])
+			draw_texture_rect(_textures[i], sprite_rect(_positions[i], _sprite_sizes[i]), false, _fills[i])
 		elif _shapes[i] == Shape.CIRCLE:
 			draw_circle(_positions[i], _radii[i] + 1.0, OUTLINE)
 			draw_circle(_positions[i], _radii[i], _fills[i])
