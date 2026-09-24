@@ -206,5 +206,37 @@ func _init() -> void:
 		await process_frame
 	check(clicks == 1 and infos == 1, "left click harvests (%d), right click shows info (%d)" % [clicks, infos])
 
+	# On-screen keyboard (mobile web): a tap or click on the map releases a
+	# focused text field (hiding the keyboard), and so does applying a seed.
+	# A stand-in LineEdit off-screen: the real seed field is hidden here.
+	var field := LineEdit.new()
+	field.position = Vector2(-1000, -1000)
+	root.add_child(field)
+	var focused := func() -> bool:
+		field.grab_focus()
+		return root.get_viewport().gui_get_focus_owner() == field
+	var had: bool = focused.call()
+	touch(0, map_point, true)
+	touch(0, map_point, false)
+	await process_frame
+	var after_tap: Control = root.get_viewport().gui_get_focus_owner()
+	var had2: bool = focused.call()
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = map_point
+	_send(click)
+	var click_up := click.duplicate()
+	click_up.pressed = false
+	_send(click_up)
+	await process_frame
+	var after_click: Control = root.get_viewport().gui_get_focus_owner()
+	var had3: bool = focused.call()
+	SeedReload.close_keyboard(world)
+	var after_close: Control = root.get_viewport().gui_get_focus_owner()
+	check(had and had2 and had3 and after_tap == null and after_click == null and after_close == null,
+		"map tap, map click and a seed action release the text field's keyboard focus")
+	field.queue_free()
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

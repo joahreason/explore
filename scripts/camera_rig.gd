@@ -9,6 +9,8 @@ extends Node2D
 ## No character/physics involved - this node's position is just the camera
 ## anchor that ChunkManager streams chunks around.
 
+const SeedReloadScript := preload("res://scripts/seed_reload.gd")
+
 @export var zoom_factor: float = 1.15  # multiplicative per scroll notch
 @export var min_zoom: float = 0.2
 @export var max_zoom: float = 6.0
@@ -109,6 +111,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		if event.pressed:
 			if _is_over_ui(event.position):
 				return
+			SeedReloadScript.close_keyboard(self)
 			_dragging = true
 			_press_position = event.position
 		elif _dragging:
@@ -130,6 +133,8 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 		_touch_over_ui[event.index] = over_ui
 		if over_ui:
 			return
+		# A tap on the map closes the on-screen keyboard (seed field).
+		SeedReloadScript.close_keyboard(self)
 		_touches[event.index] = event.position
 		_touch_press_positions[event.index] = event.position
 		_touch_press_msec[event.index] = Time.get_ticks_msec()
