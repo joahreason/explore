@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 13 — Correlated Ecosystems is implemented on branch `claude/phase-13-correlated-ecosystems` (2026-09-23; not pushed or merged - awaiting the user). Phase 14 (Resource Quality and Variants) is next. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 14 — Resource Quality and Variants is NEXT (not started; prep notes under Next). Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
 
 ## Completed
 
@@ -144,12 +144,18 @@ Phase 13 — Correlated Ecosystems is implemented on branch `claude/phase-13-cor
 
 ## In Progress
 
-- (none - Phase 13 is done on its branch, awaiting review/merge.)
+- (none - Phase 13 is merged; Phase 14 has not started.)
 
 ## Next
 
 - Phase 13 open (first-pass tuning): shade curve values and the softened grass/flower Forest weights are first pass - check forest edges and groves by eye in the Shade and Resources views. Mushrooms moved partly from Forest to shaded groves elsewhere (see Completed). Candidates if more correlation is wanted later: shade for pioneers (their succession curves already encode canopy closure), a species that depends on shade the way mushrooms do (ferns), berries tuned toward forest edges.
-- Phase 14 (Resource Quality and Variants) is next in the plan.
+- **Phase 14 prep (NEXT - Resource Quality and Variants, plan doc "Phase 14"):**
+  - Goal (plan): variation through QUALITY of existing resources before adding many new types - trees young / mature / old growth, iron poor / normal / rich, berry bushes sparse / normal / abundant - influenced by fertility, age, disturbance, geology, exposure and local conditions. Rule 4 applies: quality is its own layer after placement; it must not change density, patches or which instances exist, so every existing guild's instances (and the snapshot) should stay identical - only a new attribute is added.
+  - Building blocks that already exist: `succession` (age/recovery; exactly 1 outside scars), `soil_fertility`, `moisture`, `disturbance`/`disturbance_type`, `rock_exposure`, Phase 13 `shade` (on EnvironmentalState via `ResourceManager.get_shade()`), deposit fields `get_deposit_potential()` / `get_exposed_deposit()` / `get_vein_value()` (a continuous ore richness already), per-tile env cache `_tile_env()` in chunk_manager. Instances are `{id, guild, cell, position}`; the stable key is `(guild id, cell)` (plan Phase 7/16 amendments) - quality must be a deterministic function of that key + fields, never order-dependent.
+  - Candidate design (the next session decides): a per-definition quality profile in data (e.g. `quality_curves` over EnvironmentalState fields, combined like suitability, plus tier thresholds/names) -> `ResourceManager.get_quality(state, definition, seed, wx, wy) -> 0..1`, tiers only for display/gameplay. A small per-instance hash jitter so neighbors differ - reuse `ResourcePlacement`'s cell hash with a new salt rather than new noise (if noise is needed, reserve WorldGen offset +20, the next free). Computed when an instance is shown or inspected (instances are few, ~30 per chunk) rather than at placement, so placement cost stays flat.
+  - Open questions: tree age vs the existing `young_tree` species (young_tree is a separate canopy member from Phase 11 - keep it and let quality cover mature vs old growth, or fold stages into quality?); "old growth" needs a cue beyond succession, which is flat 1 on undisturbed land (candidates: shade/canopy density, fertility, patch noise, distance from scars); ore quality from vein value vs deposit potential; berry abundance from fertility + moisture + light (shade down) + succession.
+  - Surfacing: show tier/quality in the tile inspector (`_resource_at()` -> `show_info()`), and optionally in the Resources view (tint or size) or a Quality heatmap/debug view, per the plan's Rule 5 (debug visualization before content expansion).
+  - Guard + measurement: placement snapshot must stay identical (quality isn't in its lines); add a test suite (quality in 0..1, deterministic, independent of chunk order, correlates with its drivers, e.g. rich iron where vein value is high, abundant berries on fertile moist ground). Report bench_views / bench_pan (threaded and BENCH_THREADED=0) before/after.
 - Phase 11/12 open: by-eye check of scars and the new species in the running game; abundance tuning (pioneers/ground cover/deadwood are first pass). The "Go to biome" menu and the position readout make finding test areas quick.
 - Phase 9 open tuning: iron/copper/coal abundance and outcrop counts are first-pass, not balanced against gameplay. Hidden deposits stay field-only until a gameplay mechanic (prospecting/mining, Phase 15+) needs them.
 - Owed: a by-eye look at the deployed web build's sprites, coasts, Farming Potential and Deposits views (panning itself has been checked).
@@ -227,7 +233,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, NOT pushed - the user decides on push/merge; pushing `main` deploys): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. A baseline worktree is at `../explore-baseline` (HEAD eb23a75 minus Phase 13; delete with `git worktree remove ../explore-baseline` when no longer needed).
+- This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, fast-forwarded into `main` and pushed at the user's request - web deployed): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. The agent's baseline worktree `../explore-baseline` has been removed.
 - This session (local Windows, branch `claude/phase-17-chunk-streaming`, fast-forwarded into `main` and pushed as 274f036): Phase 17 step 5 - threaded, nearest-first chunk streaming with a main-thread fallback; view/LOD rebuilds through the same queue; `tests/bench_pan.gd`. Commit d311baa. All suites pass except the pre-existing Windows snapshot-hash mismatch (see Things To Watch Out For).
 - Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
 - Same branch, user request: "Go to biome" dropdown under the view dropdown - moves the camera to the nearest tile of a base biome, or to the next patch if already in one (`BiomeFinder`, threaded, own WorldGen copy; see docs/architecture.md §5). Covered by test_world_scene (two Desert trips from the origin land on two different desert patches, ~0.4 s each). Web (no threads) runs the search inline - not measured there. Commit c01fd23; desktop seed UI 439f0c7; smaller UI + position readout 01aa142.
@@ -237,7 +243,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- The user reviews Phase 13 on its branch (check the Shade and Resources views by eye; shade curves are first pass), then merges/pushes. After that: Phase 14 (Resource Quality and Variants) - read the plan section and write prep notes first.
+- Start Phase 14 (Resource Quality and Variants) from `main` - see "Phase 14 prep" under Next: settle the open questions (tree age vs young_tree, the old-growth cue, data model), keep placement output identical, add a quality test suite, report benchmarks. Meanwhile the user can check Phase 13 shade by eye (Shade and Resources views, forest edges and groves).
 
 ### Things To Watch Out For
 
