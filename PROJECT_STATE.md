@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 13.5 — Terrain Surface Layer is implemented on branch `claude/phase-13.5-terrain-surface` (2026-09-24; not pushed - awaiting the user's by-eye check and go-ahead; pushing `main` deploys the web build). Phase 14 — Resource Quality and Variants is next (prep notes under Next). Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 13.5 — Terrain Surface Layer is implemented on branch `claude/phase-13.5-terrain-surface` as f9eafe7 (2026-09-24; not pushed - awaiting the user's by-eye check and go-ahead; pushing `main` deploys the web build). Phase 14 — Resource Quality and Variants is next (prep notes under Next). Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
 
 ## Completed
 
@@ -237,6 +237,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
+- This session (local Windows, branch `claude/phase-13.5-terrain-surface` from `main` 0e0a10e, NOT pushed - awaiting the user): Phase 13.5 terrain surface layer f9eafe7 (see In Progress). All 11 suites pass.
 - This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, fast-forwarded into `main` and pushed at the user's request - web deployed): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. The agent's baseline worktree `../explore-baseline` has been removed.
 - This session (local Windows, branch `claude/phase-17-chunk-streaming`, fast-forwarded into `main` and pushed as 274f036): Phase 17 step 5 - threaded, nearest-first chunk streaming with a main-thread fallback; view/LOD rebuilds through the same queue; `tests/bench_pan.gd`. Commit d311baa. All suites pass except the pre-existing Windows snapshot-hash mismatch (see Things To Watch Out For).
 - Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
