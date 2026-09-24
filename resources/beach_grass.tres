@@ -44,3 +44,4 @@ sprite_color = Color(0.72, 0.76, 0.46, 1)
 sprite_size = 1.0
 sway = 0.9
 season_class = "grass"
+casts_shadow = true

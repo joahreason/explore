@@ -86,10 +86,6 @@ func reads_shade() -> bool:
 ## different guilds must be at least the sum of their radii apart. Within the
 ## guild, minimum_spacing already keeps instances apart.
 @export var footprint_radius: float = 0.5
-## Whether this guild's sprites cast a shadow in the World view (> 0 = yes:
-## their silhouette, thrown by the sun or moon - SunShadow). Grass and
-## flowers have none, so the ground doesn't speckle.
-@export var shadow_size: float = 0.0
 
 
 ## Members' curve-domain warnings plus the guild's own cover_curve check.

@@ -76,7 +76,8 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 
 
 ## Cast shadows (polish): the sprites of the instances added from index
-## `from` on get a shadow - their own silhouette, drawn with `material`
+## `from` on whose `casts` entry (one per instance, in order) is true get a
+## shadow - their own silhouette, drawn with `material`
 ## (shaders/cast_shadow.gdshader), which flattens it onto the ground away
 ## from the sun or moon (SunShadow) and sways it with the plant (the draw
 ## colour's alpha carries the same sway as the sprite's). Only sprite
@@ -84,14 +85,14 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 ## that the caller parents under every chunk's sprites - a shadow reaching
 ## into the next chunk must not cover that chunk's trees; it is freed with
 ## this node.
-func add_shadows(from: int, material: Material) -> void:
+func add_shadows(from: int, material: Material, casts: Array[bool]) -> void:
 	if _shadows == null:
 		_shadows = _ShadowLayer.new()
 		_shadows.name = "Shadows"
 		_shadows.material = material
 		tree_exiting.connect(func(): if is_instance_valid(_shadows): _shadows.queue_free())
 	for i in range(from, _positions.size()):
-		if _shapes[i] != Shape.SPRITE:
+		if _shapes[i] != Shape.SPRITE or not casts[i - from]:
 			continue
 		_shadows.textures.append(_textures[i])
 		_shadows.rects.append(sprite_rect(_positions[i], _sprite_sizes[i]))

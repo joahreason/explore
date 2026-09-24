@@ -1,0 +1,55 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_cactus"]
+
+[sub_resource type="Curve" id="Curve_cactustemp"]
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(0.05, 0), 0.0, 0.0, 0, 0, Vector2(0.2, 0.6), 0.0, 0.0, 0, 0, Vector2(0.35, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_cactusmois"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.15, 1), 0.0, 0.0, 0, 0, Vector2(0.25, 0.4), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_cactuselev"]
+_limits = [0.0, 1.0, -1.0, 1.0]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.07, 1), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(0.65, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[resource]
+script = ExtResource("1_cactus")
+id = "cactus"
+category = "vegetation"
+temperature_curve = SubResource("Curve_cactustemp")
+moisture_curve = SubResource("Curve_cactusmois")
+elevation_curve = SubResource("Curve_cactuselev")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve")
+biome_weights = {
+"Alpine Snow": 0.0,
+"Badlands": 0.6,
+"Beach": 0.05,
+"Desert": 1.0,
+"Forest": 0.05,
+"Grassland": 0.2,
+"Plains": 0.2,
+"Rainforest": 0.0,
+"Savanna": 0.25,
+"Swamp": 0.0,
+"Tundra": 0.0,
+"Wetland": 0.0
+}
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.0
+}
+placement_type = "scatter"
+debug_color = Color(0.3, 0.62, 0.3, 1)
+sprite_tile = Vector2i(0, 9)
+sprite_color = Color(0.42, 0.68, 0.3, 1)
+sprite_size = 1.0
+sway = 0.05
+casts_shadow = true

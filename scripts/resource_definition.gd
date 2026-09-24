@@ -190,6 +190,10 @@ var curve_plan = null
 ## grass). The sway shader (shaders/sway.gdshader) bends the sprite's top,
 ## its base stays planted; Wind (scripts/wind.gd) sets direction and gusts.
 @export_range(0.0, 1.0) var sway: float = 0.0
+## Whether the sprite casts a shadow in the World view (its silhouette,
+## thrown by the sun or moon - SunShadow): trees, shrubs, grass, flowers and
+## cacti do; rocks, ore, logs and mushrooms sit flat.
+@export var casts_shadow: bool = false
 ## Seasonal colour class (Seasons): "deciduous", "evergreen", "grass",
 ## "flower", or "" = the same all year (rocks, ore, logs...).
 @export var season_class: String = ""
