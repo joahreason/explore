@@ -10,3 +10,4 @@ richness_from_deposit = true
 jitter = 0.05
 tier_names = PackedStringArray("poor", "normal", "rich")
 tier_thresholds = PackedFloat32Array(0.3, 0.65)
+size_by_quality = Vector2(0.7, 1.3)

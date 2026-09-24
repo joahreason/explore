@@ -213,6 +213,14 @@ var curve_plan = null
 @export_group("Quality")
 @export var quality_profile: Resource
 
+## Phase 15: what a placed instance starts with as a gameplay entity
+## (ResourceInstance): its typical size (x the quality profile's
+## size_by_quality) and its health at size 1 - health scales with size, so a
+## big old tree takes more to fell than a young one.
+@export_group("Entity")
+@export var base_size: float = 1.0
+@export var max_health: float = 100.0
+
 
 ## Real value range of the EnvironmentalState field each curve samples
 ## (docs/architecture.md §2). slope has no fixed upper bound, so only its

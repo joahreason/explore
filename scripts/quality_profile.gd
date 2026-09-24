@@ -28,6 +28,9 @@ extends "res://scripts/resource_definition.gd"
 ## "rich"] with thresholds [0.3, 0.7] = poor below 0.3, rich from 0.7.
 @export var tier_names: PackedStringArray = []
 @export var tier_thresholds: PackedFloat32Array = []
+## Phase 15: size multiplier at quality 0 (x) and 1 (y), linear between -
+## a young tree is small, old growth large (ResourceInstance.size).
+@export var size_by_quality: Vector2 = Vector2(1.0, 1.0)
 
 
 ## The tier name for a quality value (0..1), "" when no tiers are set.

@@ -15,8 +15,9 @@ func _ready() -> void:
 
 
 ## resource: the placed instance under the click (ChunkManager._resource_at()),
-## or {} when the click hit bare ground; its "quality"/"tier" (Phase 14), if
-## present, get their own line. deposits: deposit name ->
+## or {} when the click hit bare ground; its "entity" (Phase 15
+## ResourceInstance) adds the quality line (when it has one) and a size /
+## health / state line. deposits: deposit name ->
 ## Vector2(potential (how much exists here), exposure (how much of it shows,
 ## ResourceManager.get_exposure())). farming: Phase 10 farming potential
 ## (0..1), or < 0 to leave the line out. shade: Phase 13 canopy shade
@@ -34,8 +35,11 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 		lines.append("[b]Resource:[/b] -")
 	else:
 		lines.append("[b]Resource:[/b] %s (%s)" % [resource["name"], resource["guild_name"]])
-		if resource.has("quality"):
-			lines.append("[b]Quality:[/b] %s (%.2f)" % [resource["tier"], resource["quality"]])
+		var entity = resource.get("entity")
+		if entity != null:
+			if entity.quality >= 0.0:
+				lines.append("[b]Quality:[/b] %s (%.2f)" % [entity.tier, entity.quality])
+			lines.append("[b]Size:[/b] %.2f  [b]Health:[/b] %.0f / %.0f  [b]State:[/b] %s" % [entity.size, entity.health, entity.max_health, entity.harvest_state])
 	if not deposits.is_empty():
 		var parts: Array[String] = []
 		for ore_name in deposits:
