@@ -190,6 +190,9 @@ var curve_plan = null
 ## grass). The sway shader (shaders/sway.gdshader) bends the sprite's top,
 ## its base stays planted; Wind (scripts/wind.gd) sets direction and gusts.
 @export_range(0.0, 1.0) var sway: float = 0.0
+## Seasonal colour class (Seasons): "deciduous", "evergreen", "grass",
+## "flower", or "" = the same all year (rocks, ore, logs...).
+@export var season_class: String = ""
 
 ## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
 ## body rather than a surface object. ResourceManager.get_deposit_potential()

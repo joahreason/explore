@@ -144,11 +144,11 @@ func _init() -> void:
 			var s := _wg.sample(x, y)
 			var water: Variant = TS.water_color(s)
 			if water != null:
-				water_ok = water_ok and world._surface_at(s, x, y) == null and world._terrain_color(s, x, y) == water
+				water_ok = water_ok and world._surface_at(s, x, y) == null and _rgb(world._terrain_color(s, x, y)) == _rgb(water)
 				continue
 			var st := _state(s, x, y)
 			var m: SurfaceMaterial = TS.material_at(st, SEED, x, y)
-			path_ok = path_ok and world._surface_at(s, x, y) == m and world._terrain_color(s, x, y) == TS.color_for(m, st, SEED, x, y)
+			path_ok = path_ok and world._surface_at(s, x, y) == m and _rgb(world._terrain_color(s, x, y)) == _rgb(TS.color_for(m, st, SEED, x, y))
 			checked += 1
 	check(path_ok and checked > 400, "chunk path: material and colour match direct evaluation (%d tiles)" % checked)
 	check(water_ok, "water tiles: no ground material, water colour")
@@ -186,3 +186,9 @@ func _cause_violation(id: String, st: EnvironmentalState) -> String:
 		"burnt_ground":
 			if st.succession > 0.55: return "not a fresh scar"
 	return ""
+
+
+## Colour without alpha: the World view's terrain carries tile codes (water,
+## grass) in alpha for shaders/terrain.gdshader - test_ambience checks those.
+func _rgb(c: Color) -> Color:
+	return Color(c.r, c.g, c.b)

@@ -44,3 +44,4 @@ sprite_tile = Vector2i(3, 9)
 sprite_color = Color(0.82, 0.74, 0.42, 1)
 sprite_size = 1.0
 sway = 0.9
+season_class = "grass"

@@ -121,6 +121,15 @@ const IMAGE_BAND_ROWS := 2
 ## Tile rows per density-warming step ahead of a guild's chunk placement in
 ## the no-thread fallback (_warm_guild_density): 4 bands per chunk.
 const WARM_DENSITY_ROWS := 4
+## Polish pass 2: tile codes in the gameplay views' chunk images (alpha,
+## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass
+## ground takes the season's tint - and the ground materials that count as
+## grass.
+const WATER_CODE := 254
+const GRASS_CODE := 253
+const GRASS_GROUND := ["grass", "dry_grass"]
+const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
+const SeasonsScript := preload("res://scripts/seasons.gd")
 ## Seconds a newly streamed-in chunk takes to fade in.
 const FADE_IN_SEC := 0.2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
@@ -215,6 +224,10 @@ const CLOCK_SAVE_MSEC := 10000
 var wind = WindScript.new()
 var sway_material := ShaderMaterial.new()
 var shadow_material := ShaderMaterial.new()
+var terrain_material := ShaderMaterial.new()
+## Polish pass 2: the in-game day the sprites' season colours were last
+## drawn for; markers are redrawn when it changes (_update_seasons()).
+var _season_day: int = -1
 var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
@@ -263,6 +276,7 @@ var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (Biom
 func _ready() -> void:
 	sway_material.shader = SWAY_SHADER
 	shadow_material.shader = CAST_SHADOW_SHADER
+	terrain_material.shader = TERRAIN_SHADER
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
@@ -454,6 +468,11 @@ func _process(delta: float) -> void:
 	wind.apply(sway_material, clock.minutes)
 	wind.apply(shadow_material, clock.minutes)
 	SunShadowScript.apply(shadow_material, clock.minutes)
+	terrain_material.set_shader_parameter("water_phase", wind.phase)
+	terrain_material.set_shader_parameter("wave_dir", WindScript.direction_at(clock.minutes))
+	var grass: Color = SeasonsScript.tint("grass", SeasonsScript.year_fraction(clock))
+	terrain_material.set_shader_parameter("grass_tint", Vector4(grass.r, grass.g, grass.b, grass.a))
+	_update_seasons()
 	# Save the clock when an in-game hour passes (about once a real minute at
 	# normal speed), at most every CLOCK_SAVE_MSEC when fast-forwarding.
 	if floori(clock.minutes / 60.0) != hour_before and Time.get_ticks_msec() - _last_clock_save_msec >= CLOCK_SAVE_MSEC:
@@ -754,17 +773,27 @@ func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
 	var heatmap_color: Variant = _heatmap_color_for(sample, wx, wy)
 	if heatmap_color == null:
 		return _terrain_color(sample, wx, wy)
-	return _terrain_color(sample, wx, wy).lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
+	var blended := _terrain_color(sample, wx, wy).lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
+	blended.a = 1.0
+	return blended
 
 
 ## Phase 13.5: a tile's terrain colour - its water body, or its ground
 ## material (TerrainSurface) coloured by its fields.
 func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
+	var coded := is_time_tinted_view()
 	var water: Variant = TerrainSurfaceScript.water_color(sample)
 	if water != null:
-		return water
+		var w: Color = water
+		if coded:
+			w.a = WATER_CODE / 255.0
+		return w
 	var state := _surface_state(sample, wx, wy)
-	return TerrainSurfaceScript.color_for(TerrainSurfaceScript.material_at(state, world_seed, wx, wy), state, world_seed, wx, wy)
+	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)
+	var color := TerrainSurfaceScript.color_for(material, state, world_seed, wx, wy)
+	if coded and GRASS_GROUND.has(material.id):
+		color.a = GRASS_CODE / 255.0
+	return color
 
 
 ## The ground material of a tile, or null on a water body (inspector, tests).
@@ -998,7 +1027,8 @@ func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
 
 func _new_chunk_image(lod_step: int) -> Image:
 	var cells := CHUNK_SIZE / lod_step
-	return Image.create(cells, cells, false, Image.FORMAT_RGB8)
+	# The gameplay views carry water / grass codes in alpha (terrain.gdshader).
+	return Image.create(cells, cells, false, Image.FORMAT_RGBA8 if is_time_tinted_view() else Image.FORMAT_RGB8)
 
 
 ## Pixel rows y0..y1-1 of a chunk image (a job step bakes one band).
@@ -1074,6 +1104,7 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		sprite.centered = false
 		sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		sprite.material = terrain_material
 		chunks_root.add_child(sprite)
 		_loaded_chunks[chunk_coord] = sprite
 	sprite.texture = ImageTexture.create_from_image(data["image"])
@@ -1444,12 +1475,19 @@ func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
 	var colors := {}
 	for member in (source.members if source is ResourceGuild else [source]):
 		if as_sprites and member.sprite_tile.x >= 0:
-			var c: Color = member.sprite_color
-			c.a = sway_alpha(member.sway)
-			colors[member.id] = c
+			colors[member.id] = sprite_fill(member)
 		else:
 			colors[member.id] = member.debug_color
 	return colors
+
+
+## The colour a resource's sprite is drawn with in the World view: its
+## sprite_color in today's season colour (Seasons, its season_class), with
+## its sway in the alpha (sway_alpha()).
+func sprite_fill(definition: ResourceDefinition) -> Color:
+	var c: Color = SeasonsScript.apply(definition.sprite_color, SeasonsScript.tint(definition.season_class, SeasonsScript.year_fraction(clock)))
+	c.a = sway_alpha(definition.sway)
+	return c
 
 
 ## A sprite's draw-colour alpha carrying its sway to the sway shader
@@ -1513,7 +1551,7 @@ func _spawn_harvest_effect(entity) -> void:
 	var effect := HarvestEffectScript.new()
 	var has_sprite := definition.sprite_tile.x >= 0
 	var texture: Texture2D = ResourceMarkerChunkScript.sprite_texture(definition.sprite_tile) if has_sprite else null
-	var color: Color = definition.sprite_color if has_sprite else definition.debug_color
+	var color: Color = sprite_fill(definition) if has_sprite else definition.debug_color
 	effect.setup(texture, color, definition.sprite_size * TILE_SIZE, entity.key)
 	effect.position = (entity.world_position.floor() + Vector2(0.5, 0.5)) * TILE_SIZE
 	effect.name = "HarvestEffect"
@@ -1648,3 +1686,44 @@ func hover_target(point: Vector2) -> Dictionary:
 	var inst := _resource_at(point, false)
 	_gen_mutex.unlock()
 	return inst
+
+
+## Polish pass 2: sprites take their season colour (Seasons, per
+## ResourceDefinition.season_class) when their markers are built; once per
+## in-game day every loaded chunk's markers are redrawn from their stored
+## placements (no generation), so colours drift through the year. Only the
+## World view draws sprites.
+func _update_seasons() -> void:
+	var day: int = clock.day_index()
+	if day == _season_day:
+		return
+	_season_day = day
+	if _view_mode != ViewMode.RESOURCES:
+		return
+	for chunk in _chunk_placements.keys():
+		_redraw_markers(chunk)
+
+
+## Polish pass 2 (AmbientParticles): the environment at a tile for the
+## particle rules - {} when generation holds the lock this instant (the
+## caller just tries elsewhere later; the main thread never waits on it).
+func ambient_env(tile: Vector2i) -> Dictionary:
+	if not _gen_mutex.try_lock():
+		return {}
+	var env := _tile_env(tile.x, tile.y)
+	var state: EnvironmentalState = env[0]
+	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, env[1])
+	var result := {
+		"hour": clock.hour_of_day(),
+		"year": SeasonsScript.year_fraction(clock),
+		"wind": WindScript.strength_at(clock.minutes),
+		"wind_dir": WindScript.direction_at(clock.minutes),
+		"temperature": state.temperature,
+		"moisture": state.moisture,
+		"vegetation": state.vegetation,
+		"shade": shade,
+		"water": state.water_body in ["ocean", "sea", "lake", "river"],
+		"biome": String(env[1].get("base_biome", "")),
+	}
+	_gen_mutex.unlock()
+	return result

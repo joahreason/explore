@@ -16,6 +16,7 @@
 [ext_resource type="Script" path="res://scripts/time_controls.gd" id="14"]
 [ext_resource type="Script" path="res://scripts/cloud_shadows.gd" id="15"]
 [ext_resource type="Script" path="res://scripts/hover_highlight.gd" id="16"]
+[ext_resource type="Script" path="res://scripts/ambient_particles.gd" id="17"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -30,6 +31,9 @@ target_path = NodePath("CameraRig")
 [node name="CloudShadows" type="ColorRect" parent="."]
 mouse_filter = 2
 script = ExtResource("15")
+
+[node name="AmbientParticles" type="Node2D" parent="."]
+script = ExtResource("17")
 
 [node name="HoverHighlight" type="Node2D" parent="."]
 script = ExtResource("16")
