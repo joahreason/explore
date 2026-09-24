@@ -1,9 +1,11 @@
 extends Node2D
 
 ## Pan + zoom camera for viewing the generated world.
-## Mouse: click-and-drag to pan, scroll wheel to zoom.
+## Mouse: click-and-drag to pan, scroll wheel to zoom; a left click (not a
+## drag) harvests, a right click shows tile/resource info (Phase 16).
 ## Touch: one-finger drag to pan, two-finger pinch to zoom (pinching while
-## the midpoint moves pans at the same time, like any map app).
+## the midpoint moves pans at the same time, like any map app); a tap
+## harvests, a long press (LONG_PRESS_SEC, finger still) shows info.
 ## No character/physics involved - this node's position is just the camera
 ## anchor that ChunkManager streams chunks around.
 
@@ -34,13 +36,18 @@ extends Node2D
 @export var ui_root_path: NodePath
 
 ## Below this much on-screen movement between press and release, a left
-## click is treated as a tap (inspect the tile) rather than a pan.
+## click is treated as a tap (harvest) rather than a pan.
 const CLICK_DRAG_THRESHOLD := 6.0
+## A single finger held this long without moving is a long press (info)
+## instead of a tap - touch screens have no right click.
+const LONG_PRESS_SEC := 0.5
 
-## Emitted with the world-space position of a left click that wasn't a drag
-## (see CLICK_DRAG_THRESHOLD) - chunk_manager.gd listens for this to drive
-## the tile inspector panel.
-signal clicked(world_pos: Vector2)
+## World-space position of a left click / tap that wasn't a drag (see
+## CLICK_DRAG_THRESHOLD): chunk_manager.gd harvests the resource there.
+signal harvest_clicked(world_pos: Vector2)
+## World-space position of a right click / long press: chunk_manager.gd
+## shows the tile inspector panel for it.
+signal info_clicked(world_pos: Vector2)
 
 @onready var camera: Camera2D = $Camera2D
 @onready var _ui_root: Node = get_node(ui_root_path) if ui_root_path != NodePath() else null
@@ -50,6 +57,10 @@ var _press_position: Vector2 = Vector2.ZERO
 var _touches: Dictionary = {}   # touch index -> last Vector2 position
 var _touch_press_positions: Dictionary = {}  # touch index -> Vector2 at press
 var _touch_over_ui: Dictionary = {}  # touch index -> bool, was its press over UI
+var _touch_press_msec: Dictionary = {}  # touch index -> Time.get_ticks_msec() at press
+## The current single-finger gesture already fired its long press, so its
+## release is not also a tap.
+var _long_press_fired: bool = false
 var _pinch_distance: float = 0.0
 var _pinch_midpoint: Vector2 = Vector2.ZERO  # screen position between the two fingers
 ## True once a second finger joined the current gesture, until every finger
@@ -103,7 +114,10 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 		elif _dragging:
 			_dragging = false
 			if event.position.distance_to(_press_position) < CLICK_DRAG_THRESHOLD:
-				clicked.emit(get_global_mouse_position())
+				harvest_clicked.emit(get_global_mouse_position())
+	elif event.button_index == MOUSE_BUTTON_RIGHT:
+		if event.pressed and not _is_over_ui(event.position):
+			info_clicked.emit(get_global_mouse_position())
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		_set_zoom(camera.zoom.x * zoom_factor)
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
@@ -118,8 +132,11 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 			return
 		_touches[event.index] = event.position
 		_touch_press_positions[event.index] = event.position
+		_touch_press_msec[event.index] = Time.get_ticks_msec()
 		if _touches.size() > 1:
 			_multi_touch = true
+		else:
+			_long_press_fired = false
 	else:
 		var was_over_ui: bool = _touch_over_ui.get(event.index, false)
 		_touch_over_ui.erase(event.index)
@@ -134,10 +151,11 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 		var press_position: Vector2 = _touch_press_positions.get(event.index, event.position)
 		_touches.erase(event.index)
 		_touch_press_positions.erase(event.index)
+		_touch_press_msec.erase(event.index)
 		if _touches.is_empty():
 			_multi_touch = false
-		if was_single_touch and event.position.distance_to(press_position) < CLICK_DRAG_THRESHOLD:
-			clicked.emit(_screen_to_world(event.position))
+		if was_single_touch and not _long_press_fired and event.position.distance_to(press_position) < CLICK_DRAG_THRESHOLD:
+			harvest_clicked.emit(_screen_to_world(event.position))
 
 	_reset_pinch()
 
@@ -163,6 +181,21 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 			global_position += anchor - _screen_to_world_at(new_midpoint, camera.zoom.x)
 		_pinch_distance = new_distance
 		_pinch_midpoint = new_midpoint
+
+
+## Long press: one finger, the only one of its gesture, held still for
+## LONG_PRESS_SEC - fires info once, while still held (so the panel opens
+## without lifting), and turns the release into a non-tap.
+func _process(_delta: float) -> void:
+	if _touches.size() != 1 or _multi_touch or _long_press_fired:
+		return
+	var index: int = _touches.keys()[0]
+	var pos: Vector2 = _touches[index]
+	if pos.distance_to(_touch_press_positions.get(index, pos)) >= CLICK_DRAG_THRESHOLD:
+		return
+	if Time.get_ticks_msec() - int(_touch_press_msec.get(index, Time.get_ticks_msec())) >= LONG_PRESS_SEC * 1000.0:
+		_long_press_fired = true
+		info_clicked.emit(_screen_to_world(pos))
 
 
 func _screen_to_world(screen_pos: Vector2) -> Vector2:
@@ -204,6 +237,8 @@ func _notification(what: int) -> void:
 		_touches.clear()
 		_touch_press_positions.clear()
 		_touch_over_ui.clear()
+		_touch_press_msec.clear()
+		_long_press_fired = false
 		_pinch_distance = 0.0
 		_multi_touch = false
 

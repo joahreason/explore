@@ -29,6 +29,7 @@ const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
+const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -161,6 +162,13 @@ enum ViewMode {
 ## Generate chunks on a worker thread where threads exist; off = always on
 ## the main thread (the web fallback), e.g. for debugging.
 @export var threaded_generation: bool = true
+## Phase 16: where each seed's gameplay changes are saved
+## ("<dir>/<seed>.json"; user:// is the browser's persistent storage on web).
+## Under a test harness (a scripted SceneTree, tests/*.gd) the default is
+## NOT used - changes stay in memory - so tests never read or overwrite a
+## player's saved harvests; a test that wants a file sets its own dir.
+const DEFAULT_CHANGES_DIR := "user://world_changes"
+@export var changes_dir: String = DEFAULT_CHANGES_DIR
 
 @onready var chunks_root: Node2D = $Chunks
 @onready var overlay_root: Node2D = $Overlay
@@ -178,6 +186,11 @@ var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw p
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
 var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
 var _definitions: Dictionary = {} # instance id -> ResourceDefinition (see _definitions_by_id)
+## Phase 16: the player's changes to generated objects (harvested ones),
+## for the current seed - written on the main thread under _gen_mutex, read
+## by generation under it and by marker building on the main thread.
+var _changes = WorldChangesScript.new()
+var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 13.5: the default "live game" view is the terrain with every placed
 ## resource on it (RESOURCES); MATERIAL is the bare terrain.
 var _view_mode: ViewMode = ViewMode.RESOURCES
@@ -221,6 +234,7 @@ func _ready() -> void:
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
+	_changes.load_file(changes_path(), world_seed)
 
 	# A guild's warnings include its members' (oak among them).
 	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
@@ -232,7 +246,8 @@ func _ready() -> void:
 
 	if target_path != NodePath():
 		_target = get_node(target_path)
-		_target.connect("clicked", _on_tile_clicked)
+		_target.connect("info_clicked", _on_tile_clicked)
+		_target.connect("harvest_clicked", _on_harvest_clicked)
 
 	if threaded_generation and _threads_available():
 		_worker = Thread.new()
@@ -303,6 +318,7 @@ func regenerate(seed_text: String) -> void:
 	world_seed = _seed_from_text(text)
 	_world_gen.configure(world_seed)
 	clear_generation_caches()
+	_changes.load_file(changes_path(), world_seed)
 	_gen_mutex.unlock()
 
 	for c in _loaded_chunks.keys():
@@ -490,8 +506,7 @@ func _chunk_of(world_pos: Vector2) -> Vector2i:
 	return Vector2i(floori(float(tile.x) / CHUNK_SIZE), floori(float(tile.y) / CHUNK_SIZE))
 
 
-## Driven by CameraRig's "clicked" signal (a left click/tap that wasn't a
-## drag) - samples the single clicked tile fresh (bypassing the topology
+## Driven by CameraRig's "info_clicked" signal (a right click / long press) - samples the single clicked tile fresh (bypassing the topology
 ## cache is unnecessary here, it's one tile) and hands the full sample +
 ## classification to the inspector panel, plus the placed resource (if
 ## any) under the exact click point.
@@ -1020,7 +1035,9 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		_loaded_overlays[chunk_coord] = overlay
 
 	_free_chunk_node(_loaded_placements, chunk_coord)
+	_chunk_placements.erase(chunk_coord)
 	if data.has("placements"):
+		_chunk_placements[chunk_coord] = data["placements"]
 		var markers := _marker_node(base, data["placements"])
 		resources_root.add_child(markers)
 		_loaded_placements[chunk_coord] = markers
@@ -1076,6 +1093,7 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 	_shown_epoch.erase(chunk_coord)
 	_free_chunk_node(_loaded_overlays, chunk_coord)
 	_free_chunk_node(_loaded_placements, chunk_coord)
+	_chunk_placements.erase(chunk_coord)
 
 
 ## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
@@ -1163,14 +1181,17 @@ func _quality_markers(instances: Array) -> Array:
 
 ## Phase 15: the gameplay record (ResourceInstance) of a placed instance -
 ## the one place views, the inspector and later gameplay get an instance's
-## quality, size, health and harvest state from. Built on demand (pure, so
+## quality, size, health and harvest state from, with the player's changes
+## (Phase 16) applied. Built on demand (pure, so
 ## rebuilding gives the same record); null for an unknown resource id. Call
 ## with _gen_mutex held or the worker idle, like other generation queries.
 func get_resource_instance(inst: Dictionary):
 	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
 	if definition == null:
 		return null
-	return ResourceInstanceScript.create(inst, definition, _instance_quality(inst))
+	var record = ResourceInstanceScript.create(inst, definition, _instance_quality(inst))
+	_changes.apply(record)
+	return record
 
 
 ## Phase 14: ResourceManager.get_quality() for a placed instance (-1.0 = its
@@ -1208,7 +1229,9 @@ func _stack_depth(layers: Array) -> int:
 	return depth
 
 
-## Main thread: one marker node drawing a chunk's _placement_chunk() layers.
+## Main thread: one marker node drawing a chunk's _placement_chunk() layers,
+## minus the instances the player harvested (Phase 16) - filtered here, when
+## the node is built, so a job generated before a harvest can't show it.
 func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 	var markers := ResourceMarkerChunkScript.new()
 	for entry in placements:
@@ -1216,7 +1239,7 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 		var source: Resource = layer[0]
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
-		markers.add_instances(entry[1], base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
+		markers.add_instances(_unchanged(entry[1]), base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
 	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
 	return markers
 
@@ -1248,7 +1271,10 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 ## Works in any view - instances exist whether or not their markers are
 ## drawn. Adds "guild_name" and "name" for display, and "entity": its
 ## ResourceInstance (Phase 15: quality, size, health, harvest state).
-func _resource_at(point: Vector2) -> Dictionary:
+## include_harvested = false skips what the player harvested (Phase 16:
+## harvesting picks among what is still standing; info also finds the
+## harvested one, which reports "harvested").
+func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
 	var best := {}
@@ -1256,6 +1282,8 @@ func _resource_at(point: Vector2) -> Dictionary:
 	for guild in GUILD_STACK:
 		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
 		for inst in stack[guild]:
+			if not include_harvested and _changes.is_instance_harvested(inst):
+				continue
 			var pos: Vector2 = inst["position"]
 			var in_tile := Vector2i(pos.floor()) == tile
 			# An instance in the clicked tile always beats one merely in reach.
@@ -1351,3 +1379,48 @@ func _sprite_tiles(source: Resource) -> Dictionary:
 		if member.sprite_tile.x >= 0:
 			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size}
 	return tiles
+
+
+## Phase 16: the instances of a placement list the player hasn't harvested.
+func _unchanged(instances: Array) -> Array:
+	if _changes.is_empty():
+		return instances
+	return instances.filter(func(inst): return not _changes.is_instance_harvested(inst))
+
+
+## Phase 16: the file this seed's gameplay changes are saved to, or "" when
+## they aren't saved (the default dir under a test harness, see changes_dir).
+func changes_path() -> String:
+	if changes_dir == "" or (changes_dir == DEFAULT_CHANGES_DIR and get_tree().get_script() != null):
+		return ""
+	return "%s/%d.json" % [changes_dir, world_seed]
+
+
+## Phase 16, driven by CameraRig's "harvest_clicked" (a left click / tap
+## that wasn't a drag): harvests the resource under the click - the same
+## pick as the inspector, ignoring what's already harvested - records it in
+## the gameplay changes, saves them, and redraws that chunk's markers.
+## Returns the harvested ResourceInstance, or null if nothing was there.
+func _on_harvest_clicked(world_pos: Vector2):
+	_gen_mutex.lock()  # the worker may be generating a chunk
+	var inst := _resource_at(world_pos / TILE_SIZE, false)
+	var entity = get_resource_instance(inst) if not inst.is_empty() else null
+	if entity != null:
+		_changes.harvest(entity.key, entity.resource_id)
+		_changes.apply(entity)
+		_changes.save(changes_path(), world_seed)
+	_gen_mutex.unlock()
+	if entity != null:
+		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
+	return entity
+
+
+## Rebuilds one loaded chunk's marker node from its stored placements (no
+## generation), e.g. after a harvest.
+func _redraw_markers(chunk_coord: Vector2i) -> void:
+	if not _chunk_placements.has(chunk_coord):
+		return
+	_free_chunk_node(_loaded_placements, chunk_coord)
+	var markers := _marker_node(chunk_coord * CHUNK_SIZE, _chunk_placements[chunk_coord])
+	resources_root.add_child(markers)
+	_loaded_placements[chunk_coord] = markers

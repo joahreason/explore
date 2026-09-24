@@ -11,12 +11,13 @@ extends RefCounted
 ## get_resource_instance()) - for the instances that are inspected or
 ## shown in a view that needs them - never stored for every placed object.
 ## Every field is a pure function of (seed, placement key, tile fields,
-## data), so rebuilding one always gives the same record. Nothing changes
-## an instance yet: health starts full and harvest_state is "available";
-## gameplay changes and saving them are Phase 16 (overrides keyed by `key`
-## that also record resource_id - plan Phase 16 amendment).
+## data), so rebuilding one always gives the same record. A record starts
+## with full health and harvest_state "available"; the player's changes
+## (Phase 16 WorldChanges, keyed by `key` + resource_id) are applied on top
+## by ChunkManager.get_resource_instance().
 
 const HARVEST_AVAILABLE := "available"
+const HARVESTED := "harvested"
 
 ## Stable key: "<guild id>:<cell x>,<cell y>" (the Phase 7 / 8 placement
 ## key; a single definition placed on its own uses its own id). Unique per
