@@ -60,8 +60,8 @@ func _init() -> void:
 	var pairs := 0
 	var cause_fail := {}
 	var blocks := 0
-	for by in range(-5, 5):
-		for bx in range(-5, 5):
+	for by in range(-10, 10):
+		for bx in range(-10, 10):
 			blocks += 1
 			var ox := bx * 1013 + 11
 			var oy := by * 947 + 5
