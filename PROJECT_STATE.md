@@ -260,7 +260,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 16 is on branch `claude/phase-14-start-4zcb39`. The user checks harvesting on the web build (right click and long press for info, harvests surviving a page reload). Next in the plan: Phase 18 (developer tooling: balancing panel) or Phase 19 (gameplay loop: yields, inventory, crafting - quality/size/health feed yields).
+- Phase 16 is on `main` (PR #12, web deployed). The user checks harvesting on the web build (right click and long press for info, harvests surviving a page reload). Next in the plan: Phase 18 (developer tooling: balancing panel) or Phase 19 (gameplay loop: yields, inventory, crafting - quality/size/health feed yields).
 
 ### Things To Watch Out For
 
