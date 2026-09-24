@@ -1,10 +1,14 @@
 extends Label
 
 ## On-screen clock and date of the world's in-game time
-## (ChunkManager.clock): "Spring 3, Year 1 · 14:05".
+## (ChunkManager.clock): "Spring 3, Year 1 · 14:05", plus the time
+## controls' state when not at normal speed ("Paused", ">> x16").
 
 @onready var _world := get_node("../..")
 
 
 func _process(_delta: float) -> void:
 	text = "%s · %s" % [_world.clock.date_text(), _world.clock.time_text()]
+	var speed: String = _world.clock.speed_text()
+	if speed != "":
+		text += "   " + speed

@@ -19,6 +19,7 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 - **Reload** (web only): forces a fresh page load (useful for standalone/home-screen web app installs that can sit on stale cached files)
 - **View mode dropdown**: switches how chunks are rendered (see below)
 - **Clock** (bottom-left): in-game date and time, e.g. "Spring 3, Year 1 · 14:05". A day lasts 24 real minutes (1 in-game minute per second); four seasons of 30 days. The World and Terrain Only views are tinted by the time of day (blue night, warm dawn/dusk, untinted midday); data views stay untinted. The time is saved per seed with your harvests
+- **Time controls** (above the clock): `<<` rewind and `>>` fast-forward - each press steps through x4, x16, x64 (then back to x4); the middle button pauses / resumes, or returns to normal speed. The clock shows the current mode ("Paused", ">> x16"). Rewinding only turns the clock back (harvests stay), and stops at Spring 1, Year 1, 00:00
 - **Position readout** (bottom-left): the tile at the screen center, its chunk, and the zoom - always shown
 - **Debug resource** (only in the Debug views): the resource the Debug views show, e.g. "Oak (Canopy Trees)"
 - **Go to biome**: pick a biome to move the camera to the nearest place of it; if you are already in that biome, it takes you to the next patch of it instead (repeat to keep hopping onward). Searches up to ~6000 tiles out; says "No <biome> nearby" if none is found

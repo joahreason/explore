@@ -198,6 +198,8 @@ var _changes = WorldChangesScript.new()
 ## In-game time (GameClock), advanced every frame, saved with _changes;
 ## DayNight tints the world by it and the clock label shows it.
 var clock = GameClockScript.new()
+const CLOCK_SAVE_MSEC := 10000
+var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
 ## by generation under _gen_mutex), and member id -> its guild.
@@ -430,8 +432,11 @@ func set_view_mode(mode: ViewMode) -> void:
 func _process(delta: float) -> void:
 	var hour_before := floori(clock.minutes / 60.0)
 	clock.advance(delta)
-	if floori(clock.minutes / 60.0) != hour_before:
-		_save_gameplay_state()  # the clock, about once a real minute
+	# Save the clock when an in-game hour passes (about once a real minute at
+	# normal speed), at most every CLOCK_SAVE_MSEC when fast-forwarding.
+	if floori(clock.minutes / 60.0) != hour_before and Time.get_ticks_msec() - _last_clock_save_msec >= CLOCK_SAVE_MSEC:
+		_last_clock_save_msec = Time.get_ticks_msec()
+		_save_gameplay_state()
 	if _finder_thread != null and not _finder_thread.is_alive():
 		_finder_thread.wait_to_finish()
 		_finder_thread = null
