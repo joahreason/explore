@@ -5,7 +5,8 @@ Keep this list actionable and current.
 ## Current Task
 
 - [ ] Phase 13: check shade by eye (Shade view + Resources view, forest edges and groves); tune shade curves (first pass)
-- [ ] Phase 14 (Resource Quality and Variants): prep notes written (PROJECT_STATE "Phase 14 prep") - settle open questions, implement
+- [ ] Phase 13.5 (Terrain Surface Layer, plan doc): surface materials as data, patch-mixed ground, terrain + resources as the default view, old averaged look removed
+- [ ] Phase 14 (Resource Quality and Variants, after 13.5): prep notes written (PROJECT_STATE "Phase 14 prep") - settle open questions, implement
 
 ## Next
 

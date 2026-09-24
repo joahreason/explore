@@ -818,6 +818,49 @@ The goal is for correlations to emerge from shared environmental causes.
 
 ---
 
+# Phase 13.5 — Terrain Surface Layer
+
+> **Amendment (2026-09-24): phase added at the user's request, runs next, before Phase 14.** The original plan has no phase for how the ground itself looks.
+
+The base view currently colors each tile by averaging the colors of several surface looks (snow, rock, sand, mud, soil, grass, forest) weighted by environmental fields. Because the blend is averaged and the fields are regional, large areas come out as one uniform color that tracks the biome, and a biome never contains different kinds of ground.
+
+Replace this with a realistic "live game" ground layer: every tile has one discrete **surface material**, and the base view shows the ground together with the placed resources.
+
+### Surface materials
+
+Each tile gets exactly one material, chosen from environmental conditions, never from the biome label (Rule 3). A starting set, adjustable during implementation:
+
+```text
+grass, dry grass, dirt, sand, gravel, mud, rock, snow,
+forest floor (leaf litter), burnt ground, marsh / shallow water
+```
+
+* **Data-driven, like resources.** Each material is a data definition with suitability curves over `EnvironmentalState` fields (Rules 2 and 6), reusing the suitability machinery where it fits. Examples: mud where it is wet, poorly drained, flat and near water; gravel on eroded ground and river banks; forest floor under canopy (Phase 13 `shade`); burnt ground on recent fire scars (`disturbance_type` + `succession`); beach sand vs lake-shore mud by `shore_salinity`.
+* **Mixtures come from local patch noise.** Suitability says what the ground *could* be; a medium-scale patch noise (features roughly 5-30 tiles, new seed offset +20 - update the reserved-offset lists) picks which suitable material wins at each tile, so ground forms organic patches, not per-tile salt-and-pepper and not one flat region. A grassland is mostly grass with dirt patches and mud near rivers and lakes; a swamp mixes mud, pools, grass and dirt. These mixtures must emerge from the fields, not from per-biome rules.
+* **Color varies within a material.** Each material has a base color modulated continuously by its drivers - e.g. grass from lush to dry with moisture and darker in the cold; dirt tinted by geology and darkened when wet; sand paler on beaches than in deserts; rock by geology - plus a small deterministic per-tile brightness jitter. Transitions stay smooth where the drivers change smoothly (Rule 7).
+* **No sub-tile detail for now** (user decision): one color per tile, as today. Textured pixels and dithered material edges can be a later step.
+* Water bodies (ocean, sea, lake, river) keep their current rendering. Swamp may show a mix of open water and wet ground, as long as placement, which reads `water_body`, stays consistent with what is drawn.
+
+### Views
+
+* The **default view** shows the new terrain **with all placed resources** (today's Resources layers), as the "live game" view.
+* The old averaged-color look is **removed** (user decision: it isn't useful). Heatmap and label views keep blending over / drawing on the base ground, which is now the terrain.
+* The placement-only debug views stay as they are.
+
+### Data, not just pixels
+
+The material is a queryable per-tile value: shown in the tile inspector, available to later phases (Phase 14 quality, e.g. berries on good soil; Phase 15+ gameplay such as movement or farming).
+
+### Validation
+
+* Deterministic per seed; material choice depends only on (seed, tile).
+* Per-biome mixtures are plausible: grassland mostly grass with some dirt; swamp contains at least three materials; no grass on snow or rock-only mountaintops; beach sand along sea coasts.
+* Patches are spatially coherent (neighboring tiles usually agree), not per-tile noise.
+* Placement output is unchanged: resource instances stay identical. Only image hashes in the snapshot change, which is agreed for this phase.
+* Performance: measure panning (`tests/bench_pan.gd`, threaded and `BENCH_THREADED=0`) and view switches before and after; the default view now includes resource placement, so startup and panning in it cost what the Resources view does today.
+
+---
+
 # Phase 14 — Resource Quality and Variants
 
 Once placement is working, add quality rather than immediately adding dozens of new resources.
