@@ -22,11 +22,15 @@ extends Node2D
 ## (ui_root_path wired to "../UI").
 ##
 ## project.godot has emulate_mouse_from_touch=true (needed so Controls like
-## the dropdown/buttons/scrollbar respond to touch at all) - that means a
-## touch on the open map ALSO arrives here as a parallel synthetic mouse
-## press/motion/release. _handle_mouse_button ignores that mirror whenever a
-## raw touch gesture is already being tracked in _touches, so a one-finger
-## drag doesn't pan the camera twice (once per event stream).
+## the dropdown/buttons/scrollbar respond to touch at all) - that means the
+## first finger on the map ALSO arrives here as a synthetic mouse
+## press/motion/release, and Godot dispatches that mirror BEFORE the touch
+## event itself. _unhandled_input drops every emulated mouse event (device
+## InputEvent.DEVICE_ID_EMULATION) so touches are handled once, by the touch
+## path; checking "is a touch already tracked" at the mouse press could never
+## work, since the touch isn't recorded yet then - it made one-finger drags
+## pan twice as far and let the first finger pan the camera again during a
+## pinch (the sporadic jumps).
 @export var ui_root_path: NodePath
 
 ## Below this much on-screen movement between press and release, a left
@@ -47,9 +51,16 @@ var _touches: Dictionary = {}   # touch index -> last Vector2 position
 var _touch_press_positions: Dictionary = {}  # touch index -> Vector2 at press
 var _touch_over_ui: Dictionary = {}  # touch index -> bool, was its press over UI
 var _pinch_distance: float = 0.0
+var _pinch_midpoint: Vector2 = Vector2.ZERO  # screen position between the two fingers
+## True once a second finger joined the current gesture, until every finger
+## lifts: the last finger of a pinch lifting near where it started is not a
+## tap.
+var _multi_touch: bool = false
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
+		return  # a touch's mouse mirror - see the emulate_mouse_from_touch note above
 	if event is InputEventMouseButton:
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion and _dragging:
@@ -85,10 +96,7 @@ func _is_over_ui(screen_pos: Vector2) -> bool:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			# Ignore both a press over UI (see _is_over_ui) and the
-			# touch-emulated mirror of a raw touch gesture _handle_touch is
-			# already tracking (see the emulate_mouse_from_touch note above).
-			if _is_over_ui(event.position) or not _touches.is_empty():
+			if _is_over_ui(event.position):
 				return
 			_dragging = true
 			_press_position = event.position
@@ -110,24 +118,28 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 			return
 		_touches[event.index] = event.position
 		_touch_press_positions[event.index] = event.position
+		if _touches.size() > 1:
+			_multi_touch = true
 	else:
 		var was_over_ui: bool = _touch_over_ui.get(event.index, false)
 		_touch_over_ui.erase(event.index)
 		if was_over_ui:
-			_pinch_distance = _current_pinch_distance() if _touches.size() == 2 else 0.0
+			_reset_pinch()
 			return
 
 		# Only a gesture that was a single finger for its whole duration
 		# counts as a tap - a pinch collapsing down to one finger on release
 		# should never trigger the tile inspector.
-		var was_single_touch := _touches.size() == 1
+		var was_single_touch := _touches.size() == 1 and not _multi_touch
 		var press_position: Vector2 = _touch_press_positions.get(event.index, event.position)
 		_touches.erase(event.index)
 		_touch_press_positions.erase(event.index)
+		if _touches.is_empty():
+			_multi_touch = false
 		if was_single_touch and event.position.distance_to(press_position) < CLICK_DRAG_THRESHOLD:
 			clicked.emit(_screen_to_world(event.position))
 
-	_pinch_distance = _current_pinch_distance() if _touches.size() == 2 else 0.0
+	_reset_pinch()
 
 
 func _handle_touch_drag(event: InputEventScreenDrag) -> void:
@@ -140,14 +152,17 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 	if _touches.size() == 1:
 		global_position -= event.relative / camera.zoom.x
 	elif _touches.size() == 2:
+		# Zoom by the change in finger distance and pan so the world point
+		# that was under the fingers' midpoint stays under it (like any map
+		# app): moving both fingers pans, spreading them zooms around them.
 		var new_distance := _current_pinch_distance()
+		var new_midpoint := _current_pinch_midpoint()
 		if _pinch_distance > 0.0:
+			var anchor := _screen_to_world_at(_pinch_midpoint, camera.zoom.x)
 			_set_zoom(camera.zoom.x * (new_distance / _pinch_distance))
+			global_position += anchor - _screen_to_world_at(new_midpoint, camera.zoom.x)
 		_pinch_distance = new_distance
-		# Each finger's drag contributes half - two fingers moving together
-		# (pure pan) sums to the full translation; moving apart (pure pinch)
-		# cancels out, so panning and pinching combine naturally.
-		global_position -= event.relative / camera.zoom.x / 2.0
+		_pinch_midpoint = new_midpoint
 
 
 func _screen_to_world(screen_pos: Vector2) -> Vector2:
@@ -159,6 +174,30 @@ func _current_pinch_distance() -> float:
 	return (positions[0] - positions[1]).length()
 
 
+## Re-baselines the pinch whenever the set of fingers changes, so the next
+## drag measures from the current finger positions (0 = not pinching).
+func _reset_pinch() -> void:
+	if _touches.size() == 2:
+		_pinch_distance = _current_pinch_distance()
+		_pinch_midpoint = _current_pinch_midpoint()
+	else:
+		_pinch_distance = 0.0
+
+
+func _current_pinch_midpoint() -> Vector2:
+	var positions := _touches.values()
+	return (positions[0] + positions[1]) * 0.5
+
+
+## World position shown at a screen point for the camera at this node's
+## current position and the given zoom - computed directly rather than
+## through the viewport's canvas transform, which only catches up with a
+## zoom or position change on the camera's next update. Camera2D is centred
+## on this node (default anchor, no offset).
+func _screen_to_world_at(screen_pos: Vector2, zoom: float) -> Vector2:
+	return global_position + (screen_pos - get_viewport().get_visible_rect().size * 0.5) / zoom
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_dragging = false
@@ -166,6 +205,7 @@ func _notification(what: int) -> void:
 		_touch_press_positions.clear()
 		_touch_over_ui.clear()
 		_pinch_distance = 0.0
+		_multi_touch = false
 
 
 func _set_zoom(value: float) -> void:
