@@ -30,14 +30,17 @@ extends Resource
 @export var elevation_octaves: int = 5
 @export var ridge_frequency: float = 0.012
 @export var ridge_weight: float = 0.3
-# Ridges are mountains: they fade out where the continent-scale base is low
-# (fully off below x, fully on above y), their term replaced there by
-# lowland_ridge_level - otherwise their troughs would scatter the lowlands
-# with small water bodies instead of letting coastlines follow the large
-# base shapes. The level (about the ridge term's mean, 0.4, lowered a
-# little) keeps land at ~85% of the world, as before.
+# Ridges are full mountains where the continent-scale base is high (above
+# lowland_ridge_fade.y); below lowland_ridge_fade.x they only RAISE the
+# ground above lowland_ridge_level (hills), never cut troughs under it -
+# troughs would scatter the lowlands with small ponds instead of letting
+# coastlines follow the large base shapes. Just below the coast (over
+# COAST_FADE of base) the hills fade out too, so oceans are open water with
+# a ragged, hilly shore rather than a spray of islets. The level keeps land
+# at ~85% of the world, as before, and most of the old relief (slopes feed
+# erosion, cliffs and exposed rock).
 @export var lowland_ridge_fade: Vector2 = Vector2(-0.15, 0.25)
-@export var lowland_ridge_level: float = 0.28
+@export var lowland_ridge_level: float = 0.2
 
 # --- Temperature ---
 @export_group("Climate")
@@ -70,7 +73,7 @@ extends Resource
 # dry ground never becomes a swamp no matter how low its elevation is.
 @export var swamp_max_elevation: float = 0.2      # swamp potential fades out above this elevation
 @export var swamp_min_temperature: float = -0.15  # colder than this and it won't support marsh/wetland ecology
-@export var swamp_threshold: float = 0.42         # combined moisture*lowland*warmth*flatness must clear this (0.42 keeps swamps ~7% of the world with the flatter, continent-scale lowlands)
+@export var swamp_threshold: float = 0.32         # combined moisture*lowland*warmth*flatness must clear this
 
 # --- Water Topology ---
 # Real bounded/cached flood-fill (see water_topology.gd) - the only piece of
@@ -303,12 +306,20 @@ func _setup(n: FastNoiseLite, s: int, type: FastNoiseLite.NoiseType, freq: float
 	n.fractal_gain = 0.5
 
 
+## Base range below the coast over which hills fade into open sea.
+const COAST_FADE := 0.15
+
+
 ## Raw elevation in roughly -1..1 (continent-scale base + ridged detail).
 func elevation(wx: float, wy: float) -> float:
 	var base := _elev_base.get_noise_2d(wx, wy)
 	var ridge := 1.0 - absf(_elev_ridge.get_noise_2d(wx, wy))
-	var mountains := smoothstep(lowland_ridge_fade.x, lowland_ridge_fade.y, base)
-	var h := base * (1.0 - ridge_weight) + lerpf(lowland_ridge_level, ridge * 2.0 - 1.0, mountains) * ridge_weight
+	var r := ridge * 2.0 - 1.0
+	var land_term := lerpf(maxf(r, lowland_ridge_level), r, smoothstep(lowland_ridge_fade.x, lowland_ridge_fade.y, base))
+	# Base value at which the flat lowland meets sea level.
+	var coast_base := (sea_level - lowland_ridge_level * ridge_weight) / (1.0 - ridge_weight)
+	var term := lerpf(lowland_ridge_level, land_term, smoothstep(coast_base - COAST_FADE, coast_base, base))
+	var h := base * (1.0 - ridge_weight) + term * ridge_weight
 	return clampf(h, -1.0, 1.0)
 
 
