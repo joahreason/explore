@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/touch_scroll_container.gd" id="8"]
 [ext_resource type="Script" path="res://scripts/biome_travel_dropdown.gd" id="9"]
 [ext_resource type="Script" path="res://scripts/position_label.gd" id="10"]
+[ext_resource type="Script" path="res://scripts/debug_resource_dropdown.gd" id="11"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
@@ -86,6 +87,18 @@ offset_right = -12.0
 offset_bottom = 224.0
 theme_override_font_sizes/font_size = 18
 script = ExtResource("9")
+
+[node name="DebugResourceDropdown" type="OptionButton" parent="UI"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -196.0
+offset_top = 232.0
+offset_right = -12.0
+offset_bottom = 268.0
+clip_text = true
+theme_override_font_sizes/font_size = 18
+fit_to_longest_item = false
+script = ExtResource("11")
 
 [node name="PositionLabel" type="Label" parent="UI"]
 anchor_top = 1.0

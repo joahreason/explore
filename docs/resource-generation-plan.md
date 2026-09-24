@@ -1092,6 +1092,8 @@ Patch modifier:    0.79
 
 This will make balancing the procedural system dramatically easier.
 
+> **Amendment (2026-09-24): as implemented.** Four generic Debug views - Suitability, Density, Patch Noise, Placement - for any placed resource, picked in a "Debug resource" dropdown shown only in those views (every GUILD_STACK member, listed as "Oak (Canopy Trees)"). A member is evaluated as its guild sees it: score = its member score (suitability; exposed deposit for ores), density = guild density x its species share (members' densities add up to the guild's), patch = the guild's patch modifier or, for stand-mode guilds, its stand membership at full suitability; Placement draws only that resource's instances from the real stack. The contributing values come from `ResourceManager.explain_suitability()`, which mirrors `get_suitability()` step by step (weights, each curve with its field value and factor, required minimum, geometric mean, biome/subtype modifiers, affinities) and is tested to rebuild exactly the same value, followed by the guild lines (cover, patch/stand, best member, share, density); it shows in the info panel (right click) in a Debug view. The older oak-only debug views stay for their tests and the snapshot.
+
 ---
 
 # Phase 19 — Gameplay Loop

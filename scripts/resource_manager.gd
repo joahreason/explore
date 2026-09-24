@@ -357,8 +357,7 @@ static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: flo
 static func get_guild_density(
 	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
 ) -> float:
-	var field := 1.0 if guild.cover_field == "" else clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
-	var cover := clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
+	var cover := get_guild_cover(state, guild)
 	# Cheap factors first: member suitabilities are the costly part, and most
 	# tiles have no cover for guilds like wetland plants (dry ground).
 	if cover <= 0.0:
@@ -382,6 +381,13 @@ static func get_guild_density(
 	if guild.density_curve != null:
 		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
 	return density
+
+
+## The guild's cover at a tile (0..1): its cover_field through cover_curve,
+## 1.0 without a cover_field - the environment's "how much can grow here".
+static func get_guild_cover(state: EnvironmentalState, guild: ResourceGuild) -> float:
+	var field := 1.0 if guild.cover_field == "" else clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
+	return clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
 
 
 ## Phase 13 of docs/resource-generation-plan.md: canopy shade at a tile,
@@ -524,3 +530,70 @@ static func get_quality_tier(definition: ResourceDefinition, quality: float) -> 
 	if definition.quality_profile == null or quality < 0.0:
 		return ""
 	return definition.quality_profile.tier_for(quality)
+
+
+## Phase 18 (developer tooling): get_suitability() for one tile, taken
+## apart - every factor that goes into it, in the same order and with the
+## same math, as display lines. Returns {"lines": Array[String],
+## "suitability": the real get_suitability(), "recomputed": the result
+## rebuilt from the explained parts} - the two must agree (tests check),
+## so the breakdown can't drift from the function it explains. Attach shade
+## first for a shade-reading definition (get_shade()), as for suitability.
+static func explain_suitability(
+	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
+) -> Dictionary:
+	var lines: Array[String] = []
+	var weight_factors: Array[float] = []
+	if not definition.geology_weights.is_empty():
+		var f := clampf(float(definition.geology_weights.get(state.geology, 1.0)), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("geology %d: %.2f" % [state.geology, f])
+	if not definition.water_body_weights.is_empty():
+		var f := clampf(float(definition.water_body_weights.get(state.water_body, 1.0)), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("water body '%s': %.2f" % [state.water_body, f])
+	if not definition.disturbance_type_weights.is_empty():
+		var w := float(definition.disturbance_type_weights.get(state.disturbance_type, 1.0))
+		var f := clampf(lerpf(1.0, w, 1.0 - state.succession), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("disturbance '%s' (succession %.2f): %.2f" % [state.disturbance_type, state.succession, f])
+
+	var core: Array[float] = []
+	var requirement := 1.0
+	var zeroed := false
+	for f in weight_factors:
+		zeroed = zeroed or f <= 0.0
+	for entry in _curve_plan(definition):
+		var value: float = float(state.get(entry[1]))
+		var f := clampf((entry[0] as Curve).sample(value), 0.0, 1.0)
+		if entry[2]:
+			requirement = minf(requirement, f)
+			lines.append("%s %.3f: %.2f (required)" % [entry[1], value, f])
+		else:
+			core.append(f)
+			lines.append("%s %.3f: %.2f" % [entry[1], value, f])
+	core.append_array(weight_factors)
+	var mean := _geometric_mean(core)
+	lines.append("required minimum: %.2f   geometric mean of the rest: %.2f" % [requirement, mean])
+
+	var result := 0.0 if zeroed or requirement <= 0.0 else requirement * mean
+	if result > 0.0 and not classified.is_empty():
+		if not definition.biome_weights.is_empty():
+			var m := _biome_modifier(definition.biome_weights, classified)
+			result *= m
+			lines.append("biome modifier (%s): x%.2f" % [classified.get("base_biome", "?"), m])
+		if not definition.subtype_weights.is_empty():
+			var m := float(definition.subtype_weights.get(classified.get("subtype", ""), 1.0))
+			result *= m
+			lines.append("subtype modifier (%s): x%.2f" % [classified.get("subtype", ""), m])
+	if result > 0.0:
+		var before := result
+		result += definition.river_affinity * state.river
+		result += definition.shore_affinity * state.shore_proximity
+		result += definition.disturbance_affinity * state.disturbance
+		if result != before:
+			lines.append("affinities (river / shore / disturbance): +%.3f" % (result - before))
+	result = clampf(result, 0.0, 1.0)
+	var actual := get_suitability(state, definition, classified)
+	lines.append("suitability: %.3f" % actual)
+	return {"lines": lines, "suitability": actual, "recomputed": result}
