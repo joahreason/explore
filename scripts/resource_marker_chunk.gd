@@ -11,13 +11,17 @@ extends Node2D
 ##
 ## Shape.SPRITE draws each instance's tile from the one-bit Urizen sheet
 ## (Phase 8 step 6): its white pixels, tinted by the instance's color, so
-## coloring stays in data (ResourceDefinition.sprite_color).
+## coloring stays in data (ResourceDefinition.sprite_color), with a 1 px dark
+## outline and dark interior detail baked into one texture (outlined_image()),
+## drawn in one call, snapped to whole sprite pixels.
 
 enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND, HEXAGON, SPRITE }
 
 const SPRITE_SHEET := preload("res://urizen_onebit_tileset__v2d0.png")
 ## Sheet layout, as in tileset.tres: 12 px tiles, 1 px margin and separation.
 const SPRITE_SIZE := 12
+## Pixels of outline ring around the 12 px art in outlined_image().
+const OUTLINE_PAD := 1
 const SPRITE_STRIDE := 13
 
 const DEFAULT_FILL := Color(0.10, 0.32, 0.10)
@@ -56,7 +60,12 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 				sprite_px = float(sprites[inst["id"]]["size"]) * tile_size
 			else:
 				inst_shape = fallback
-		_positions.append(((inst["position"] as Vector2) - Vector2(origin_tile)) * tile_size)
+		var pos: Vector2 = inst["position"]
+		if texture != null:
+			# Sprites sit centred in the tile their instance falls in, on the
+			# terrain grid (the exact position stays in the data).
+			pos = Vector2(pos.floor()) + Vector2(0.5, 0.5)
+		_positions.append((pos - Vector2(origin_tile)) * tile_size)
 		_fills.append(colors.get(inst["id"], DEFAULT_FILL))
 		_radii.append(radius)
 		_shapes.append(inst_shape)
@@ -68,13 +77,14 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 func _draw() -> void:
 	for i in _positions.size():
 		if _shapes[i] == Shape.SPRITE:
-			# 1 px dark outline (four offset copies), then the tinted sprite.
+			# The outlined texture is the 12 px art plus a 1 px ring (OUTLINE_PAD);
+			# the art stays size x size, snapped to its own pixel grid so every
+			# sprite pixel renders the same width at any zoom. The tint only
+			# darkens the baked outline further.
 			var size := _sprite_sizes[i]
-			var rect := Rect2(_positions[i] - Vector2.ONE * size * 0.5, Vector2.ONE * size)
 			var px := size / SPRITE_SIZE
-			for offset in [Vector2(px, 0), Vector2(-px, 0), Vector2(0, px), Vector2(0, -px)]:
-				draw_texture_rect(_textures[i], Rect2(rect.position + offset, rect.size), false, OUTLINE)
-			draw_texture_rect(_textures[i], rect, false, _fills[i])
+			var top_left := ((_positions[i] - Vector2.ONE * size * 0.5) / px).round() * px
+			draw_texture_rect(_textures[i], Rect2(top_left, Vector2.ONE * size).grow(px * OUTLINE_PAD), false, _fills[i])
 		elif _shapes[i] == Shape.CIRCLE:
 			draw_circle(_positions[i], _radii[i] + 1.0, OUTLINE)
 			draw_circle(_positions[i], _radii[i], _fills[i])
@@ -121,7 +131,49 @@ static func sprite_image(tile: Vector2i) -> Image:
 	return img
 
 
+## The drawn sprite: sprite_image() on a (12 + 2 x OUTLINE_PAD) px canvas
+## with its art white (to be tinted) and OUTLINE where the tile's own black
+## pixels are part of the drawing - anything enclosed by the art (detail
+## lines, dithering, holes) - plus a ring of OUTLINE around the silhouette
+## (8 directions, so corners close). Before, the outline was four offset
+## copies: open at diagonal corners, and the ground showed through the
+## art's black detail wherever no copy happened to cover it.
+static func outlined_image(tile: Vector2i) -> Image:
+	var art := sprite_image(tile)
+	var n := SPRITE_SIZE + 2 * OUTLINE_PAD
+	var opaque := func(x: int, y: int) -> bool:
+		var ax := x - OUTLINE_PAD
+		var ay := y - OUTLINE_PAD
+		return ax >= 0 and ay >= 0 and ax < SPRITE_SIZE and ay < SPRITE_SIZE and art.get_pixel(ax, ay).a >= 0.5
+	# Background = transparent pixels reachable from the canvas edge.
+	var outside := {Vector2i.ZERO: true}
+	var queue: Array[Vector2i] = [Vector2i.ZERO]
+	var qi := 0
+	while qi < queue.size():
+		var p := queue[qi]
+		qi += 1
+		for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var q: Vector2i = p + d
+			if q.x < 0 or q.y < 0 or q.x >= n or q.y >= n or outside.has(q) or opaque.call(q.x, q.y):
+				continue
+			outside[q] = true
+			queue.append(q)
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for y in n:
+		for x in n:
+			if opaque.call(x, y):
+				img.set_pixel(x, y, Color.WHITE)
+			elif not outside.has(Vector2i(x, y)):
+				img.set_pixel(x, y, OUTLINE)
+			else:
+				for dy in range(-1, 2):
+					for dx in range(-1, 2):
+						if opaque.call(x + dx, y + dy):
+							img.set_pixel(x, y, OUTLINE)
+	return img
+
+
 static func sprite_texture(tile: Vector2i) -> Texture2D:
 	if not _sprite_cache.has(tile):
-		_sprite_cache[tile] = ImageTexture.create_from_image(sprite_image(tile))
+		_sprite_cache[tile] = ImageTexture.create_from_image(outlined_image(tile))
 	return _sprite_cache[tile]

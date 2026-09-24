@@ -9,7 +9,7 @@ Extend the procedural world generator (see `docs/architecture.md`) into a resour
 
 ## Current Phase
 
-Phase 13.5 — Terrain Surface Layer is implemented on branch `claude/phase-13.5-terrain-surface` as f9eafe7 (2026-09-24; not pushed - awaiting the user's by-eye check and go-ahead; pushing `main` deploys the web build). Phase 14 — Resource Quality and Variants is next (prep notes under Next). Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
+Phase 13.5 — Terrain Surface Layer is complete (f9eafe7, 2026-09-24) and merged to `main` and pushed with the sprite size/outline/centring pass. Phase 14 — Resource Quality and Variants is next (prep notes under Next). Phase 13 — Correlated Ecosystems is complete (2026-09-23): merged to `main` (fast-forward) and pushed; shade values are first pass. Phase 17 — Performance and Chunk Integration is closed for now (2026-09-23, the user's call after checking the web build by eye): steps 1-6 are on `main` and deployed; leftovers are parked under Next. Phases 0-12 are merged to `main` (PRs #1-#6); Phase 11 and 12 scars/species not yet checked by eye in the running game.
 
 ## Completed
 
@@ -237,7 +237,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (local Windows, branch `claude/phase-13.5-terrain-surface` from `main` 0e0a10e, NOT pushed - awaiting the user): Phase 13.5 terrain surface layer f9eafe7 (see In Progress). All 11 suites pass.
+- This session (local Windows, branch `claude/phase-13.5-terrain-surface` from `main` 0e0a10e, merged into `main` and pushed at the user's request): Phase 13.5 terrain surface layer f9eafe7 (see In Progress; all 11 suites passed). Then, user requests: every resource sprite 12x12 = one tile (the 7 mature trees were sprite_size 2); outlines baked once per sprite tile (`ResourceMarkerChunk.outlined_image()`: 1 px ring in 8 directions + enclosed dark detail, one draw per sprite, snapped to its pixel grid - replaces four offset copies that left corners open and let ground show through); sprites drawn centred in the tile their instance falls in (data positions unchanged) and clicks pick the instance in the clicked tile. Verified with test_world_scene + the placement snapshot (the user stopped the final full-suite run and asked to merge). Known: two instances of different guilds can occasionally share a tile and overlap.
 - This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, fast-forwarded into `main` and pushed at the user's request - web deployed): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. The agent's baseline worktree `../explore-baseline` has been removed.
 - This session (local Windows, branch `claude/phase-17-chunk-streaming`, fast-forwarded into `main` and pushed as 274f036): Phase 17 step 5 - threaded, nearest-first chunk streaming with a main-thread fallback; view/LOD rebuilds through the same queue; `tests/bench_pan.gd`. Commit d311baa. All suites pass except the pre-existing Windows snapshot-hash mismatch (see Things To Watch Out For).
 - Same branch, user request: desktop seed UI - the seed field (Enter) and Randomize now show on desktop and regenerate the world in place (`ChunkManager.regenerate()`, via `SeedReload.apply_seed()`; web still reloads the page). Reload stays web-only; on desktop the view dropdown moves up into its slot. Covered by test_world_scene (Enter, text seed, Randomize, back to 4242 gives identical objects).
@@ -248,7 +248,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- The user checks Phase 13.5 by eye (default World view and Terrain Only; forest edges, swamps, deserts, coasts, snow lines) and says whether to merge/push `claude/phase-13.5-terrain-surface` (deploys web). Then Phase 14 (Resource Quality and Variants) - see "Phase 14 prep" under Next: settle the open questions (tree age vs young_tree, the old-growth cue, data model), keep placement output identical, add a quality test suite, report benchmarks. Meanwhile the user can check Phase 13 shade by eye (Shade and Resources views, forest edges and groves).
+- Phase 13.5 is on `main` (web deployed); the user checks terrain and sprites by eye when convenient. Next: Phase 14 (Resource Quality and Variants) - see "Phase 14 prep" under Next: settle the open questions (tree age vs young_tree, the old-growth cue, data model), keep placement output identical, add a quality test suite, report benchmarks. Meanwhile the user can check Phase 13 shade by eye (Shade and Resources views, forest edges and groves).
 
 ### Things To Watch Out For
 

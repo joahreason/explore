@@ -1177,10 +1177,11 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 
 
 ## The placed resource instance under a click (tile units), or {} if none:
-## the nearest instance whose drawn marker covers the point (marker radius =
-## 0.35 x its guild's spacing, as in resource_marker_chunk.gd). Works in any
-## view - instances exist whether or not their markers are drawn. Adds
-## "guild_name" and "name" for display.
+## one whose tile is the clicked tile (sprites are drawn filling their tile,
+## see resource_marker_chunk.gd), else the nearest instance whose debug
+## marker covers the point (marker radius = 0.35 x its guild's spacing).
+## Works in any view - instances exist whether or not their markers are
+## drawn. Adds "guild_name" and "name" for display.
 func _resource_at(point: Vector2) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
@@ -1189,8 +1190,11 @@ func _resource_at(point: Vector2) -> Dictionary:
 	for guild in GUILD_STACK:
 		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
 		for inst in stack[guild]:
-			var dist := point.distance_to(inst["position"])
-			if dist <= reach and dist < best_dist:
+			var pos: Vector2 = inst["position"]
+			var in_tile := Vector2i(pos.floor()) == tile
+			# An instance in the clicked tile always beats one merely in reach.
+			var dist := point.distance_to(pos) - (1000.0 if in_tile else 0.0)
+			if (in_tile or dist <= reach) and dist < best_dist:
 				best = inst.duplicate()
 				best_dist = dist
 	if not best.is_empty():

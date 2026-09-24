@@ -356,10 +356,15 @@ func _init() -> void:
 	var markers_total := 0
 	for c in inline_world._loaded_placements:
 		var one_go := PackedVector2Array()
+		var node = inline_world._loaded_placements[c]
 		for entry in inline_world._placement_chunk(c):
 			for inst in entry[1]:
-				one_go.append(((inst["position"] as Vector2) - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE)
-		var shown: PackedVector2Array = inline_world._loaded_placements[c]._positions
+				var pos: Vector2 = inst["position"]
+				# Sprites are drawn centred in their tile (resource_marker_chunk.gd).
+				if node._textures[one_go.size()] != null:
+					pos = Vector2(pos.floor()) + Vector2(0.5, 0.5)
+				one_go.append((pos - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE)
+		var shown: PackedVector2Array = node._positions
 		markers_total += shown.size()
 		same = same and shown == one_go
 	check(same and markers_total > 0, "no worker: Resources built in steps over %d frames - all %d markers match one-go placement" % [step_frames, markers_total])

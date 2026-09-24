@@ -68,4 +68,4 @@ placement_type = "scatter"
 debug_color = Color(0.78, 0.74, 0.22, 1)
 sprite_tile = Vector2i(1, 8)
 sprite_color = Color(0.62, 0.66, 0.38, 1)
-sprite_size = 2.0
+sprite_size = 1.0
