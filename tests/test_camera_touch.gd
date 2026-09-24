@@ -145,6 +145,47 @@ func _init() -> void:
 	await process_frame
 	check(rig.global_position.is_equal_approx(Vector2(0, -10)) and is_equal_approx(cam.zoom.x, 4.0), "two-finger pan moves with the fingers (%s, expect (0, -10))" % rig.global_position)
 
+	# Lifting one finger of a pinch never moves the camera, even when the
+	# browser renumbers the remaining finger or reports a bogus relative
+	# motion (measured from the lifted finger); the remaining finger then
+	# pans smoothly by its own motion.
+	await reset(4.0)
+	a = map_point
+	b = map_point + Vector2(120, 0)
+	touch(0, a, true)
+	touch(1, b, true)
+	for k in 3:
+		drag(0, a, a - Vector2(10, 0))
+		a -= Vector2(10, 0)
+		drag(1, b, b + Vector2(10, 0))
+		b += Vector2(10, 0)
+		await process_frame
+	var after_pinch_pos := rig.global_position
+	var after_pinch_zoom := cam.zoom.x
+	touch(0, a, false)
+	await process_frame
+	var lift_still := rig.global_position == after_pinch_pos and cam.zoom.x == after_pinch_zoom
+	# Renumbered: finger 1 now reported as index 0, relative from finger 0.
+	var bogus := InputEventScreenDrag.new()
+	bogus.index = 0
+	bogus.position = b + Vector2(1, 0)
+	bogus.relative = b + Vector2(1, 0) - a
+	_send(bogus)
+	await process_frame
+	var renumber_still := rig.global_position.distance_to(after_pinch_pos) < 0.01
+	for k in 4:
+		var e := InputEventScreenDrag.new()
+		e.index = 0
+		e.position = b + Vector2(1 + 8 * (k + 1), 0)
+		e.relative = Vector2(500, 0)  # bogus: must not be used
+		_send(e)
+		await process_frame
+	var panned := rig.global_position - after_pinch_pos
+	touch(0, b + Vector2(33, 0), false)
+	await process_frame
+	check(lift_still and renumber_still and panned.is_equal_approx(Vector2(-32, 0) / after_pinch_zoom),
+		"lifting a pinch finger doesn't move the camera (renumbered or bogus motion ignored); the other finger then pans by its own motion (%s)" % panned)
+
 	# A pinch whose last finger lifts near where it started is not a tap;
 	# a plain tap is exactly one.
 	await reset(4.0)

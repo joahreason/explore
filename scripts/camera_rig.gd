@@ -77,6 +77,10 @@ var _touches: Dictionary = {}   # touch index -> last Vector2 position
 var _touch_press_positions: Dictionary = {}  # touch index -> Vector2 at press
 var _touch_over_ui: Dictionary = {}  # touch index -> bool, was its press over UI
 var _touch_press_msec: Dictionary = {}  # touch index -> Time.get_ticks_msec() at press
+## Touches whose next drag only re-baselines their position (no pan / zoom):
+## set for every remaining finger whenever the finger count changes, so
+## lifting one finger of a pinch never moves the camera.
+var _settle: Dictionary = {}
 ## The current single-finger gesture already fired its long press, so its
 ## release is not also a tap.
 var _long_press_fired: bool = false
@@ -169,6 +173,10 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 		if was_over_ui:
 			_reset_pinch()
 			return
+		# Browsers may report a lifted finger under a different index than it
+		# was pressed with: release the tracked finger nearest to it.
+		if not _touches.has(event.index) and not _touches.is_empty():
+			_adopt_index(_nearest_touch(event.position), event.index)
 
 		# Only a gesture that was a single finger for its whole duration
 		# counts as a tap - a pinch collapsing down to one finger on release
@@ -178,12 +186,17 @@ func _handle_touch(event: InputEventScreenTouch) -> void:
 		_touches.erase(event.index)
 		_touch_press_positions.erase(event.index)
 		_touch_press_msec.erase(event.index)
+		_settle.erase(event.index)
 		if _touches.is_empty():
 			_multi_touch = false
 		if was_single_touch and not _long_press_fired and event.position.distance_to(press_position) < CLICK_DRAG_THRESHOLD:
 			harvest_clicked.emit(_screen_to_world(event.position))
 		elif was_single_touch:
 			_start_glide()
+		# A finger lifted: every remaining one re-baselines on its next move
+		# instead of panning / zooming from a stale position.
+		for index in _touches:
+			_settle[index] = true
 
 	_reset_pinch()
 
@@ -192,11 +205,25 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 	if _touch_over_ui.get(event.index, false):
 		return
 	if not _touches.has(event.index):
-		return
+		# After a finger lifts, the browser may renumber the one still down:
+		# adopt it as the tracked finger nearest its position (re-baseline,
+		# no movement). Anything else is a touch we never saw start.
+		if _touches.size() != 1:
+			return
+		_adopt_index(_nearest_touch(event.position), event.index)
+		_settle[event.index] = true
+	# Deltas come from our own last position of this finger, not
+	# event.relative, which a renumbered touch can measure from another finger.
+	var previous: Vector2 = _touches[event.index]
 	_touches[event.index] = event.position
+	if _settle.has(event.index):
+		_settle.erase(event.index)
+		if _touches.size() == 2:
+			_reset_pinch()
+		return
 
 	if _touches.size() == 1:
-		_pan_by(-event.relative / camera.zoom.x)
+		_pan_by(-(event.position - previous) / camera.zoom.x)
 	elif _touches.size() == 2:
 		# Zoom by the change in finger distance and pan so the world point
 		# that was under the fingers' midpoint stays under it (like any map
@@ -209,6 +236,29 @@ func _handle_touch_drag(event: InputEventScreenDrag) -> void:
 			global_position += anchor - _screen_to_world_at(new_midpoint, camera.zoom.x)
 		_pinch_distance = new_distance
 		_pinch_midpoint = new_midpoint
+
+
+## The tracked touch index whose last position is nearest `pos`.
+func _nearest_touch(pos: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for index in _touches:
+		var d: float = (_touches[index] as Vector2).distance_to(pos)
+		if d < best_d:
+			best_d = d
+			best = index
+	return best
+
+
+## Moves a tracked touch's state from index `from` to `to` (a browser
+## renumbered it).
+func _adopt_index(from: int, to: int) -> void:
+	if from == to or from < 0:
+		return
+	for dict in [_touches, _touch_press_positions, _touch_press_msec, _touch_over_ui, _settle]:
+		if dict.has(from):
+			dict[to] = dict[from]
+			dict.erase(from)
 
 
 ## Long press: one finger, the only one of its gesture, held still for
@@ -320,6 +370,7 @@ func _notification(what: int) -> void:
 		_touch_press_positions.clear()
 		_touch_over_ui.clear()
 		_touch_press_msec.clear()
+		_settle.clear()
 		_long_press_fired = false
 		_stop_glide()
 		_pinch_distance = 0.0
