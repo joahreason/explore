@@ -125,16 +125,35 @@ const WARM_DENSITY_ROWS := 4
 ## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass
 ## ground takes the season's tint - and the ground materials that count as
 ## grass. Water codes run WATER_CODE_ICE..WATER_CODE for how liquid it is
-## (0..1); solid ice carries no code and stays still. Open sea / lake tiles
-## on the shoreline carry FOAM_CODE + a mask of their land neighbours, and
-## sandy ground beside open water WASH_CODE + a mask of its water
-## neighbours (_shore_mask: 1 -x, 2 +x, 4 -y, 8 +y) - surf foam and swash.
-const WATER_CODE := 220
+## (0..1); solid ice carries no code and stays still. Shallow open sea / lake
+## water near the coast carries SHALLOW_CODE + 0..7 (shallower = higher) for
+## whitecaps. Open water tiles (sea, lake, river) on the shoreline carry
+## FOAM_CODE + a shore shape, and any ground beside open water WASH_CODE
+## (WASH_GRASS_CODE for grass, which also takes the season's tint) + a shore
+## shape - surf foam and swash. A shape (_shore_shape()) is 1 + the index in
+## SHORE_SHAPES of the mask of neighbours across the shoreline: edges 1 -x,
+## 2 +x, 4 -y, 8 +y and diagonal corners 16 (-x,-y), 32 (+x,-y), 64 (-x,+y),
+## 128 (+x,+y), a corner only when neither edge beside it is set (it would
+## be covered) - 46 shapes, mirrored in shaders/terrain.gdshader.
+const FOAM_CODE := 50
+const WASH_CODE := 100
+const WASH_GRASS_CODE := 150
 const WATER_CODE_ICE := 200
-const FOAM_CODE := 224
-const WASH_CODE := 180
+const WATER_CODE := 220
+const SHALLOW_CODE := 240
 const GRASS_CODE := 253
-const WASH_GROUND := ["beach_sand", "sand", "gravel"]
+const SHORE_SHAPES := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 24, 26, 32, 33, 40, 41, 48, 56, 64, 66, 68, 70, 80, 82, 96, 112, 128, 129, 132, 133, 144, 160, 161, 176, 192, 196, 208, 224, 240]
+## Neighbour steps for the mask bits, and the edge bits beside each corner.
+const SHORE_STEPS := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]
+const CORNER_EDGES := [1 | 4, 2 | 4, 1 | 8, 2 | 8]
+## Only tiles this close to sea level can border the shoreline (elevation
+## changes by under 0.01 per tile), and only ground with its river line
+## within this many river widths can border a river (measured banks: <= 1.06)
+## - cheap gates before _shore_shape(). Water shallower than SHALLOW_DEPTH
+## gets whitecaps.
+const SHORE_ELEVATION_MARGIN := 0.03
+const RIVER_BANK_MARGIN := 1.5
+const SHALLOW_DEPTH := 0.03
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
@@ -797,35 +816,43 @@ func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 		# Frozen water gets no code: no waves, no glints.
 		if coded and liquid > 0.0:
 			w.a = (WATER_CODE_ICE + roundf(liquid * (WATER_CODE - WATER_CODE_ICE))) / 255.0
-			if liquid >= 1.0 and sample["water_body"] != "river":
-				var land := _shore_mask(wx, wy, true)
-				if land > 0:
-					w.a = (FOAM_CODE + land) / 255.0
+			var depth: float = _world_gen.sea_level - sample["elevation"]  # < 0 for rivers
+			if liquid >= 1.0 and depth < SHORE_ELEVATION_MARGIN:
+				var shape := _shore_shape(wx, wy, true)
+				if shape > 0:
+					w.a = (FOAM_CODE + shape) / 255.0
+				elif depth > 0.0 and depth < SHALLOW_DEPTH:
+					w.a = (SHALLOW_CODE + roundi(7.0 * (1.0 - depth / SHALLOW_DEPTH))) / 255.0
 		return w
 	var state := _surface_state(sample, wx, wy)
 	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)
 	var color := TerrainSurfaceScript.color_for(material, state, world_seed, wx, wy)
-	if coded and GRASS_GROUND.has(material.id):
+	if not coded:
+		return color
+	var grass := GRASS_GROUND.has(material.id)
+	if grass:
 		color.a = GRASS_CODE / 255.0
-	elif coded and WASH_GROUND.has(material.id) and sample["shore_proximity"] > 0.0 and TerrainSurfaceScript.shore_liquid(sample) >= 1.0:
-		var sea := _shore_mask(wx, wy, false)
-		if sea > 0:
-			color.a = (WASH_CODE + sea) / 255.0
+	var by_sea: bool = sample["elevation"] < _world_gen.sea_level + SHORE_ELEVATION_MARGIN and TerrainSurfaceScript.shore_liquid(sample) >= 1.0
+	if by_sea or _world_gen.river_line_at(wx, wy) < _world_gen.river_width * RIVER_BANK_MARGIN:
+		var shape := _shore_shape(wx, wy, false)
+		if shape > 0:
+			color.a = ((WASH_GRASS_CODE if grass else WASH_CODE) + shape) / 255.0
 	return color
 
 
-## Which of a tile's 4 neighbours (bit 1 -x, 2 +x, 4 -y, 8 +y) lie across the
-## sea / lake shoreline from it: land around a water tile (`water`), water
-## around a land tile. Elevation alone decides it, so rivers don't count.
-func _shore_mask(wx: int, wy: int, water: bool) -> int:
+## The shore shape of a tile (see SHORE_SHAPES), 0 off the shoreline: which
+## neighbours lie across the shoreline from it - ground around a water tile
+## (`water`), water (sea, lake or river) around a ground tile. From
+## WorldGen.is_water_at(), so it is exact across chunk borders.
+func _shore_shape(wx: int, wy: int, water: bool) -> int:
 	var mask := 0
-	var sea := _world_gen.sea_level
-	var steps := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]
-	for i in steps.size():
-		var n: Vector2i = steps[i]
-		if (_world_gen.elevation(wx + n.x, wy + n.y) < sea) != water:
+	for i in SHORE_STEPS.size():
+		if i >= 4 and mask & CORNER_EDGES[i - 4]:
+			continue
+		var n: Vector2i = SHORE_STEPS[i]
+		if _world_gen.is_water_at(wx + n.x, wy + n.y) != water:
 			mask |= 1 << i
-	return mask
+	return SHORE_SHAPES.find(mask) + 1
 
 
 ## The ground material of a tile, or null on a water body (inspector, tests).

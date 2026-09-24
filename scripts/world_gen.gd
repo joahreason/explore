@@ -312,6 +312,65 @@ func elevation(wx: float, wy: float) -> float:
 	return clampf(h, -1.0, 1.0)
 
 
+## River field (0..1) at a tile of elevation `e` (approximated, not
+## flow-simulated - see class doc); above river_threshold, and not below sea
+## level, the tile is a river.
+func river_at(fx: float, fy: float, e: float) -> float:
+	var rwarp_x := _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
+	var rwarp_y := _river_warp.get_noise_2d(fx - 500.0, fy + 500.0) * (20.0 * world_scale)
+	var wfx := fx + rwarp_x
+	var wfy := fy + rwarp_y
+	var river_line := absf(_river_line.get_noise_2d(wfx, wfy))
+	var river_shape := 1.0 - smoothstep(0.0, river_width, river_line)
+
+	# A "near zero" band traces both long winding lines and small closed
+	# loops around local extrema - loops are stray blobs, not rivers. Probe a
+	# point further along this point's own tangent (perpendicular to the
+	# noise gradient, estimated via finite difference): a genuinely long
+	# river is elongated along that tangent and stays "on," while a small
+	# loop's far side usually falls outside its own thin ring.
+	if river_shape > 0.0:
+		var check_dist := river_elongation_distance * world_scale
+		# Estimate the gradient at roughly the same scale as the check itself
+		# (a 1-tile step is essentially measuring noise floor against an
+		# ~800-tile wavelength field, too unstable to give a real direction).
+		var grad_step := check_dist * 0.5
+		var line_x1 := absf(_river_line.get_noise_2d(wfx + grad_step, wfy))
+		var line_y1 := absf(_river_line.get_noise_2d(wfx, wfy + grad_step))
+		var grad := Vector2(line_x1 - river_line, line_y1 - river_line)
+		var tangent := Vector2(-grad.y, grad.x)
+		tangent = tangent.normalized() if tangent.length() > 0.0001 else Vector2(1.0, 0.0)
+		var ahead := absf(_river_line.get_noise_2d(wfx + tangent.x * check_dist, wfy + tangent.y * check_dist))
+		var behind := absf(_river_line.get_noise_2d(wfx - tangent.x * check_dist, wfy - tangent.y * check_dist))
+		var elongation_gate := minf(
+			1.0 - smoothstep(0.0, river_width * 1.5, ahead),
+			1.0 - smoothstep(0.0, river_width * 1.5, behind)
+		)
+		river_shape *= elongation_gate
+
+	# Only between the coast and a plausible headwaters elevation, widening
+	# toward the coast like a river mouth and tapering out upstream.
+	var river_lowland_gate := smoothstep(sea_level, sea_level + shore_band, e)
+	var river_highland_gate := 1.0 - smoothstep(river_max_elevation - 0.15, river_max_elevation, e)
+	return clampf(river_shape * river_lowland_gate * river_highland_gate, 0.0, 1.0)
+
+
+## The river line value river_at() starts from (0 on a river's centre line)
+## before its shape gates - smooth from tile to tile, so it cheaply rules out
+## tiles far from any river (river banks stay within ~1.1 river_width).
+func river_line_at(fx: float, fy: float) -> float:
+	var wfx := fx + _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
+	var wfy := fy + _river_warp.get_noise_2d(fx - 500.0, fy + 500.0) * (20.0 * world_scale)
+	return absf(_river_line.get_noise_2d(wfx, wfy))
+
+
+## Whether a tile is open water - sea, lake or river - from elevation and
+## the river field alone (cheaper than sample(); swamps count as ground).
+func is_water_at(wx: int, wy: int) -> bool:
+	var e := elevation(wx, wy)
+	return e < sea_level or river_at(float(wx), float(wy), e) > river_threshold
+
+
 ## Full environmental sample for one tile. Everything downstream is derived
 ## from a shared set of fields rather than independent per-material noise.
 func sample(wx: int, wy: int) -> Dictionary:
@@ -381,43 +440,7 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var moisture01 := clampf(rainfall01 + orographic + shore_proximity * 0.4 - exposure01 * arid_wind_factor, 0.0, 1.0)
 
 	# --- rivers (approximated, not flow-simulated - see class doc) ---
-	var rwarp_x := _river_warp.get_noise_2d(fx, fy) * (20.0 * world_scale)
-	var rwarp_y := _river_warp.get_noise_2d(fx - 500.0, fy + 500.0) * (20.0 * world_scale)
-	var wfx := fx + rwarp_x
-	var wfy := fy + rwarp_y
-	var river_line := absf(_river_line.get_noise_2d(wfx, wfy))
-	var river_shape := 1.0 - smoothstep(0.0, river_width, river_line)
-
-	# A "near zero" band traces both long winding lines and small closed
-	# loops around local extrema - loops are stray blobs, not rivers. Probe a
-	# point further along this point's own tangent (perpendicular to the
-	# noise gradient, estimated via finite difference): a genuinely long
-	# river is elongated along that tangent and stays "on," while a small
-	# loop's far side usually falls outside its own thin ring.
-	if river_shape > 0.0:
-		var check_dist := river_elongation_distance * world_scale
-		# Estimate the gradient at roughly the same scale as the check itself
-		# (a 1-tile step is essentially measuring noise floor against an
-		# ~800-tile wavelength field, too unstable to give a real direction).
-		var grad_step := check_dist * 0.5
-		var line_x1 := absf(_river_line.get_noise_2d(wfx + grad_step, wfy))
-		var line_y1 := absf(_river_line.get_noise_2d(wfx, wfy + grad_step))
-		var grad := Vector2(line_x1 - river_line, line_y1 - river_line)
-		var tangent := Vector2(-grad.y, grad.x)
-		tangent = tangent.normalized() if tangent.length() > 0.0001 else Vector2(1.0, 0.0)
-		var ahead := absf(_river_line.get_noise_2d(wfx + tangent.x * check_dist, wfy + tangent.y * check_dist))
-		var behind := absf(_river_line.get_noise_2d(wfx - tangent.x * check_dist, wfy - tangent.y * check_dist))
-		var elongation_gate := minf(
-			1.0 - smoothstep(0.0, river_width * 1.5, ahead),
-			1.0 - smoothstep(0.0, river_width * 1.5, behind)
-		)
-		river_shape *= elongation_gate
-
-	# Only between the coast and a plausible headwaters elevation, widening
-	# toward the coast like a river mouth and tapering out upstream.
-	var river_lowland_gate := smoothstep(sea_level, sea_level + shore_band, e)
-	var river_highland_gate := 1.0 - smoothstep(river_max_elevation - 0.15, river_max_elevation, e)
-	var river01 := clampf(river_shape * river_lowland_gate * river_highland_gate, 0.0, 1.0)
+	var river01 := river_at(fx, fy, e)
 
 	# Riparian effect: rivers locally raise moisture, which then feeds
 	# vegetation/erosion below through the existing formulas - no separate
