@@ -1,7 +1,7 @@
 extends SceneTree
 
-## First polish pass: sprite shadows (under trees, rocks, ore, shrubs,
-## deadwood - not grass), chunk fade-in, the harvest pop effect, drifting
+## First polish pass: cast shadows (silhouettes thrown by the sun / moon
+## under trees, rocks, ore, shrubs, deadwood - not grass), chunk fade-in, the harvest pop effect, drifting
 ## cloud shadows and the desktop hover highlight. Visuals were checked on a
 ## real renderer by hand; this checks the wiring. Momentum and eased zoom
 ## are in test_camera_touch. Run via tests/run_tests.sh.
@@ -57,9 +57,33 @@ func _init() -> void:
 		shadows += world._loaded_placements[c].shadow_count()
 	var layer_ok := true
 	for m in world._loaded_placements.values():
-		var layer: Node = m.get_node_or_null("Shadows")
-		layer_ok = layer_ok and (layer == null or (layer.show_behind_parent and layer.material == null))
-	check(shadows == casters and casters > 100 and layer_ok, "one shadow per casting instance (%d), drawn behind the sprites without the sway material" % shadows)
+		var layer: Node2D = m.shadow_layer()
+		layer_ok = layer_ok and (layer == null or (layer.get_parent() == world.shadows_root and layer.material == world.shadow_material and layer.position == m.position))
+	check(shadows == casters and casters > 100 and layer_ok,
+		"one silhouette shadow per casting sprite (%d), all on one layer under every sprite, with the cast-shadow material" % shadows)
+	var old_layer: Node2D = world._loaded_placements.values()[0].shadow_layer()
+	world._redraw_markers(world._loaded_placements.keys()[0])
+	await process_frame
+	check(old_layer == null or not is_instance_valid(old_layer), "a chunk's shadows go away with its markers (redraw)")
+
+	# Sun and moon.
+	var morning := SunShadow.at(7.5)
+	var noon := SunShadow.at(12.0)
+	var evening := SunShadow.at(16.5)
+	var night := SunShadow.at(0.0)
+	var noon_len := Vector2(noon.x, noon.y).length()
+	check(morning.x < -0.3 and evening.x > 0.3 and absf(noon.x) < 0.05 and noon_len < Vector2(morning.x, morning.y).length(),
+		"shadows point west in the morning (%.2f), east in the evening (%.2f), and are shortest at noon" % [morning.x, evening.x])
+	check(night.z > 0.0 and night.z < noon.z and SunShadow.at(6.0).z < 0.01 and SunShadow.at(18.0).z < 0.01,
+		"moon shadows are fainter than the sun's (%.2f vs %.2f); both fade out at dawn and dusk" % [night.z, noon.z])
+	var smooth := true
+	var prev := SunShadow.at(0.0)
+	for m in range(1, 24 * 60 + 1):
+		var cur := SunShadow.at(m / 60.0)
+		# Direction may swing near a horizon, but only while nearly invisible.
+		smooth = smooth and absf(cur.z - prev.z) < 0.01 and (Vector2(cur.x, cur.y) - Vector2(prev.x, prev.y)).length() * minf(cur.z, prev.z) < 0.01
+		prev = cur
+	check(smooth, "shadows change smoothly minute by minute through the day and night")
 
 	# Harvest effect: spawned at the object, frees itself.
 	var target := {}

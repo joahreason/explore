@@ -23,6 +23,8 @@ target_path = NodePath("CameraRig")
 
 [node name="Chunks" type="Node2D" parent="."]
 
+[node name="ShadowLayer" type="Node2D" parent="."]
+
 [node name="Resources" type="Node2D" parent="."]
 
 [node name="CloudShadows" type="ColorRect" parent="."]
