@@ -91,6 +91,17 @@ func _init() -> void:
 	var sprite: Sprite2D = world._loaded_chunks.values()[0]
 	check(water_ok and grass_ok and sprite.material == world.terrain_material and sprite.texture.get_image().get_format() == Image.FORMAT_RGBA8,
 		"World view: water and grass tiles carry their codes; chunks use the terrain shader")
+	# Frozen water: no code (no waves, no glints); partly frozen: a code in
+	# between; rivers and open water: fully liquid.
+	var lake := {"water_body": "lake", "elevation": -0.2, "temperature": 0.3}
+	var codes := []
+	for t in [0.3, -0.35, -0.8]:
+		lake["temperature"] = t
+		codes.append(roundi(world._terrain_color(lake, 0, 0).a * 255.0))
+	var river := {"water_body": "river", "elevation": 0.1, "temperature": -0.9}
+	check(codes[0] == world.WATER_CODE and codes[1] > world.WATER_CODE_ICE and codes[1] < world.WATER_CODE and codes[2] == 255
+		and roundi(world._terrain_color(river, 0, 0).a * 255.0) == world.WATER_CODE,
+		"water codes follow how liquid it is: open %d, half-frozen %d, ice %d (no code); rivers stay liquid" % codes)
 	world.set_view_mode(CM.ViewMode.TEMPERATURE)
 	world.flush_chunk_work()
 	var s0: Dictionary = world._world_gen.sample(0, 0)
