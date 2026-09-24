@@ -31,6 +31,10 @@ const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const GameClockScript := preload("res://scripts/game_clock.gd")
+const WindScript := preload("res://scripts/wind.gd")
+## One material for every marker node: resource sprites sway in the wind by
+## their sway value (see _marker_colors()); other draws are unaffected.
+const SWAY_SHADER := preload("res://shaders/sway.gdshader")
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -199,6 +203,8 @@ var _changes = WorldChangesScript.new()
 ## DayNight tints the world by it and the clock label shows it.
 var clock = GameClockScript.new()
 const CLOCK_SAVE_MSEC := 10000
+var wind = WindScript.new()
+var sway_material := ShaderMaterial.new()
 var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
@@ -245,6 +251,7 @@ var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (Biom
 
 
 func _ready() -> void:
+	sway_material.shader = SWAY_SHADER
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
@@ -432,6 +439,8 @@ func set_view_mode(mode: ViewMode) -> void:
 func _process(delta: float) -> void:
 	var hour_before := floori(clock.minutes / 60.0)
 	clock.advance(delta)
+	wind.advance(delta, clock.rate())
+	wind.apply(sway_material, clock.minutes)
 	# Save the clock when an in-game hour passes (about once a real minute at
 	# normal speed), at most every CLOCK_SAVE_MSEC when fast-forwarding.
 	if floori(clock.minutes / 60.0) != hour_before and Time.get_ticks_msec() - _last_clock_save_msec >= CLOCK_SAVE_MSEC:
@@ -1269,6 +1278,7 @@ func _stack_depth(layers: Array) -> int:
 ## the node is built, so a job generated before a harvest can't show it.
 func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 	var markers := ResourceMarkerChunkScript.new()
+	markers.material = sway_material
 	for entry in placements:
 		var layer: Array = entry[0]
 		var source: Resource = layer[0]
@@ -1398,12 +1408,25 @@ func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> 
 
 
 ## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
-## debug_color, or sprite_color for members drawn as sprites.
+## debug_color, or sprite_color for members drawn as sprites - its alpha
+## then carries the member's sway (sway_alpha()).
 func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
 	var colors := {}
 	for member in (source.members if source is ResourceGuild else [source]):
-		colors[member.id] = member.sprite_color if as_sprites and member.sprite_tile.x >= 0 else member.debug_color
+		if as_sprites and member.sprite_tile.x >= 0:
+			var c: Color = member.sprite_color
+			c.a = sway_alpha(member.sway)
+			colors[member.id] = c
+		else:
+			colors[member.id] = member.debug_color
 	return colors
+
+
+## A sprite's draw-colour alpha carrying its sway to the sway shader
+## (shaders/sway.gdshader turns it back into sway and draws opaque):
+## 1 - sway / 2, so opaque (alpha 1) draws never sway.
+static func sway_alpha(sway: float) -> float:
+	return 1.0 - clampf(sway, 0.0, 1.0) * 0.5
 
 
 ## Instance id -> {"tile", "size"} (resource_marker_chunk.gd), for members

@@ -72,3 +72,4 @@ sprite_tile = Vector2i(3, 8)
 sprite_color = Color(0.16, 0.46, 0.32, 1)
 sprite_size = 1.0
 quality_profile = ExtResource("q_profile")
+sway = 0.25

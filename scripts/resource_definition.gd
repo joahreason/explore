@@ -186,6 +186,10 @@ var curve_plan = null
 @export var sprite_color: Color = Color(1, 1, 1)
 ## Drawn width in tiles. Whole multiples of 1 keep the 12 px art crisp.
 @export var sprite_size: float = 1.0
+## How much the sprite bends in the wind (0 = rigid: rocks, ore, logs; 1 =
+## grass). The sway shader (shaders/sway.gdshader) bends the sprite's top,
+## its base stays planted; Wind (scripts/wind.gd) sets direction and gusts.
+@export_range(0.0, 1.0) var sway: float = 0.0
 
 ## Phase 9 geological deposits: a definition with vein_scale > 0 is an ore
 ## body rather than a surface object. ResourceManager.get_deposit_potential()
