@@ -1,9 +1,9 @@
 // Chunk terrain images (one pixel per tile, scaled up). In the gameplay
 // views ChunkManager marks tiles in the image's alpha (see _terrain_color()):
 // WATER_CODE_ICE..WATER_CODE for water, by how liquid it is (0..1; solid ice
-// has no code and stays still), SHALLOW_CODE + 0..7 for shallow open water
-// near the coast, FOAM_CODE + shape for open water on the shoreline,
-// WASH_CODE + shape for ground beside open water (WASH_GRASS_CODE + shape
+// has no code and stays still), SHALLOW_CODE + 0..7 for shallow open sea
+// near the coast, FOAM_CODE + shape for open sea on the shoreline,
+// WASH_CODE + shape for ground on a sea shore (WASH_GRASS_CODE + shape
 // for grass, tinted first), GRASS_CODE for grass ground; anything else is
 // opaque 255. A shape is 1 + an index into SHORE_SHAPES (ChunkManager's
 // list): a mask of the neighbours across the shoreline - edges 1 -x, 2 +x,
@@ -13,7 +13,7 @@
 // place to place and over time, plus a few steady glints - each tile has a
 // small random chance of one or two fixed glint pixels - both scaled by how
 // liquid it is. Near the coast, wave crests break into whitecaps, more of
-// them the shallower it gets. Shoreline water (sea, lake or river) breaks
+// them the shallower it gets. Shoreline sea (not lakes or rivers) breaks
 // into flickering white foam that surges up to the land edge and back; the
 // ground beside it is washed by white swash that runs up, thinning to wet
 // ground and foam specks at its front, and drains - the first row always
