@@ -9,7 +9,7 @@
 [ext_resource type="Resource" path="res://resources/salt.tres" id="7_salt"]
 
 [sub_resource type="Curve" id="Curve_density"]
-_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.02, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0.5), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.1, 0), 0.0, 0.0, 0, 0, Vector2(0.25, 0.5), 0.0, 0.0, 0, 0, Vector2(0.45, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
 point_count = 5
 
 [resource]
@@ -19,5 +19,5 @@ members = Array[ExtResource("2_def")]([ExtResource("3_iron"), ExtResource("4_cop
 cover_field = ""
 density_curve = SubResource("Curve_density")
 species_sharpness = 8.0
-minimum_spacing = 3.0
+minimum_spacing = 1.5
 footprint_radius = 0.6

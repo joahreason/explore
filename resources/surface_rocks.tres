@@ -11,7 +11,7 @@
 [ext_resource type="Resource" path="res://resources/exposed_stone.tres" id="9_exposed"]
 
 [sub_resource type="Curve" id="Curve_cover"]
-_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.2, 0.65), 0.0, 0.0, 0, 0, Vector2(0.35, 0.25), 0.0, 0.0, 0, 0, Vector2(0.5, 0.08), 0.0, 0.0, 0, 0, Vector2(1, 0.04), 0.0, 0.0, 0, 0]
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.2, 0.45), 0.0, 0.0, 0, 0, Vector2(0.35, 0.18), 0.0, 0.0, 0, 0, Vector2(0.5, 0.06), 0.0, 0.0, 0, 0, Vector2(1, 0.03), 0.0, 0.0, 0, 0]
 point_count = 5
 
 [resource]
@@ -21,7 +21,8 @@ members = Array[ExtResource("2_def")]([ExtResource("3_granite"), ExtResource("4_
 cover_curve = SubResource("Curve_cover")
 base_density = 0.8
 species_sharpness = 4.0
-cluster_scale = 24.0
-cluster_strength = 0.7
-minimum_spacing = 1.5
+cluster_scale = 16.0
+minimum_spacing = 1.2
 footprint_radius = 0.5
+cover_sets_area = true
+stand_edge = 0.05

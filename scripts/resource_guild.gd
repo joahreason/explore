@@ -72,6 +72,15 @@ func reads_shade() -> bool:
 ## between - the plan's "stronger clustering" for berry bushes.
 @export var cluster_curve: Curve
 @export var minimum_spacing: float = 1.0
+## Phase 14 clustering: cover x the best member's score decides how much of
+## the ground lies in STANDS (ResourceManager.get_stand_membership(): the
+## patch noise's highest share of tiles) instead of thinning the density
+## everywhere - dense clumps with clear gaps between. Density inside a stand
+## is base_density. cluster_strength / cluster_curve are unused when on.
+@export var cover_sets_area: bool = false
+## Half-width (patch-noise units) of a stand's soft edge; ~0.05 fades over a
+## tile or two at cluster_scale ~30.
+@export var stand_edge: float = 0.05
 ## Radius (tiles) of one instance's physical footprint, for collisions with
 ## OTHER guilds (ResourcePlacement.place_stack_in_rect()): two instances of
 ## different guilds must be at least the sum of their radii apart. Within the
