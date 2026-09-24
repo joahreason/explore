@@ -108,6 +108,14 @@ extends Resource
 	set(value):
 		shade_curve = value
 		curve_plan = null
+## Phase 13.5: the tile's current vegetation (WorldGen's `vegetation`,
+## after the scar penalty) - what the ground surface looks like depends on
+## how much actually grows there (grass vs bare dirt). Resources take their
+## cover from their guild's cover_field instead.
+@export var vegetation_curve: Curve:
+	set(value):
+		vegetation_curve = value
+		curve_plan = null
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -216,6 +224,7 @@ const CURVE_FIELD_RANGES := {
 	"succession_curve": Vector2(0.0, 1.0),
 	"rock_exposure_curve": Vector2(0.0, 1.0),
 	"shade_curve": Vector2(0.0, 1.0),
+	"vegetation_curve": Vector2(0.0, 1.0),
 }
 
 

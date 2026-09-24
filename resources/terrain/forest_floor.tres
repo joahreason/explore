@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.2,0), 0.0, 0.0, 0, 0, Vector2(0.42,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0.6), 0.0, 0.0, 0, 0, Vector2(0.2,0.6), 0.0, 0.0, 0, 0, Vector2(0.45,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "forest_floor"
+category = "surface"
+base_density = 1.0
+shade_curve = SubResource("Curve_shade")
+moisture_curve = SubResource("Curve_moisture")
+required_curves = PackedStringArray("shade_curve")
+cluster_scale = 8.0
+cluster_strength = 0.4
+display_name = "Forest Floor"
+ground_color = Color(0.31, 0.3, 0.16, 1)
+tint_field = "temperature"
+tint_range = Vector2(0.0, -0.5)
+tint_color = Color(0.28, 0.27, 0.2, 0.6)
+tint2_field = "moisture"
+tint2_range = Vector2(0.45, 0.75)
+tint2_color = Color(0.24, 0.34, 0.17, 0.6)
+jitter = 0.05

@@ -1,7 +1,9 @@
 extends OptionButton
 
 ## Lists every ChunkManager.ViewMode; selecting one calls set_view_mode() on
-## the World node (grandparent: World/UI/ViewModeDropdown -> World).
+## the World node (grandparent: World/UI/ViewModeDropdown -> World). The first item
+## is the default view (ChunkManager._view_mode: World = terrain + every
+## placed resource, Phase 13.5), since the dropdown starts on it.
 
 const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 
@@ -14,8 +16,8 @@ const ChunkManagerScript := preload("res://scripts/chunk_manager.gd")
 ## clicking one names it in the inspector. They still exist in ChunkManager
 ## (tests use them) for re-adding here while tuning a resource.
 const ITEMS := [
-	{"label": "Material", "mode": ChunkManagerScript.ViewMode.MATERIAL},
-	{"label": "Resources", "mode": ChunkManagerScript.ViewMode.RESOURCES},
+	{"label": "World", "mode": ChunkManagerScript.ViewMode.RESOURCES},
+	{"label": "Terrain Only", "mode": ChunkManagerScript.ViewMode.MATERIAL},
 	{"label": "Deposits", "mode": ChunkManagerScript.ViewMode.DEPOSITS},
 	{"label": "Farming Potential", "mode": ChunkManagerScript.ViewMode.FARMING_POTENTIAL},
 	{"label": "Subtype", "mode": ChunkManagerScript.ViewMode.SUBTYPE},

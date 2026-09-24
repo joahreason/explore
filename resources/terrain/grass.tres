@@ -1,0 +1,52 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.06,0), 0.0, 0.0, 0, 0, Vector2(0.22,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,0), 0.0, 0.0, 0, 0, Vector2(-0.8,0), 0.0, 0.0, 0, 0, Vector2(-0.35,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_shade"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.3,1), 0.0, 0.0, 0, 0, Vector2(0.6,0.4), 0.0, 0.0, 0, 0, Vector2(1,0.2), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0.5), 0.0, 0.0, 0, 0, Vector2(0.35,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="Curve_drainage"]
+_data = [Vector2(0,0.35), 0.0, 0.0, 0, 0, Vector2(0.35,0.35), 0.0, 0.0, 0, 0, Vector2(0.5,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_erosion"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.15,1), 0.0, 0.0, 0, 0, Vector2(0.4,0.3), 0.0, 0.0, 0, 0, Vector2(1,0.3), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "grass"
+category = "surface"
+base_density = 1.0
+vegetation_curve = SubResource("Curve_vegetation")
+temperature_curve = SubResource("Curve_temperature")
+shade_curve = SubResource("Curve_shade")
+moisture_curve = SubResource("Curve_moisture")
+drainage_curve = SubResource("Curve_drainage")
+erosion_curve = SubResource("Curve_erosion")
+required_curves = PackedStringArray("vegetation_curve", "temperature_curve")
+cluster_scale = 14.0
+cluster_strength = 0.55
+display_name = "Grass"
+ground_color = Color(0.34, 0.56, 0.22, 1)
+tint_field = "moisture"
+tint_range = Vector2(0.4, 0.15)
+tint_color = Color(0.56, 0.58, 0.28, 0.7)
+tint2_field = "temperature"
+tint2_range = Vector2(-0.1, -0.55)
+tint2_color = Color(0.28, 0.42, 0.3, 0.6)
+jitter = 0.05

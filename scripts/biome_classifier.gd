@@ -7,8 +7,8 @@ extends RefCounted
 ##
 ## Water/Beach are unambiguous categorical facts already decided upstream
 ## (WorldGen's water_body topology, shore_proximity) - no competition
-## needed. Land biomes are decided by SCORING every candidate (same
-## weighted style already used in debug_colorizer.gd's w_snow/w_rock/etc.)
+## needed. Land biomes are decided by SCORING every candidate (a weighted
+## style, like the terrain surface materials in terrain_surface.gd)
 ## and taking the argmax, rather than an ordered if/elif chain - this is
 ## what lets Forest/Rainforest and Grassland/Savanna naturally divide by
 ## whichever's extra conditions are actually met, instead of one hiding

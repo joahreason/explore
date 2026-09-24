@@ -250,10 +250,13 @@ var _configured_seed: int = -1
 # placement rolls (likewise not owned here - see ResourcePlacement),
 # +19 per-deposit vein noise (not owned here - see
 # ResourceManager.get_vein_value()).
-# Next free offset: +20.
+# +20 surface-material patch noise (Phase 13.5; not owned here - see
+# TerrainSurface, one noise per material id).
+# Next free offset: +21.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 const RESOURCE_PLACEMENT_SEED_OFFSET := 18
 const DEPOSIT_VEIN_SEED_OFFSET := 19
+const SURFACE_PATCH_SEED_OFFSET := 20
 
 
 func configure(world_seed: int) -> void:

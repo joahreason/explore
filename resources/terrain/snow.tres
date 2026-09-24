@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,1), 0.0, 0.0, 0, 0, Vector2(-0.75,1), 0.0, 0.0, 0, 0, Vector2(-0.3,0), 0.0, 0.0, 0, 0, Vector2(1,0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_elevation"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,0.6), 0.0, 0.0, 0, 0, Vector2(0.4,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0.35), 0.0, 0.0, 0, 0, Vector2(0.05,0.35), 0.0, 0.0, 0, 0, Vector2(0.3,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "snow"
+category = "surface"
+base_density = 0.95
+temperature_curve = SubResource("Curve_temperature")
+elevation_curve = SubResource("Curve_elevation")
+moisture_curve = SubResource("Curve_moisture")
+required_curves = PackedStringArray("temperature_curve")
+cluster_scale = 16.0
+cluster_strength = 0.55
+display_name = "Snow"
+ground_color = Color(0.93, 0.94, 0.97, 1)
+jitter = 0.02

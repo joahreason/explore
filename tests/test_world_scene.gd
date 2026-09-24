@@ -31,7 +31,11 @@ func _init() -> void:
 	check(world._worker != null, "chunk jobs run on a worker thread")
 	world.flush_chunk_work()
 	check(world._loaded_chunks.size() == 81 and _all_current(world), "startup: %d chunks loaded, all built for the current view" % world._loaded_chunks.size())
-	check(world._loaded_placements.is_empty(), "Material view: no placement markers")
+	# Phase 13.5: the default view is the World (terrain + every placed resource).
+	check(world._view_mode == CM.ViewMode.RESOURCES and world._loaded_placements.size() == 81, "startup: default World view shows placed resources (%d marker nodes)" % world._loaded_placements.size())
+	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world.flush_chunk_work()
+	check(world._loaded_placements.is_empty(), "Terrain Only view: no placement markers")
 	var t0 := Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCE_PLACEMENT_OAK)
 	world.flush_chunk_work()
@@ -193,7 +197,7 @@ func _init() -> void:
 	world.flush_chunk_work()
 
 	var probe: Dictionary = world._world_gen.sample(3, 5)
-	check(world._color_for(probe, 3, 5) == DebugColorizer.color_for(probe), "resources view: base image is the Material color")
+	check(world._color_for(probe, 3, 5) == world._terrain_color(probe, 3, 5), "resources view: base image is the terrain")
 
 	# Deposits view (Phase 9): a heatmap plus ore outcrop markers (step 2);
 	# clicking a tile with ore lists it in the inspector.
@@ -216,7 +220,7 @@ func _init() -> void:
 		for sh in m._shapes:
 			outcrops_ok = outcrops_ok and sh == world.ResourceMarkerChunkScript.Shape.HEXAGON
 	check(outcrops_ok and ore_tile.x != 1 << 30
-		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != DebugColorizer.color_for(ore_sample)
+		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != world._terrain_color(ore_sample, ore_tile.x, ore_tile.y)
 		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
 		"deposits view: only outcrop hexagons (%d); ore tile %s tinted and listed under Deposits in the inspector" % [outcrop_count, ore_tile])
 
@@ -236,7 +240,7 @@ func _init() -> void:
 	world._on_tile_clicked((Vector2(farm_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var farm_sample: Dictionary = world._world_gen.sample(farm_tile.x, farm_tile.y)
 	check(world._loaded_placements.is_empty() and farm_tile.x != 1 << 30
-		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != DebugColorizer.color_for(farm_sample)
+		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != world._terrain_color(farm_sample, farm_tile.x, farm_tile.y)
 		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
 		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
 
@@ -260,7 +264,7 @@ func _init() -> void:
 			break
 	world._on_tile_clicked((Vector2(shade_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var shade_sample: Dictionary = world._world_gen.sample(shade_tile.x, shade_tile.y)
-	var want: Color = DebugColorizer.color_for(shade_sample).lerp(HeatmapColorizer.shade(shade_value), world.HEATMAP_OVERLAY_STRENGTH)
+	var want: Color = world._terrain_color(shade_sample, shade_tile.x, shade_tile.y).lerp(HeatmapColorizer.shade(shade_value), world.HEATMAP_OVERLAY_STRENGTH)
 	check(shade_markers > 100 and shade_tile.x != 1 << 30
 		and world._color_for(shade_sample, shade_tile.x, shade_tile.y) == want
 		and world._inspector_panel.label.text.contains("[b]Shade:[/b] %.2f" % shade_value),
@@ -330,13 +334,16 @@ func _init() -> void:
 	var inline_world: Node2D = load("res://world.tscn").instantiate()
 	inline_world.world_seed = 4242
 	inline_world.threaded_generation = false
+	inline_world.set_view_mode(CM.ViewMode.MATERIAL)  # so the Resources switch below builds in steps
 	root.add_child(inline_world)
-	await process_frame
-	await process_frame
+	var inline_frames := 0
+	while inline_world._loaded_chunks.is_empty() and inline_frames < 60:
+		await process_frame
+		inline_frames += 1
 	var early: int = inline_world._loaded_chunks.size()
 	inline_world.flush_chunk_work()
 	check(inline_world._worker == null and early > 0 and early < 81 and inline_world._loaded_chunks.size() == 81 and _all_current(inline_world),
-		"no worker: %d chunks after two frames, all 81 once flushed" % early)
+		"no worker: first chunks after %d frames (%d shown, not all at once), all 81 once flushed" % [inline_frames, early])
 
 	# The main-thread fallback builds a chunk in small steps over several
 	# frames (Phase 17 step 6); the markers must match placing it in one go.

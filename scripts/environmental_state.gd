@@ -6,7 +6,7 @@ extends RefCounted
 ## resource-generation system to consume with real field access instead of
 ## string keys. WorldGen.sample() itself is UNCHANGED and keeps returning a
 ## Dictionary; every existing caller (biome_classifier.gd, biome_subtype.gd,
-## biome_modifiers.gd, debug_colorizer.gd, heatmap_colorizer.gd,
+## biome_modifiers.gd, heatmap_colorizer.gd, terrain_surface.gd (water),
 ## chunk_manager.gd, tile_inspector_panel.gd) is untouched - this is an
 ## additional representation, not a replacement (see docs/architecture.md §8
 ## and the Phase 1 decision in the session that added this file).

@@ -24,10 +24,11 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 
 ## View modes
 
-- **Material** - the default terrain look, a continuous color blend driven by climate/vegetation/geology (no hard biome edges)
-- **Subtype**, **Modifiers** - text-label overlays over the Material look, naming each region's biome subtype or independent tags (Cold, Wet, FireProne, etc.)
-- **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the Material look (not a full replacement) so terrain stays visible as context for how the field affects generation
-- **Resources** - the Material look with every placed natural object: trees as sprites from the one-bit tileset (oak, olive, willow, pine, palm; tinted by each species' `sprite_color`), ore outcrops (iron, copper, coal) and rocks (granite, sandstone, basalt - by bedrock) as tileset sprites too, as are berry bushes, reeds and cattails; as are clay and salt outcrops and, on coasts, shells, river-mouth mud, beach grass, salt marsh and mangroves. Hidden when zoomed far out.
+- **World** (default) - the live game view: the terrain ground (below) with every placed natural object on it (see "What World places" below)
+- **Terrain Only** - just the ground: every land tile is one surface material (grass, dry grass, dirt, forest floor, mud, marsh, sand, beach sand, gravel, rock, snow, burnt ground) chosen from its environment and mixed in organic patches, so a grassland has dirt spots and mud by the water and a swamp mixes marsh, mud and grass; colours vary with moisture, cold, geology and so on. Water bodies keep their depth colouring
+- **Subtype**, **Modifiers** - text-label overlays over the terrain, naming each region's biome subtype or independent tags (Cold, Wet, FireProne, etc.)
+- **Temperature, Moisture, Temp Variation, Precip Seasonality, Drainage, Disturbance Age, Disturbance Type, Fuel Load, Fire Risk, Cave Potential, Cliff Tendency** - heatmap views, each blended on top of the terrain (not a full replacement) so terrain stays visible as context for how the field affects generation
+- **What World places** - trees as sprites from the one-bit tileset (oak, olive, willow, pine, palm; tinted by each species' `sprite_color`), ore outcrops (iron, copper, coal) and rocks (granite, sandstone, basalt - by bedrock) as tileset sprites too, as are berry bushes, reeds and cattails; as are clay and salt outcrops and, on coasts, shells, river-mouth mud, beach grass, salt marsh and mangroves. Hidden when zoomed far out.
 - **Deposits** - where iron, copper, coal, clay and salt exist underground (dim) vs. show at the surface (bright), with placed outcrops as hexagons.
 - **Farming Potential** - how good each tile is for farming: flat, fertile, moist ground, best on river floodplains.
 
@@ -40,7 +41,8 @@ A plain visit with no `?seed=` in the URL gets a new random seed each time; pass
 - **`biome_classifier.gd` / `biome_subtype.gd` / `biome_modifiers.gd`** - a 3-stage classifier layered on top of `sample()`'s continuous fields for the debug/inspector views: a scored (not if/elif) base biome, a per-base-biome subtype, and a flat list of independent modifier tags.
 - **`chunk_manager.gd`** - infinite chunk streaming (16x16 tiles/chunk). Builds one `Sprite2D` per loaded chunk from whichever color function the current view mode selects, plus an optional text-label overlay for label views. Also handles LOD: at low zoom each chunk samples on a coarser grid (1 sample per 2x2/4x4/8x8 tile block) and the sprite scales back up, since zooming out needs more chunks, not fewer.
 - **`camera_rig.gd`** - pan/zoom/pinch, plus filtering so taps/drags over UI panels never get mistaken for map gestures.
-- **`debug_colorizer.gd` / `heatmap_colorizer.gd`** - pure `sample() -> Color` functions for the Material look and each heatmap view, respectively.
+- **`terrain_surface.gd` / `resources/terrain/*.tres`** - the ground layer: one data-driven `SurfaceMaterial` per land tile (suitability curves like resources, patch noise, field-driven tints) and water colours.
+- **`heatmap_colorizer.gd`** - pure `sample() -> Color` functions for each heatmap view.
 
 The art tileset (`tileset.tres`, `urizen_onebit_tileset__v2d0*.png`) is present but not yet wired up - all current rendering is the flat-color debug visualization described above.
 

@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.15,1), 0.0, 0.0, 0, 0, Vector2(0.35,0.45), 0.0, 0.0, 0, 0, Vector2(1,0.3), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0.6), 0.0, 0.0, 0, 0, Vector2(0.2,1), 0.0, 0.0, 0, 0, Vector2(0.6,1), 0.0, 0.0, 0, 0, Vector2(1,0.6), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,0.6), 0.0, 0.0, 0, 0, Vector2(-0.4,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[resource]
+script = ExtResource("1_mat")
+id = "dirt"
+category = "surface"
+base_density = 0.6
+vegetation_curve = SubResource("Curve_vegetation")
+moisture_curve = SubResource("Curve_moisture")
+temperature_curve = SubResource("Curve_temperature")
+cluster_scale = 10.0
+cluster_strength = 0.8
+display_name = "Dirt"
+ground_color = Color(0.46, 0.34, 0.23, 1)
+geology_colors = {
+0: Color(0.52, 0.4, 0.28, 1),
+1: Color(0.44, 0.37, 0.3, 1),
+2: Color(0.5, 0.32, 0.22, 1),
+3: Color(0.32, 0.26, 0.22, 1)
+}
+tint_field = "moisture"
+tint_range = Vector2(0.4, 0.8)
+tint_color = Color(0.28, 0.2, 0.14, 0.5)
+jitter = 0.05

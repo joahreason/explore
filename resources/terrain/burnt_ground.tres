@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_succession"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.2,1), 0.0, 0.0, 0, 0, Vector2(0.55,0), 0.0, 0.0, 0, 0, Vector2(1,0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "burnt_ground"
+category = "surface"
+base_density = 1.0
+succession_curve = SubResource("Curve_succession")
+required_curves = PackedStringArray("succession_curve")
+cluster_scale = 6.0
+cluster_strength = 0.3
+display_name = "Burnt Ground"
+ground_color = Color(0.19, 0.17, 0.15, 1)
+disturbance_type_weights = {
+"fire": 1.0,
+"flood": 0.0,
+"landslide": 0.0,
+"storm": 0.0
+}
+tint_field = "succession"
+tint_range = Vector2(0.1, 0.5)
+tint_color = Color(0.36, 0.36, 0.26, 0.8)
+jitter = 0.04

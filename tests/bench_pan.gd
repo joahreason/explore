@@ -13,7 +13,10 @@ extends SceneTree
 ## the main thread (the web export's fallback). Each run pans 6 chunks east
 ## from a start the world has not generated yet, then 6 chunks diagonally.
 ## "holes" = frames in which a chunk inside the camera view wasn't loaded yet
-## (streaming fell behind the pan).
+## (streaming fell behind the pan). "work" = Godot's own per-frame process
+## time (Performance.TIME_PROCESS): main-thread work only. Frame times include
+## the idle sleep between headless frames, which on Windows can round up to
+## the ~15.6 ms default timer tick - compare "work" across machines and runs.
 
 const STARTS := {
 	"forest": Vector2(0, 0),
@@ -47,6 +50,7 @@ func _init() -> void:
 				cam.global_position = STARTS[start_name] + Vector2(0, offset)
 				await _settle(world)
 				var frames := PackedFloat64Array()
+				var work := PackedFloat64Array()
 				var holes := 0
 				var steps := int(PAN_CHUNKS * chunk_px / speed)
 				var t_prev := Time.get_ticks_usec()
@@ -55,9 +59,10 @@ func _init() -> void:
 					await process_frame
 					var now := Time.get_ticks_usec()
 					frames.append((now - t_prev) / 1000.0)
+					work.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 					t_prev = now
 					holes += int(_view_has_hole(world, cam))
-				_report("%s %s %s" % [view_name, start_name, "east" if dir.y == 0 else "diag"], frames, holes)
+				_report("%s %s %s" % [view_name, start_name, "east" if dir.y == 0 else "diag"], frames, holes, work)
 	quit()
 
 
@@ -83,7 +88,9 @@ func _view_has_hole(world: Node2D, cam: Node2D) -> bool:
 	return false
 
 
-func _report(label: String, frames: PackedFloat64Array, holes: int) -> void:
+func _report(label: String, frames: PackedFloat64Array, holes: int, work: PackedFloat64Array) -> void:
+	var work_sorted := work.duplicate()
+	work_sorted.sort()
 	var sorted := frames.duplicate()
 	sorted.sort()
 	var total := 0.0
@@ -93,6 +100,6 @@ func _report(label: String, frames: PackedFloat64Array, holes: int) -> void:
 		total += f
 		over_16 += int(f > 16.7)
 		over_33 += int(f > 33.3)
-	print("BENCH %-26s frames %4d  mean %5.2f  p50 %5.2f  p99 %6.1f  max %6.1f ms  >16.7ms %3d  >33ms %3d  holes %3d" % [
+	print("BENCH %-26s frames %4d  mean %5.2f  p50 %5.2f  p99 %6.1f  max %6.1f ms  >16.7ms %3d  >33ms %3d  holes %3d  work p50 %5.2f p99 %5.2f max %6.1f ms" % [
 		label, frames.size(), total / frames.size(), sorted[frames.size() / 2],
-		sorted[int(frames.size() * 0.99)], sorted[-1], over_16, over_33, holes])
+		sorted[int(frames.size() * 0.99)], sorted[-1], over_16, over_33, holes, work_sorted[work.size() / 2], work_sorted[int(work.size() * 0.99)], work_sorted[-1]])

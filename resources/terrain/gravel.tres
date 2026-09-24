@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_erosion"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.1,0), 0.0, 0.0, 0, 0, Vector2(0.3,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_rock_exposure"]
+_data = [Vector2(0,0.5), 0.0, 0.0, 0, 0, Vector2(0.4,1), 0.0, 0.0, 0, 0, Vector2(1,0.6), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.45,0.4), 0.0, 0.0, 0, 0, Vector2(1,0.4), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[resource]
+script = ExtResource("1_mat")
+id = "gravel"
+category = "surface"
+base_density = 0.75
+erosion_curve = SubResource("Curve_erosion")
+rock_exposure_curve = SubResource("Curve_rock_exposure")
+vegetation_curve = SubResource("Curve_vegetation")
+required_curves = PackedStringArray("erosion_curve")
+cluster_scale = 8.0
+cluster_strength = 0.6
+display_name = "Gravel"
+ground_color = Color(0.55, 0.53, 0.5, 1)
+geology_colors = {
+0: Color(0.6, 0.56, 0.48, 1),
+1: Color(0.52, 0.52, 0.52, 1),
+2: Color(0.57, 0.53, 0.5, 1),
+3: Color(0.36, 0.34, 0.34, 1)
+}
+jitter = 0.06

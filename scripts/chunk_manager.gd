@@ -3,7 +3,7 @@ extends Node2D
 ## Infinite chunk-based procedural world, deterministic per world_seed.
 ## Rendering here is a debug visualization only (flat colored tiles per
 ## WorldGen field sample) - the art tileset is intentionally not used yet;
-## see scripts/world_gen.gd and scripts/debug_colorizer.gd for the actual
+## see scripts/world_gen.gd and scripts/terrain_surface.gd for the actual
 ## generation/coloring logic. This file just handles chunk streaming.
 ##
 ## Phase 17 streaming: a chunk's content (image, markers, labels) is built by
@@ -19,7 +19,7 @@ extends Node2D
 ## thread. Tests that call generation functions directly do it after
 ## flush_chunk_work(), which leaves the worker idle.
 
-const DebugColorizerScript := preload("res://scripts/debug_colorizer.gd")
+const TerrainSurfaceScript := preload("res://scripts/terrain_surface.gd")
 const HeatmapColorizerScript := preload("res://scripts/heatmap_colorizer.gd")
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
@@ -102,8 +102,10 @@ const MAX_PLACEMENT_LOD_STEP := 2
 ## Without a worker thread: time per frame spent on chunk job steps on the
 ## main thread (at least one step per frame while any are queued).
 const INLINE_BUDGET_USEC := 5000
-## Pixel rows a chunk job bakes per step (see _chunk_job_steps).
-const IMAGE_BAND_ROWS := 4
+## Pixel rows a chunk job bakes per step (see _chunk_job_steps). 2 since
+## Phase 13.5: choosing each tile's ground costs ~50 us, so a 4-row band was
+## ~4.5 ms on desktop - too big a step for the web fallback.
+const IMAGE_BAND_ROWS := 2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
 
@@ -170,7 +172,9 @@ var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource mar
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
 var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
-var _view_mode: ViewMode = ViewMode.MATERIAL
+## Phase 13.5: the default "live game" view is the terrain with every placed
+## resource on it (RESOURCES); MATERIAL is the bare terrain.
+var _view_mode: ViewMode = ViewMode.RESOURCES
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
 var _last_lod_step: int = -1
@@ -498,8 +502,9 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
+	var ground := _surface_at(sample, tile.x, tile.y)
 	_gen_mutex.unlock()
-	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade)
+	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "")
 
 
 ## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
@@ -668,21 +673,55 @@ func _apply_results(budget_usec: int) -> void:
 	_ready_results = _ready_results.slice(i)
 
 
-## Heatmap views are blended on top of the Material look rather than
+## Heatmap views are blended on top of the terrain (Phase 13.5) rather than
 ## replacing it outright, so the terrain stays visible as context for how
 ## each field actually affects generation (e.g. you can still see the
 ## coastline/vegetation under a temperature heatmap instead of losing it).
 const HEATMAP_OVERLAY_STRENGTH := 0.65
 
 ## Picks the color function for the current view mode. BASE_BIOME has no
-## dedicated per-tile color of its own - it keeps the Material look as its
-## base image and relies entirely on the drawn label overlay on top.
+## dedicated per-tile color of its own - it keeps the terrain as its base
+## image and relies entirely on the drawn label overlay on top.
 func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
 	var heatmap_color: Variant = _heatmap_color_for(sample, wx, wy)
 	if heatmap_color == null:
-		return DebugColorizerScript.color_for(sample)
-	var material_color: Color = DebugColorizerScript.color_for(sample)
-	return material_color.lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
+		return _terrain_color(sample, wx, wy)
+	return _terrain_color(sample, wx, wy).lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
+
+
+## Phase 13.5: a tile's terrain colour - its water body, or its ground
+## material (TerrainSurface) coloured by its fields.
+func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
+	var water: Variant = TerrainSurfaceScript.water_color(sample)
+	if water != null:
+		return water
+	var state := _surface_state(sample, wx, wy)
+	return TerrainSurfaceScript.color_for(TerrainSurfaceScript.material_at(state, world_seed, wx, wy), state, world_seed, wx, wy)
+
+
+## The ground material of a tile, or null on a water body (inspector, tests).
+func _surface_at(sample: Dictionary, wx: int, wy: int) -> SurfaceMaterial:
+	if TerrainSurfaceScript.water_color(sample) != null:
+		return null
+	return TerrainSurfaceScript.material_at(_surface_state(sample, wx, wy), world_seed, wx, wy)
+
+
+## A fresh EnvironmentalState for choosing ground, its shade taken from the
+## SHADE_LATTICE corners (TerrainSurface.lattice_shade()) - fresh, so the
+## interpolated shade never replaces the exact per-tile value placement
+## reads from _tile_env()'s cached states.
+func _surface_state(sample: Dictionary, wx: int, wy: int) -> EnvironmentalState:
+	var state: EnvironmentalState = EnvironmentalStateScript.from_sample(sample)
+	state.shade = TerrainSurfaceScript.lattice_shade(wx, wy, _corner_shade)
+	state.shade_known = true
+	return state
+
+
+## Exact shade at a lattice tile, through the per-tile env cache (the
+## state keeps it once computed).
+func _corner_shade(cx: int, cy: int) -> float:
+	var env := _tile_env(cx, cy)
+	return ResourceManagerScript.get_shade(env[0], world_seed, cx, cy, env[1])
 
 
 ## Returns null (not a heatmap view, or BASE_BIOME/SUBTYPE/MODIFIERS which

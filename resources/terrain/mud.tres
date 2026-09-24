@@ -1,0 +1,45 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.45,0), 0.0, 0.0, 0, 0, Vector2(0.62,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_drainage"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.38,1), 0.0, 0.0, 0, 0, Vector2(0.5,0), 0.0, 0.0, 0, 0, Vector2(1,0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,0), 0.0, 0.0, 0, 0, Vector2(-0.6,0), 0.0, 0.0, 0, 0, Vector2(-0.4,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_salinity"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(1,0.5), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.2,1), 0.0, 0.0, 0, 0, Vector2(0.6,0.5), 0.0, 0.0, 0, 0, Vector2(1,0.5), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "mud"
+category = "surface"
+base_density = 1.0
+moisture_curve = SubResource("Curve_moisture")
+drainage_curve = SubResource("Curve_drainage")
+temperature_curve = SubResource("Curve_temperature")
+salinity_curve = SubResource("Curve_salinity")
+vegetation_curve = SubResource("Curve_vegetation")
+required_curves = PackedStringArray("moisture_curve", "drainage_curve", "temperature_curve")
+cluster_scale = 9.0
+cluster_strength = 0.6
+display_name = "Mud"
+ground_color = Color(0.33, 0.25, 0.17, 1)
+river_affinity = 0.25
+tint_field = "moisture"
+tint_range = Vector2(0.7, 1.0)
+tint_color = Color(0.24, 0.19, 0.14, 0.6)
+jitter = 0.04

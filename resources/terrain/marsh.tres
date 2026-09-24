@@ -1,0 +1,32 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.6,0), 0.0, 0.0, 0, 0, Vector2(0.8,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_drainage"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.35,1), 0.0, 0.0, 0, 0, Vector2(0.48,0), 0.0, 0.0, 0, 0, Vector2(1,0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "marsh"
+category = "surface"
+base_density = 1.0
+moisture_curve = SubResource("Curve_moisture")
+drainage_curve = SubResource("Curve_drainage")
+required_curves = PackedStringArray("moisture_curve", "drainage_curve")
+cluster_scale = 7.0
+cluster_strength = 0.7
+display_name = "Marsh"
+ground_color = Color(0.27, 0.38, 0.34, 1)
+water_body_weights = {
+"none": 0.3,
+"swamp": 1.0
+}
+tint_field = "vegetation"
+tint_range = Vector2(0.4, 0.7)
+tint_color = Color(0.26, 0.42, 0.24, 0.5)
+jitter = 0.04

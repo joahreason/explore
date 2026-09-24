@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
+
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.05,0), 0.0, 0.0, 0, 0, Vector2(0.14,1), 0.0, 0.0, 0, 0, Vector2(0.35,1), 0.0, 0.0, 0, 0, Vector2(0.6,0.5), 0.0, 0.0, 0, 0, Vector2(1,0.5), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0,1), 0.0, 0.0, 0, 0, Vector2(0.3,1), 0.0, 0.0, 0, 0, Vector2(0.5,0), 0.0, 0.0, 0, 0, Vector2(1,0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1,0), 0.0, 0.0, 0, 0, Vector2(-0.3,0), 0.0, 0.0, 0, 0, Vector2(0.05,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_mat")
+id = "dry_grass"
+category = "surface"
+base_density = 0.9
+vegetation_curve = SubResource("Curve_vegetation")
+moisture_curve = SubResource("Curve_moisture")
+temperature_curve = SubResource("Curve_temperature")
+required_curves = PackedStringArray("vegetation_curve", "moisture_curve", "temperature_curve")
+cluster_scale = 14.0
+cluster_strength = 0.55
+display_name = "Dry Grass"
+ground_color = Color(0.7, 0.64, 0.38, 1)
+tint_field = "moisture"
+tint_range = Vector2(0.2, 0.42)
+tint_color = Color(0.55, 0.58, 0.3, 0.6)
+tint2_field = "temperature"
+tint2_range = Vector2(0.4, 0.85)
+tint2_color = Color(0.8, 0.72, 0.48, 0.5)
+jitter = 0.05
