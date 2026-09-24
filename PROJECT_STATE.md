@@ -236,7 +236,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Last Completed Work
 
-- This session (cloud, branch `claude/phase-14-start-4zcb39` from `main` 8f9b67d, pushed to the branch - not merged): Phase 14 part 1, resource quality e65fb66 (see In Progress). All 12 suites pass; placement snapshot identical.
+- This session (cloud, branch `claude/phase-14-start-4zcb39` from `main` 8f9b67d, merged to `main` as PR #9 (e84ac19) at the user's request - web deployed): Phase 14 part 1, resource quality e65fb66 (see In Progress). All 12 suites pass; placement snapshot identical.
 - Bug fix (user report: pinch zoom caused sporadic camera movement), 7fa792b on `main`, pushed: camera_rig.gd dropped the emulated-mouse mirror of touches (Godot dispatches it BEFORE the touch, so the old guard never fired: 1-finger and 2-finger pans ran 2x, the first finger yanked the camera mid-pinch), pinch now zooms around the finger midpoint, and a pinch never counts as a tap. Guarded by tests/test_camera_touch.gd (real input pipeline; hides the UI because headless viewports are 64x64).
 - This session (local Windows, branch `claude/phase-13.5-terrain-surface` from `main` 0e0a10e, merged into `main` and pushed at the user's request): Phase 13.5 terrain surface layer f9eafe7 (see In Progress; all 11 suites passed). Then, user requests: every resource sprite 12x12 = one tile (the 7 mature trees were sprite_size 2); outlines baked once per sprite tile (`ResourceMarkerChunk.outlined_image()`: 1 px ring in 8 directions + enclosed dark detail, one draw per sprite, snapped to its pixel grid - replaces four offset copies that left corners open and let ground show through); sprites drawn centred in the tile their instance falls in (data positions unchanged) and clicks pick the instance in the clicked tile. Verified with test_world_scene + the placement snapshot (the user stopped the final full-suite run and asked to merge). Known: two instances of different guilds can occasionally share a tile and overlap.
 - This session (local Windows, branch `claude/phase-13-correlated-ecosystems` from `main` 98473c8, fast-forwarded into `main` and pushed at the user's request - web deployed): Phase 13 - snapshot guard made platform-independent 61aea15, `bench_views` BENCH_THREADED=0 eb23a75, correlated ecosystems (canopy shade, shade_curve data, Shade view, test_correlations, re-recorded snapshot) 68be1f0. All 10 suites pass on Windows. The agent's baseline worktree `../explore-baseline` has been removed.
@@ -249,7 +249,7 @@ Full field-by-field breakdown, water topology algorithm, classifier stages, and 
 
 ### Next Action
 
-- Phase 14 part 1 (quality) is on branch `claude/phase-14-start-4zcb39`; the user decides on merging (a PR to `main` deploys the web build) and checks the Quality view / inspector tiers by eye. Next: Phase 14 part 2, clustering of trees/rocks/ore (see Next) - placement changes by design, so agree it and re-record the snapshot once; re-check quality shares afterwards (clumps change shade and so tree ages).
+- Phase 14 part 1 (quality) is on `main` (PR #9, web deployed); the user checks the Quality view / inspector tiers by eye. Next: Phase 14 part 2, clustering of trees/rocks/ore (see Next) - placement changes by design, so agree it and re-record the snapshot once; re-check quality shares afterwards (clumps change shade and so tree ages).
 
 ### Things To Watch Out For
 
