@@ -12,7 +12,10 @@ extends Node2D
 ## freeze the player). At the end of a path it calls the walk's `on_arrive`
 ## Callable, if any (harvesting a tapped resource). Drawn facing its
 ## direction of travel, with a cast shadow on the ground (the world's
-## shadow material, like the plants) that stays put while it hops.
+## shadow material, like the plants) that stays put while it hops. Each
+## step lands with a faint footstep (assets/sfx/footstep.wav, made by
+## tools/generate_sfx.gd), its pitch and volume varied per step - never
+## close to the previous step's pitch - so the repetition doesn't grate.
 
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 
@@ -23,6 +26,19 @@ const COLOR := Color(1.0, 0.86, 0.6)
 const HOP_PX := 2.0
 ## Tiles per real second (a diagonal step takes as long as a straight one).
 @export var walk_speed := 4.0
+const FOOTSTEP := preload("res://assets/sfx/footstep.wav")
+const FOOTSTEP_DB := -12.0
+## Per-step variation: pitch scale range, the least change from the last
+## step's pitch, and volume jitter (dB, either way).
+const FOOTSTEP_PITCH := Vector2(0.82, 1.18)
+const FOOTSTEP_MIN_PITCH_CHANGE := 0.06
+const FOOTSTEP_VOLUME_JITTER := 1.5
+
+## Footsteps played so far, and the last one's pitch (tests read them).
+var footsteps := 0
+var last_footstep_pitch := 1.0
+var _footstep_player: AudioStreamPlayer
+var _rng := RandomNumberGenerator.new()
 
 signal arrived
 
@@ -39,6 +55,12 @@ var _shadow: Node2D
 
 func _ready() -> void:
 	_texture = ResourceMarkerChunkScript.sprite_texture(SPRITE_TILE)
+	_footstep_player = AudioStreamPlayer.new()
+	_footstep_player.name = "Footstep"
+	_footstep_player.stream = FOOTSTEP
+	_footstep_player.max_polyphony = 2  # a quick step can overlap the last one's tail
+	add_child(_footstep_player)
+	_rng.randomize()
 	_shadow = _Shadow.new()
 	_shadow.player = self
 	_shadow.show_behind_parent = true
@@ -114,10 +136,26 @@ func _process(delta: float) -> void:
 	_step_t += delta * walk_speed
 	if _step_t >= 1.0:
 		position = feet_point(_tile)
+		_play_footstep()
 		_next_step()
 	if _stepping:
 		position = feet_point(_step_from).lerp(feet_point(_tile), _step_t).round()
 	_redraw()
+
+
+## A landing step's sound: random pitch in FOOTSTEP_PITCH, at least
+## FOOTSTEP_MIN_PITCH_CHANGE from the last one, and a little volume jitter.
+func _play_footstep() -> void:
+	var pitch := _rng.randf_range(FOOTSTEP_PITCH.x, FOOTSTEP_PITCH.y)
+	for attempt in 8:
+		if absf(pitch - last_footstep_pitch) >= FOOTSTEP_MIN_PITCH_CHANGE:
+			break
+		pitch = _rng.randf_range(FOOTSTEP_PITCH.x, FOOTSTEP_PITCH.y)
+	last_footstep_pitch = pitch
+	_footstep_player.pitch_scale = pitch
+	_footstep_player.volume_db = FOOTSTEP_DB + _rng.randf_range(-FOOTSTEP_VOLUME_JITTER, FOOTSTEP_VOLUME_JITTER)
+	_footstep_player.play()
+	footsteps += 1
 
 
 func _finish() -> void:

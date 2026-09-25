@@ -71,6 +71,7 @@ func _init() -> void:
 	# Walking: a tap on open ground a few tiles away gets there.
 	world.teleport_player((Vector2(from) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var goal: Vector2i = end
+	player.footsteps = 0
 	var tapped: Array[Vector2i] = world._on_map_tapped((Vector2(goal) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var frames := 0
 	var on_grid := true  # every frame on the segment between two neighbouring tile centres
@@ -84,6 +85,19 @@ func _init() -> void:
 			var along := clampf((player.position - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
 			on_grid = on_grid and maxi(absi(step.x), absi(step.y)) == 1 and player.position.distance_to(a.lerp(b, along)) <= 1.0
 	check(not tapped.is_empty() and player.tile() == goal and not player.is_walking(), "a tap walks the player there (%s in %d frames)" % [player.tile(), frames])
+	check(player.footsteps == tapped.size(), "one footstep per step (%d for %d steps)" % [player.footsteps, tapped.size()])
+	# Footstep variation: pitches within range, never repeating closely.
+	var pitches: Array[float] = []
+	for k in 40:
+		player._play_footstep()
+		pitches.append(player.last_footstep_pitch)
+	var varied := true
+	for k in range(1, pitches.size()):
+		varied = varied and absf(pitches[k] - pitches[k - 1]) >= player.FOOTSTEP_MIN_PITCH_CHANGE - 0.0001
+		varied = varied and pitches[k] >= player.FOOTSTEP_PITCH.x and pitches[k] <= player.FOOTSTEP_PITCH.y
+	var fs: AudioStreamPlayer = player.get_node("Footstep")
+	check(varied and fs.stream != null and fs.stream.get_length() > 0.05 and fs.stream.get_length() < 0.2 and fs.volume_db < -8.0,
+		"footsteps vary in pitch (%.2f..%.2f, never within %.2f of the last) at a faint volume (%.1f dB, %.0f ms sound)" % [pitches.min(), pitches.max(), player.FOOTSTEP_MIN_PITCH_CHANGE, fs.volume_db, fs.stream.get_length() * 1000.0])
 	check(on_grid and player.position == player.feet_point(goal) and player.hop() == 0.0 and player.sprite_rect().end.y > 0.0 and player.sprite_rect().end.y < 2.0,
 		"movement is locked to tiles: each step goes straight or diagonally to a neighbouring tile, and the player comes to rest with the pivot at their feet - the tile's bottom centre (%s), the sprite standing on it" % player.position)
 
