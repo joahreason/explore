@@ -25,6 +25,10 @@ var _changes: Dictionary = {}
 ## The world's in-game time (GameClock.minutes) when last saved, -1 = none
 ## (a new world). Saved in the same per-seed file as the changes.
 var time_minutes: float = -1.0
+## Where the player stood (world px) when last saved; has_player_position
+## false = none (a new world: ChunkManager spawns them near the origin).
+var player_position := Vector2.ZERO
+var has_player_position := false
 
 
 func is_empty() -> bool:
@@ -74,12 +78,16 @@ func apply(record) -> void:
 func clear() -> void:
 	_changes.clear()
 	time_minutes = -1.0
+	player_position = Vector2.ZERO
+	has_player_position = false
 
 
 func to_dict(world_seed: int) -> Dictionary:
 	var data := {"version": FORMAT_VERSION, "seed": world_seed, "changes": _changes.duplicate(true)}
 	if time_minutes >= 0.0:
 		data["time"] = time_minutes
+	if has_player_position:
+		data["player"] = [player_position.x, player_position.y]
 	return data
 
 
@@ -95,6 +103,10 @@ func from_dict(data: Dictionary, world_seed: int) -> bool:
 	var time = data.get("time", -1.0)
 	if time is float or time is int:
 		time_minutes = maxf(float(time), -1.0)
+	var player = data.get("player", null)
+	if player is Array and player.size() == 2 and (player[0] is float or player[0] is int) and (player[1] is float or player[1] is int):
+		player_position = Vector2(float(player[0]), float(player[1]))
+		has_player_position = true
 	for key in changes:
 		var change = changes[key]
 		if change is Dictionary and change.has("resource_id") and change.has("harvest_state"):

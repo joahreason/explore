@@ -49,7 +49,7 @@ func _init() -> void:
 
 	# Pan far away: new chunks get markers, unloaded chunks' markers are freed.
 	var cam: Node2D = world.get_node("CameraRig")
-	cam.global_position = Vector2(5000, 3000)
+	world.teleport_player(Vector2(5000, 3000))
 	# After a jump to new ground chunks stream in over frames instead of all
 	# inside one, and those shown so far are the nearest ones.
 	await process_frame  # its _process unloads the old area and queues the new
@@ -88,7 +88,7 @@ func _init() -> void:
 	check(world._loaded_placements.is_empty(), "back to Material: markers removed")
 
 	# Guild view: one marker node per chunk, markers in both species' colors.
-	cam.global_position = Vector2.ZERO
+	world.teleport_player(Vector2.ZERO)
 	world.flush_chunk_work()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
@@ -331,7 +331,7 @@ func _init() -> void:
 	for i in travel.item_count:
 		if travel.get_item_text(i) == "Desert":
 			desert = i
-	cam.global_position = Vector2.ZERO
+	world.teleport_player(Vector2.ZERO)
 	var spots: Array[Vector2i] = []
 	var biomes: Array[String] = []
 	for trip in 2:

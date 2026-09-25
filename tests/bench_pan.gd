@@ -36,6 +36,7 @@ func _init() -> void:
 
 	var CM = world.get_script()
 	var cam: Node2D = world.get_node("CameraRig")
+	cam._player = null  # the benchmark pans the camera itself; no following
 	var speed := float(OS.get_environment("BENCH_SPEED")) if OS.get_environment("BENCH_SPEED") != "" else 3.0
 	var views := (OS.get_environment("BENCH_VIEWS") if OS.get_environment("BENCH_VIEWS") != "" else "MATERIAL,RESOURCES").split(",")
 	var chunk_px: float = world.CHUNK_SIZE * world.TILE_SIZE
