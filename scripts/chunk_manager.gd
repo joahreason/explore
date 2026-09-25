@@ -28,6 +28,7 @@ const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
+const StructureSitesScript := preload("res://scripts/structure_sites.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const GameClockScript := preload("res://scripts/game_clock.gd")
@@ -252,6 +253,9 @@ var harvest_sounds := 0
 var _harvest_player: AudioStreamPlayer
 var _sound_rng := RandomNumberGenerator.new()
 var _world_gen: WorldGen
+## Landmark layer: sites for the current seed (StructureSites, which caches
+## them per cell; used under _gen_mutex like _world_gen).
+var _structures: StructureSites
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
@@ -317,6 +321,7 @@ var _finder_biome: String = ""
 var _finder_seed: int = 0
 var _finder_result: Variant = null  # written by the search thread, read after it finishes
 var _finder_cancel: bool = false
+var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
 var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
 
 
@@ -327,6 +332,7 @@ func _ready() -> void:
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
+	_structures = StructureSitesScript.new(_world_gen, world_seed)
 	_harvest_player = AudioStreamPlayer.new()
 	_harvest_player.name = "HarvestSound"
 	_harvest_player.stream = HARVEST_SOUND
@@ -470,8 +476,18 @@ func is_finding_biome() -> bool:
 	return _finder_thread != null
 
 
+## Landmark layer: a structure's display name (StructureSites.DEFINITIONS)
+## searches sites directly - the nearest site of that type other than one
+## at the start or already visited - instead of scanning tiles.
 func _find_biome(biome: String, start: Vector2i, avoid: Array) -> void:
-	_finder_result = BiomeFinderScript.find(_finder_gen, biome, start, avoid, func() -> bool: return _finder_cancel)
+	var cancel := func() -> bool: return _finder_cancel
+	for def in StructureSitesScript.DEFINITIONS:
+		if def.display_name == biome:
+			if _finder_sites == null or _finder_sites.world_seed != _finder_seed:
+				_finder_sites = StructureSitesScript.new(_finder_gen, _finder_seed)
+			_finder_result = _finder_sites.find(def.id, start, avoid, cancel)
+			return
+	_finder_result = BiomeFinderScript.find(_finder_gen, biome, start, avoid, cancel)
 
 
 ## Main thread, once the search is done: moves the camera there (chunks
@@ -651,11 +667,12 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
 	var ground := _surface_at(sample, tile.x, tile.y)
+	var structure := _structures.site_at(tile)
 	var debug_lines: Array = []
 	if is_debug_view():
 		debug_lines = debug_breakdown(tile.x, tile.y)
 	_gen_mutex.unlock()
-	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "", debug_lines)
+	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "", debug_lines, structure)
 
 
 ## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
@@ -997,8 +1014,11 @@ func _resource_density(definition: ResourceDefinition, wx: int, wy: int, sample:
 	var memo := _density_memo(definition.id, chunk)
 	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
 	if is_nan(memo[i]):
-		var env := _tile_env(wx, wy, sample)
-		memo[i] = ResourceManagerScript.get_density(env[0], definition, world_seed, wx, wy, env[1])
+		if _structures.is_masked(Vector2i(wx, wy)):
+			memo[i] = 0.0
+		else:
+			var env := _tile_env(wx, wy, sample)
+			memo[i] = ResourceManagerScript.get_density(env[0], definition, world_seed, wx, wy, env[1])
 	return memo[i]
 
 
@@ -1006,11 +1026,17 @@ func _resource_density(definition: ResourceDefinition, wx: int, wy: int, sample:
 ## Phase 13: a guild that reads shade gets it from the canopy guild's memo here
 ## (the same value ResourceManager.get_shade() would compute), so shade and
 ## the Tree Cover / Shade heatmaps share one evaluation per tile.
+## Landmark layer: 0 inside a structure's footprint (the structure_mask,
+## StructureSites.is_masked()), so no guild places anything there - the same
+## way zero suitability keeps them off water.
 func _guild_density(guild: ResourceGuild, wx: int, wy: int, sample: Dictionary = {}) -> float:
 	var chunk := Vector2i(floori(wx / float(CHUNK_SIZE)), floori(wy / float(CHUNK_SIZE)))
 	var memo := _density_memo(guild.id, chunk)
 	var i := (wy - chunk.y * CHUNK_SIZE) * CHUNK_SIZE + (wx - chunk.x * CHUNK_SIZE)
 	if is_nan(memo[i]):
+		if _structures.is_masked(Vector2i(wx, wy)):
+			memo[i] = 0.0
+			return 0.0
 		var env := _tile_env(wx, wy, sample)
 		if not env[0].shade_known and guild.reads_shade():
 			env[0].shade = _guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample)
@@ -1055,6 +1081,7 @@ func clear_generation_caches() -> void:
 	_density_chunks.clear()
 	_env_chunks.clear()
 	_walkable.clear()
+	_structures = StructureSitesScript.new(_world_gen, world_seed)
 	_gen_mutex.unlock()
 
 
@@ -1412,6 +1439,13 @@ func _placement_chunk(chunk_coord: Vector2i) -> Array:
 		elif _view_mode == ViewMode.DEBUG_PLACEMENT:
 			instances = instances.filter(func(inst): return inst["id"] == _debug_resource.id)
 		result.append([layer, instances])
+	# Landmark layer: the World view draws structure stamps first, under the
+	# resources (which the structure_mask keeps off the footprint anyway).
+	# Its layer has no source Resource (null), so it's not in
+	# _placement_layers() and the guild stack never sees it.
+	if _view_mode == ViewMode.RESOURCES:
+		var parts := _structures.parts_in_rect(Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)))
+		result.push_front([[null, ResourceMarkerChunkScript.Shape.SPRITE], parts])
 	return result
 
 
@@ -1488,6 +1522,12 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 	for entry in placements:
 		var layer: Array = entry[0]
 		var source: Resource = layer[0]
+		if source == null:  # structure parts (_placement_chunk()): each carries its sheet tile and tint
+			var sprites := {}
+			for inst in entry[1]:
+				sprites[inst["id"]] = {"tile": inst["sheet"], "size": 1.0}
+			markers.add_instances(entry[1], base, TILE_SIZE, 1.0, {}, ResourceMarkerChunkScript.Shape.SPRITE, sprites)
+			continue
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
 		var first: int = markers.instance_count()

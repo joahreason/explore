@@ -1,4 +1,4 @@
-canopy_trees 829 efbc5f9c75f82ac88a63bd88a9b79c4d
+canopy_trees 821 5a7b0af944b8ff7aafc47139388c2460
 deadwood 153 4fc95a0606a521034cdd3c8acc39aa0c
 ground_cover 118 34b5b3ebacf8ac6b057cd9e3ef8c448f
 image_deposits 14 1b77d6e0e7db0b007a1d7dc91cdf2d07
@@ -10,6 +10,6 @@ oak_placement 69 d66667f0e83bea05768aafd49b9dac3a
 ore_outcrops 35 adcedcc3692e4b2213776f0a1b5313af
 pioneer_plants 201 481800c13b889844b6461b057b0b2deb
 shore_features 148 2eb93cbc80a8fb0df6eb51315e2074eb
-shrubs 148 19511e458a093efa10dc455e2ab87a18
+shrubs 147 2e4ba92f194cb106d52919868e5c368e
 surface_rocks 753 22147e623bbf59aba635d81402a0b2ca
-wetland_plants 272 dbe6f9f87cb53f03a508f214cad5b111
+wetland_plants 271 60f0e9ba25bb1bee925a4e2023cfbe05

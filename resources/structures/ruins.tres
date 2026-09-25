@@ -1,0 +1,302 @@
+[gd_resource type="Resource" script_class="StructureDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/structure_definition.gd" id="1_def"]
+
+[sub_resource type="Curve" id="Curve_slope"]
+_limits = [0.0, 1.0, 0.0, 0.02]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.003, 1), 0.0, 0.0, 0, 0, Vector2(0.006, 0), 0.0, 0.0, 0, 0, Vector2(0.02, 0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_fertility"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.4, 0), 0.0, 0.0, 0, 0, Vector2(0.6, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.45, 0), 0.0, 0.0, 0, 0, Vector2(-0.25, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_def")
+id = "ruins"
+category = "structure"
+slope_curve = SubResource("Curve_slope")
+fertility_curve = SubResource("Curve_fertility")
+temperature_curve = SubResource("Curve_temperature")
+required_curves = PackedStringArray("slope_curve", "fertility_curve", "temperature_curve")
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.0
+}
+display_name = "Ruins"
+frequency = 0.35
+min_suitability = 0.4
+radius = 6
+water_within = 20
+age_range = Vector2(0.3, 1)
+overgrowth = 0.5
+overgrowth_vegetation_weight = 1.0
+overgrowth_tiles = Array[Vector2i]([Vector2i(23, 9), Vector2i(3, 9), Vector2i(24, 8)])
+overgrowth_color = Color(0.3, 0.58, 0.25, 1)
+parts = Array[Dictionary]([{
+"at": Vector2i(-3, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(7, 2)
+}, {
+"at": Vector2i(-3, -1),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(-3, 0),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(-3, 1),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(-3, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(7, 2)
+}, {
+"at": Vector2i(-2, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(-2, -1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-2, 0),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-2, 1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-2, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(-1, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(-1, -1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-1, 0),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-1, 1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-1, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(0, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(0, -1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(0, 0),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(0, 1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(1, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(1, -1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(1, 0),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(1, 1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(1, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(2, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(2, -1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(2, 0),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(2, 1),
+"chance": 0.7,
+"decay": 0.35,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(2, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(3, -2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(7, 2)
+}, {
+"at": Vector2i(3, -1),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(3, 0),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(3, 1),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(3, 2),
+"chance": 0.95,
+"decay": 0.75,
+"kind": "wall",
+"tile": Vector2i(7, 2)
+}, {
+"at": Vector2i(-5, -3),
+"chance": 0.8,
+"decay": 0.5,
+"kind": "column",
+"tile": Vector2i(26, 3)
+}, {
+"at": Vector2i(5, -3),
+"chance": 0.8,
+"decay": 0.3,
+"kind": "column",
+"tile": Vector2i(27, 3)
+}, {
+"at": Vector2i(3, 4),
+"chance": 0.8,
+"decay": 0.8,
+"kind": "wall",
+"tile": Vector2i(0, 2)
+}, {
+"at": Vector2i(4, 4),
+"chance": 0.8,
+"decay": 0.8,
+"kind": "wall",
+"tile": Vector2i(7, 2)
+}, {
+"at": Vector2i(4, 3),
+"chance": 0.8,
+"decay": 0.8,
+"kind": "wall",
+"tile": Vector2i(1, 2)
+}, {
+"at": Vector2i(-4, 4),
+"chance": 0.6,
+"decay": 0.4,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-3, 4),
+"chance": 0.6,
+"decay": 0.4,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}, {
+"at": Vector2i(-4, 3),
+"chance": 0.6,
+"decay": 0.4,
+"kind": "foundation",
+"tile": Vector2i(9, 5)
+}])
+kind_colors = {
+"wall": Color(0.66, 0.64, 0.6, 1),
+"foundation": Color(0.45, 0.43, 0.4, 1),
+"column": Color(0.8, 0.78, 0.72, 1)
+}

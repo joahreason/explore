@@ -10,6 +10,8 @@ Keep this list actionable and current.
 
 ## Next
 
+- [ ] Landmarks: check camps, standing stones and ruins by eye (Go to... menu); tune frequencies/stamps; decide whether walls block walking and structures cast shadows; next natural features (volcanoes, hot springs, oases)
+
 - [ ] Phase 11/12: check scars and new species by eye in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
 - [ ] Concave placement count (density 0.25 -> ~half of peak instances) - revisit once guilds define density; the plan's optional `density_curve` is the lever
 

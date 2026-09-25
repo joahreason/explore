@@ -1,0 +1,111 @@
+[gd_resource type="Resource" script_class="StructureDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/structure_definition.gd" id="1_def"]
+
+[sub_resource type="Curve" id="Curve_slope"]
+_limits = [0.0, 1.0, 0.0, 0.02]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.003, 1), 0.0, 0.0, 0, 0, Vector2(0.006, 0), 0.0, 0.0, 0, 0, Vector2(0.02, 0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_vegetation"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.25, 1), 0.0, 0.0, 0, 0, Vector2(0.4, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.15, 0), 0.0, 0.0, 0, 0, Vector2(0.3, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_elevation"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0.3), 0.0, 0.0, 0, 0, Vector2(0.0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.25, 0.75), 0.0, 0.0, 0, 0, Vector2(0.5, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_exposure"]
+_data = [Vector2(0, 0.6), 0.0, 0.0, 0, 0, Vector2(0.5, 0.9), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[resource]
+script = ExtResource("1_def")
+id = "standing_stones"
+category = "structure"
+slope_curve = SubResource("Curve_slope")
+vegetation_curve = SubResource("Curve_vegetation")
+moisture_curve = SubResource("Curve_moisture")
+elevation_curve = SubResource("Curve_elevation")
+wind_exposure_curve = SubResource("Curve_exposure")
+required_curves = PackedStringArray("slope_curve", "vegetation_curve", "moisture_curve")
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.0
+}
+display_name = "Standing Stones"
+frequency = 0.13
+min_suitability = 0.4
+radius = 4
+age_range = Vector2(0.4, 1)
+overgrowth = 0.12
+overgrowth_vegetation_weight = 0.5
+overgrowth_tiles = Array[Vector2i]([Vector2i(15, 5)])
+overgrowth_color = Color(0.5, 0.62, 0.32, 1)
+parts = Array[Dictionary]([{
+"at": Vector2i(3, 0),
+"chance": 1.0,
+"decay": 0.0,
+"kind": "standing stone",
+"tile": Vector2i(26, 17)
+}, {
+"at": Vector2i(2, 2),
+"chance": 0.5,
+"decay": 0.35,
+"kind": "standing stone",
+"tile": Vector2i(28, 17)
+}, {
+"at": Vector2i(1, 3),
+"chance": 1.0,
+"decay": 0.0,
+"kind": "standing stone",
+"tile": Vector2i(30, 17)
+}, {
+"at": Vector2i(-1, 3),
+"chance": 0.5,
+"decay": 0.35,
+"kind": "standing stone",
+"tile": Vector2i(33, 17)
+}, {
+"at": Vector2i(-3, 1),
+"chance": 1.0,
+"decay": 0.0,
+"kind": "standing stone",
+"tile": Vector2i(34, 17)
+}, {
+"at": Vector2i(-3, -1),
+"chance": 0.5,
+"decay": 0.35,
+"kind": "standing stone",
+"tile": Vector2i(27, 17)
+}, {
+"at": Vector2i(-1, -3),
+"chance": 1.0,
+"decay": 0.0,
+"kind": "standing stone",
+"tile": Vector2i(29, 17)
+}, {
+"at": Vector2i(1, -3),
+"chance": 0.5,
+"decay": 0.35,
+"kind": "standing stone",
+"tile": Vector2i(31, 17)
+}, {
+"at": Vector2i(2, -2),
+"chance": 1.0,
+"decay": 0.0,
+"kind": "standing stone",
+"tile": Vector2i(35, 17)
+}])
+kind_colors = {
+"standing stone": Color(0.72, 0.72, 0.7, 1)
+}

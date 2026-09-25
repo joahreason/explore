@@ -96,6 +96,8 @@ func _init() -> void:
 	var shown := false
 	for marker_chunk in world2._chunk_placements:
 		for entry in world2._chunk_placements[marker_chunk]:
+			if entry[0][0] == null:
+				continue  # landmark structure parts: not harvestable
 			for inst in world2._unchanged(entry[1]):
 				if ResourceInstance.key_for(inst.get("guild", inst["id"]), inst["cell"]) == key:
 					shown = true

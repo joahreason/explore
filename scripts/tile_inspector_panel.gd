@@ -25,7 +25,10 @@ func _ready() -> void:
 ## material name (TerrainSurface), "" on water. debug_lines: Phase 18's
 ## factor breakdown of the Debug views' resource (ChunkManager.
 ## debug_breakdown()), shown first; [] outside the Debug views.
-func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0, shade: float = -1.0, ground: String = "", debug_lines: Array = []) -> void:
+## structure: the landmark site whose footprint covers the tile
+## (StructureSites.site_at()), or {}; names the site, its age and the stamp
+## part on this tile.
+func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resource: Dictionary = {}, deposits: Dictionary = {}, farming: float = -1.0, shade: float = -1.0, ground: String = "", debug_lines: Array = [], structure: Dictionary = {}) -> void:
 	visible = true
 
 	var lines: Array[String] = []
@@ -37,6 +40,13 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 		lines.append("")
 	if ground != "":
 		lines.append("[b]Ground:[/b] %s" % ground)
+	if not structure.is_empty():
+		var here := ""
+		for part in structure["parts"]:
+			if part["tile"] == tile:
+				here = ", %s here" % part["kind"]
+		var center: Vector2i = structure["center"]
+		lines.append("[b]Structure:[/b] %s (age %.2f, centre %d, %d%s)" % [structure["name"], structure["age"], center.x, center.y, here])
 	if resource.is_empty():
 		lines.append("[b]Resource:[/b] -")
 	else:

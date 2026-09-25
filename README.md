@@ -26,7 +26,7 @@ The world is infinite and deterministic per seed: chunks stream in around the ca
 - **Time controls** (above the clock): `<<` rewind and `>>` fast-forward - each press steps through x4, x16, x64 (then back to x4); the middle button pauses / resumes, or returns to normal speed. The clock shows the current mode ("Paused", ">> x16"). Rewinding only turns the clock back (harvests stay), and stops at Spring 1, Year 1, 00:00
 - **Position readout** (bottom-left): the tile at the screen center, its chunk, and the zoom - always shown
 - **Debug resource** (only in the Debug views): the resource the Debug views show, e.g. "Oak (Canopy Trees)"
-- **Go to biome**: pick a biome to move the camera to the nearest place of it; if you are already in that biome, it takes you to the next patch of it instead (repeat to keep hopping onward). Searches up to ~6000 tiles out; says "No <biome> nearby" if none is found
+- **Go to biome**: pick a biome to move the camera to the nearest place of it; if you are already in that biome, it takes you to the next patch of it instead (repeat to keep hopping onward). Below the biomes, the landmark structures (Abandoned Camp, Standing Stones, Ruins) go to the nearest site of that kind, the next one on each repeat (within ~3000 tiles). Searches up to ~6000 tiles out; says "No <biome> nearby" if none is found
 
 A plain visit with no `?seed=` in the URL gets a new random seed each time; passing `?seed=<anything>` pins it to a specific world (numeric seeds are used directly, other text is hashed to one deterministically).
 
