@@ -1755,7 +1755,7 @@ func _load_gameplay_state() -> void:
 func _save_gameplay_state() -> void:
 	_changes.time_minutes = clock.minutes
 	if _player:
-		_changes.player_position = _player.position
+		_changes.player_position = _player.tile_center(_player.tile())
 		_changes.has_player_position = true
 	_changes.save(changes_path(), world_seed)
 

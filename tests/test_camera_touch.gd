@@ -14,6 +14,7 @@ var rig: Node2D
 var cam: Camera2D
 var clicks := 0  # map_tapped: left click / tap
 var player: Node2D
+var home := Vector2.ZERO  # where reset() put the player and camera
 var infos := 0  # info_clicked: right click / long press
 
 
@@ -53,8 +54,9 @@ func world_under(screen: Vector2) -> Vector2:
 
 func reset(zoom: float) -> void:
 	rig._zoom_target = -1.0
-	player.teleport(Vector2.ZERO)  # at the camera: inside the follow zone
-	rig.global_position = Vector2.ZERO
+	player.teleport(Vector2.ZERO)  # a tile centre; the camera on it: inside the follow zone
+	home = player.position
+	rig.global_position = home
 	cam.zoom = Vector2(zoom, zoom)
 	await process_frame
 	await process_frame
@@ -92,7 +94,7 @@ func _init() -> void:
 		await process_frame
 	touch(0, p, false)
 	await process_frame
-	check(rig.global_position == Vector2.ZERO and clicks == 0, "one-finger drag doesn't move the camera (%s) and isn't a tap (%d)" % [rig.global_position, clicks])
+	check(rig.global_position == home and clicks == 0, "one-finger drag doesn't move the camera (%s) and isn't a tap (%d)" % [rig.global_position, clicks])
 
 	# Symmetric pinch around the screen centre: zooms in, no pan.
 	await reset(2.0)
@@ -109,7 +111,7 @@ func _init() -> void:
 	touch(0, a, false)
 	touch(1, b, false)
 	await process_frame
-	check(rig.global_position.length() < 0.01 and absf(cam.zoom.x - 3.0) < 0.01, "centred pinch zooms without drifting (moved %s, zoom %.2f, expect 3)" % [rig.global_position, cam.zoom.x])
+	check(rig.global_position.distance_to(home) < 0.01 and absf(cam.zoom.x - 3.0) < 0.01, "centred pinch zooms without drifting (moved %s, zoom %.2f, expect 3)" % [rig.global_position, cam.zoom.x])
 
 	# Off-centre pinch, and two fingers moving together: zoom only, the
 	# camera stays with the player.
@@ -127,7 +129,7 @@ func _init() -> void:
 	touch(0, a, false)
 	touch(1, b, false)
 	await process_frame
-	check(rig.global_position == Vector2.ZERO and absf(cam.zoom.x - 4.0) < 0.01, "off-centre / moving pinch zooms (%.2f) without moving the camera (%s)" % [cam.zoom.x, rig.global_position])
+	check(rig.global_position == home and absf(cam.zoom.x - 4.0) < 0.01, "off-centre / moving pinch zooms (%.2f) without moving the camera (%s)" % [cam.zoom.x, rig.global_position])
 
 	# Lifting one finger of a pinch changes nothing, even when the browser
 	# renumbers the remaining finger or reports a bogus relative motion.
@@ -160,7 +162,7 @@ func _init() -> void:
 		await process_frame
 	touch(0, b + Vector2(33, 0), false)
 	await process_frame
-	check(rig.global_position == Vector2.ZERO and cam.zoom.x == after_pinch_zoom and after_pinch_zoom > 4.0,
+	check(rig.global_position == home and cam.zoom.x == after_pinch_zoom and after_pinch_zoom > 4.0,
 		"lifting a pinch finger (renumbered, bogus motion) leaves zoom (%.2f) and camera (%s) alone" % [cam.zoom.x, rig.global_position])
 
 	# A pinch whose last finger lifts near where it started is not a tap;
@@ -210,7 +212,7 @@ func _init() -> void:
 	release.position = map_point + Vector2(40, 0)
 	_send(release)
 	await process_frame
-	check(rig.global_position == Vector2.ZERO and clicks == 0, "mouse drag doesn't move the camera (%s), no click" % rig.global_position)
+	check(rig.global_position == home and clicks == 0, "mouse drag doesn't move the camera (%s), no click" % rig.global_position)
 
 	# Mouse buttons: left click is a map tap, right click shows info.
 	clicks = 0
@@ -245,17 +247,18 @@ func _init() -> void:
 	# camera eases along until they are back at the edge - not centred.
 	await reset(4.0)
 	var zone: Vector2 = root.get_viewport().get_visible_rect().size / cam.zoom * rig.FOLLOW_ZONE
-	player.teleport(zone * 0.5)
+	player.teleport(home + zone * 0.5)
 	for k in 10:
 		await process_frame
-	var inside_still := rig.global_position == Vector2.ZERO
-	player.teleport(Vector2(zone.x + 40.0, 0))
+	var inside_still := rig.global_position == home
+	player.teleport(home + Vector2(zone.x + 40.0, 0))
+	var jump := player.position.x - home.x
 	await process_frame
-	var first_step := rig.global_position.x
+	var first_step := rig.global_position.x - home.x
 	await create_timer(1.5).timeout
 	var offset := player.position - rig.global_position
-	check(inside_still and first_step > 0.0 and first_step < 40.0 and absf(offset.x - zone.x) < 0.5 and absf(offset.y) < 0.01,
-		"camera still while the player is inside the follow zone; past it, eases (first step %.1f of 40 px) until the player is back at the zone edge (offset %.1f, edge %.1f), not locked on" % [first_step, offset.x, zone.x])
+	check(inside_still and first_step > 0.0 and first_step < jump - zone.x and absf(offset.x - zone.x) < 0.5 and absf(offset.y) < 0.01,
+		"camera still while the player is inside the follow zone; past it, eases (first step %.1f px) until the player is back at the zone edge (offset %.1f, edge %.1f), not locked on" % [first_step, offset.x, zone.x])
 
 	# On-screen keyboard (mobile web): a tap or click on the map releases a
 	# focused text field (hiding the keyboard), and so does applying a seed.

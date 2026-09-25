@@ -73,10 +73,19 @@ func _init() -> void:
 	var goal: Vector2i = end
 	var tapped: Array[Vector2i] = world._on_map_tapped((Vector2(goal) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var frames := 0
+	var on_grid := true  # every frame on the segment between two neighbouring tile centres
 	while player.is_walking() and frames < 600:
 		await process_frame
 		frames += 1
+		if player._stepping:
+			var a: Vector2 = player.tile_center(player._step_from)
+			var b: Vector2 = player.tile_center(player.tile())
+			var step: Vector2i = player.tile() - player._step_from
+			var along := clampf((player.position - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
+			on_grid = on_grid and maxi(absi(step.x), absi(step.y)) == 1 and player.position.distance_to(a.lerp(b, along)) <= 1.0
 	check(not tapped.is_empty() and player.tile() == goal and not player.is_walking(), "a tap walks the player there (%s in %d frames)" % [player.tile(), frames])
+	check(on_grid and player.position == player.tile_center(goal) and player.hop() == 0.0,
+		"movement is locked to tiles: each step goes straight or diagonally to a neighbouring tile centre, and the player comes to rest on one (%s)" % player.position)
 
 	# Tapping a resource: walks up to it and harvests it on arrival.
 	var target := {}
