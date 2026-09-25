@@ -116,6 +116,13 @@ extends Resource
 	set(value):
 		vegetation_curve = value
 		curve_plan = null
+## Landmark layer: wind exposure (WorldGen's `exposure`, 0 sheltered ..
+## 1 exposed). Named apart from the Deposit group's exposure_curve, which
+## is about rock showing at the surface.
+@export var wind_exposure_curve: Curve:
+	set(value):
+		wind_exposure_curve = value
+		curve_plan = null
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -257,6 +264,7 @@ const CURVE_FIELD_RANGES := {
 	"rock_exposure_curve": Vector2(0.0, 1.0),
 	"shade_curve": Vector2(0.0, 1.0),
 	"vegetation_curve": Vector2(0.0, 1.0),
+	"wind_exposure_curve": Vector2(0.0, 1.0),
 }
 
 

@@ -265,11 +265,15 @@ var _configured_seed: int = -1
 # +20 surface-material patch noise (Phase 13.5; not owned here - see
 # TerrainSurface, one noise per material id).
 # +21 lake basins.
-# Next free offset: +22.
+# +22 landmark/structure site hashes (not owned here - see StructureSites:
+# position, type, rotation, age and stamp rolls per coarse site cell).
+# Next free offset: +23.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 const RESOURCE_PLACEMENT_SEED_OFFSET := 18
 const DEPOSIT_VEIN_SEED_OFFSET := 19
 const SURFACE_PATCH_SEED_OFFSET := 20
+const LAKE_SEED_OFFSET := 21
+const STRUCTURE_SITE_SEED_OFFSET := 22
 
 
 func configure(world_seed: int) -> void:
@@ -305,7 +309,7 @@ func configure(world_seed: int) -> void:
 	_setup(_disturbance_warp, world_seed + 11, FastNoiseLite.TYPE_SIMPLEX, disturbance_frequency * 2.5, 2)
 	_setup(_resource_vein, world_seed + 9, FastNoiseLite.TYPE_SIMPLEX, resource_frequency, 2)
 	_setup(_micro, world_seed + 10, FastNoiseLite.TYPE_SIMPLEX, 0.05, 1)
-	_setup(_lake, world_seed + 21, FastNoiseLite.TYPE_SIMPLEX, lake_frequency, 1)
+	_setup(_lake, world_seed + LAKE_SEED_OFFSET, FastNoiseLite.TYPE_SIMPLEX, lake_frequency, 1)
 
 
 func _setup(n: FastNoiseLite, s: int, type: FastNoiseLite.NoiseType, freq: float, octaves: int) -> void:

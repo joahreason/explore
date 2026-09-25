@@ -2,13 +2,16 @@ extends OptionButton
 
 ## "Go to biome" menu: picking a biome moves the camera to the nearest place
 ## of it, or to the next patch when already standing in one (see
-## ChunkManager.travel_to_biome / BiomeFinder). The first item is a
+## ChunkManager.travel_to_biome / BiomeFinder). Landmark structures follow
+## the biomes, after a separator: picking one goes to the nearest site of
+## it (StructureSites.find()), the next one on each repeat. The first item is a
 ## placeholder the menu returns to, so picking the same biome again hops on.
 ## Sits just below the view dropdown (which moves up on desktop - see
 ## reload_button.gd).
 
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
-const PLACEHOLDER := "Go to biome..."
+const StructureSitesScript := preload("res://scripts/structure_sites.gd")
+const PLACEHOLDER := "Go to..."
 const SPACING := 8
 
 @onready var _world := get_node("../..")
@@ -23,6 +26,9 @@ func _ready() -> void:
 	add_item(PLACEHOLDER)
 	for biome in BiomeClassifierScript.BIOME_COLORS:
 		add_item(biome)
+	add_separator()
+	for def in StructureSitesScript.DEFINITIONS:
+		add_item(def.display_name)
 	item_selected.connect(_on_item_selected)
 	_world.biome_travel_finished.connect(_on_travel_finished)
 

@@ -157,13 +157,21 @@ func _init() -> void:
 	for g in [world.CANOPY_TREES, world.SURFACE_ROCKS, world.ORE_OUTCROPS, world.SHRUBS, world.WETLAND_PLANTS, world.SHORE_FEATURES, world.DEADWOOD, world.PIONEER_PLANTS, world.GROUND_COVER]:
 		for member in g.members:
 			sprite_colors[world.sprite_fill(member)] = true  # season colour + sway alpha
+	# Landmark structure parts are sprites too, tinted by their kind.
+	var structure_parts := 0
+	for c in world._chunk_placements:
+		for entry in world._chunk_placements[c]:
+			if entry[0][0] == null:
+				structure_parts += entry[1].size()
+				for inst in entry[1]:
+					sprite_colors[inst["fill"]] = true
 	for m in world._loaded_placements.values():
 		for i in m._shapes.size():
 			if m._shapes[i] == Shape.SPRITE:
 				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
 	# Clay has no sprite: its outcrops stay hexagons, everything else is a sprite.
 	# Every placed resource has a sprite: no fallback shapes left.
-	var all_placed: int = tree_count + guild_counts["surface_rocks"] + outcrops_placed + guild_counts["shrubs"] + guild_counts["wetland_plants"] + guild_counts["shore_features"] + succession_placed
+	var all_placed: int = tree_count + guild_counts["surface_rocks"] + outcrops_placed + guild_counts["shrubs"] + guild_counts["wetland_plants"] + guild_counts["shore_features"] + succession_placed + structure_parts
 	check(sprites_ok and tree_count > 0 and guild_counts["shrubs"] > 0 and guild_counts["wetland_plants"] > 0
 		and shape_counts.get(Shape.SPRITE, 0) == all_placed and shape_counts.size() == 1,
 		"resources view: all %d instances are sprites (%d trees, %d rocks, %d outcrops, %d berry bushes, %d wetland plants, %d shore features, %d deadwood/pioneers/ground cover)" % [

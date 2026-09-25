@@ -75,6 +75,7 @@ const CURVE_STATE_FIELDS := {
 	"rock_exposure_curve": "rock_exposure",
 	"shade_curve": "shade",
 	"vegetation_curve": "vegetation",
+	"wind_exposure_curve": "exposure",
 }
 
 ## Phase 13 (correlated ecosystems): the guild whose density IS canopy
