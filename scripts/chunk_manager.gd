@@ -34,6 +34,7 @@ const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const GameClockScript := preload("res://scripts/game_clock.gd")
 const WindScript := preload("res://scripts/wind.gd")
 const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
+const TentSleepEffectScript := preload("res://scripts/tent_sleep_effect.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -256,6 +257,11 @@ var _world_gen: WorldGen
 ## Landmark layer: sites for the current seed (StructureSites, which caches
 ## them per cell; used under _gen_mutex like _world_gen).
 var _structures: StructureSites
+## Sleeping in a camp tent (enter_tent()): the tent's tile while the player
+## is inside (null otherwise), and the bouncing tent standing in for its
+## marker, which _marker_node() leaves out.
+var _tent_tile: Variant = null
+var _tent_effect: Node2D
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
 var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
@@ -543,6 +549,8 @@ func set_view_mode(mode: ViewMode) -> void:
 func _process(delta: float) -> void:
 	var hour_before := floori(clock.minutes / 60.0)
 	clock.advance(delta)
+	if _tent_tile != null and not clock.sleeping:
+		_leave_tent()
 	wind.advance(delta, clock.rate())
 	wind.apply(sway_material, clock.minutes)
 	wind.apply(shadow_material, clock.minutes)
@@ -1526,7 +1534,10 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 			var sprites := {}
 			for inst in entry[1]:
 				sprites[inst["id"]] = {"tile": inst["sheet"], "size": 1.0}
-			markers.add_instances(entry[1], base, TILE_SIZE, 1.0, {}, ResourceMarkerChunkScript.Shape.SPRITE, sprites)
+			var parts: Array = entry[1]
+			if _tent_tile != null:  # the occupied tent is drawn by _tent_effect
+				parts = parts.filter(func(p): return Vector2i((p["position"] as Vector2).floor()) != _tent_tile)
+			markers.add_instances(parts, base, TILE_SIZE, 1.0, {}, ResourceMarkerChunkScript.Shape.SPRITE, sprites)
 			continue
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
 		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
@@ -1859,6 +1870,8 @@ func debug_breakdown(wx: int, wy: int) -> Array[String]:
 
 ## This seed's saved changes and time (a new world: none, START_MINUTES).
 func _load_gameplay_state() -> void:
+	clock.wake()
+	_leave_tent()
 	_changes.load_file(changes_path(), world_seed)
 	clock.minutes = _changes.time_minutes if _changes.time_minutes >= 0.0 else GameClockScript.START_MINUTES
 	if _player:
@@ -1890,23 +1903,36 @@ func is_time_tinted_view() -> bool:
 ## reachable tile if the spot itself can't be reached. Tapping a resource
 ## walks up to it (within one tile) and harvests it on arrival
 ## (_on_harvest_clicked()), unless another tap redirects the player first.
+## Tapping a camp tent likewise walks up to it and goes in to sleep
+## (enter_tent()). A tap while asleep wakes the player first (and only
+## wakes them, on the tent they're in).
 ## Returns the path.
 func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 	if _player == null:
 		_on_harvest_clicked(world_pos)
 		return []
-	var inst := hover_target(world_pos / TILE_SIZE)
 	var goal := Vector2i((world_pos / TILE_SIZE).floor())
+	if _tent_tile != null:
+		var was_in: Vector2i = _tent_tile
+		clock.wake()
+		_leave_tent()
+		if goal == was_in:  # tapping the tent they're in just wakes them
+			return []
+	var tent := is_tent(goal)
+	var inst := {} if tent else hover_target(world_pos / TILE_SIZE)
 	var on_arrive := Callable()
-	if not inst.is_empty():
+	if tent:
+		var tent_tile := goal
+		on_arrive = func() -> void: enter_tent(tent_tile)
+	elif not inst.is_empty():
 		goal = Vector2i((inst["position"] as Vector2).floor())
 		var target := (Vector2(goal) + Vector2(0.5, 0.5)) * TILE_SIZE
 		on_arrive = func() -> void: _on_harvest_clicked(target)
 	_gen_mutex.lock()
-	var path := find_path(_player.tile(), goal, not inst.is_empty())
+	var path := find_path(_player.tile(), goal, tent or not inst.is_empty())
 	_gen_mutex.unlock()
-	# Stopped short of a tapped resource (unreachable): no harvest.
-	if not inst.is_empty():
+	# Stopped short of a tapped resource or tent (unreachable): no harvest.
+	if tent or not inst.is_empty():
 		var end: Vector2i = path[-1] if not path.is_empty() else _player.tile()
 		if maxi(absi(end.x - goal.x), absi(end.y - goal.y)) > 1:
 			on_arrive = Callable()
@@ -1914,11 +1940,70 @@ func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 	return path
 
 
+## Whether a camp tent stands on `tile` (a "tent" part of the site there).
+func is_tent(tile: Vector2i) -> bool:
+	_gen_mutex.lock()  # site_at() may build the site, sampling the world
+	var site := _structures.site_at(tile)
+	_gen_mutex.unlock()
+	for part in site.get("parts", []):
+		if part["tile"] == tile and part["kind"] == "tent":
+			return true
+	return false
+
+
+## Sleeping in a tent (user request): the player goes inside the tent on
+## `tile` (hidden), the tent bounces with Zs coming out (TentSleepEffect)
+## and time speeds up until the next night start or dawn
+## (GameClock.sleep()); _process() brings the player out when the clock
+## wakes. Nothing happens if there's no tent there.
+func enter_tent(tile: Vector2i) -> void:
+	if _player == null or not is_tent(tile):
+		return
+	_leave_tent()
+	_tent_tile = tile
+	_player.visible = false
+	var chunk := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
+	_redraw_markers(chunk)
+	var def: StructureDefinition = _structures.site_at(tile)["definition"]
+	var tent_sheet := Vector2i.ZERO
+	for part in def.parts:
+		if part["kind"] == "tent":
+			tent_sheet = part["tile"]
+	_tent_effect = TentSleepEffectScript.new()
+	_tent_effect.name = "TentSleep"
+	_tent_effect.setup(ResourceMarkerChunkScript.sprite_texture(tent_sheet), def.kind_colors["tent"], TILE_SIZE)
+	_tent_effect.position = (Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE
+	resources_root.add_child(_tent_effect)
+	clock.sleep()
+
+
+## Whether the player is asleep in a tent.
+func is_in_tent() -> bool:
+	return _tent_tile != null
+
+
+## The player comes out of the tent (shown again where they went in) and
+## the tent's own marker returns. Leaves the clock alone.
+func _leave_tent() -> void:
+	if _tent_tile == null:
+		return
+	var tile: Vector2i = _tent_tile
+	_tent_tile = null
+	if is_instance_valid(_tent_effect):
+		_tent_effect.queue_free()
+	_tent_effect = null
+	if _player:
+		_player.visible = true
+	_redraw_markers(Vector2i((Vector2(tile) / CHUNK_SIZE).floor()))
+
+
 ## Moves the player to the walkable tile nearest `world_pos` (its centre if
 ## the spot itself is water) and centres the camera on them.
 func teleport_player(world_pos: Vector2) -> void:
 	if _player == null:
 		return
+	clock.wake()
+	_leave_tent()
 	var tile := Vector2i((world_pos / TILE_SIZE).floor())
 	_gen_mutex.lock()
 	var walkable := is_walkable(tile)
