@@ -6,10 +6,10 @@ extends SceneTree
 ##
 ##   $GODOT --headless --path . --script res://tools/generate_sfx.gd
 ##
-## footstep.wav: a faint, soft step - two muffled brushes of heavily
-## low-passed noise (heel, then a quieter toe), smooth rounded envelopes (no
-## click, no tone), no bit-crush. The game varies its pitch and volume per
-## step (player.gd).
+## footstep.wav: a faint, light step - one short, soft brush of band-passed
+## noise (most of it 400 Hz - 2 kHz: no boom below, little hiss above), smoothed
+## so it isn't grainy, with a rounded envelope (no click, no tone). The game
+## varies its pitch and volume per step (player.gd).
 
 const RATE := 22050
 
@@ -21,19 +21,22 @@ func _init() -> void:
 
 func _footstep() -> PackedFloat32Array:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = 11
-	var length := 0.11
+	rng.seed = 5
+	var length := 0.06
 	var n := int(length * RATE)
 	var out := PackedFloat32Array()
 	out.resize(n)
-	var lp1 := 0.0
-	var lp2 := 0.0
+	var smooth := 0.0
+	var low := 0.0
+	var high := 0.0
 	for i in n:
 		var t := float(i) / RATE
-		# Two passes of a one-pole low-pass: a dull brush, no hiss.
-		lp1 += 0.09 * (rng.randf_range(-1.0, 1.0) - lp1)
-		lp2 += 0.09 * (lp1 - lp2)
-		out[i] = lp2 * (_brush(t, 0.0, 0.045) + 0.55 * _brush(t, 0.035, 0.05))
+		# Smoothed noise (less grain), low-passed (~1.2 kHz), minus a slower
+		# low-pass (~350 Hz): a light band, no depth.
+		smooth += 0.4 * (rng.randf_range(-1.0, 1.0) - smooth)
+		low += 0.32 * (smooth - low)
+		high += 0.1 * (low - high)
+		out[i] = (low - high) * _brush(t, 0.0, 0.055)
 	# Normalize to a quiet peak.
 	var peak := 0.0
 	for v in out:
