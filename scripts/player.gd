@@ -2,9 +2,11 @@ extends Node2D
 
 ## The player character: a sprite from the Urizen sheet that moves tile by
 ## tile along a path (ChunkManager.find_path(), started by a tap / left
-## click - see ChunkManager._on_map_tapped()), diagonals included. It always
-## stands on a tile centre; each step glides to the next tile's centre with
-## a small hop. tile() is the tile it stands on - or, mid-step, the one it
+## click - see ChunkManager._on_map_tapped()), diagonals included. Its
+## position (the node's origin, the pivot for the hop and the facing flip)
+## is its feet: the bottom centre of the tile it stands on (feet_point()),
+## the sprite drawn above. Each step glides to the next tile's feet point
+## with a small hop. tile() is the tile it stands on - or, mid-step, the one it
 ## is stepping onto (a new walk starts from there once the step is done).
 ## Walking runs in real time (not the game clock: a paused clock doesn't
 ## freeze the player). At the end of a path it calls the walk's `on_arrive`
@@ -56,6 +58,12 @@ static func tile_center(t: Vector2i) -> Vector2:
 	return (Vector2(t) + Vector2(0.5, 0.5)) * TILE_SIZE
 
 
+## Where the player's feet (its position) are when standing on tile `t`:
+## the tile's bottom centre.
+static func feet_point(t: Vector2i) -> Vector2:
+	return (Vector2(t) + Vector2(0.5, 1.0)) * TILE_SIZE
+
+
 ## Steps through `tiles` (each a neighbour of the one before, starting next
 ## to tile(); empty = stay), then calls `on_arrive`. Replaces any walk in
 ## progress (its on_arrive is dropped); a step already under way finishes
@@ -67,14 +75,14 @@ func walk(tiles: Array[Vector2i], on_arrive := Callable()) -> void:
 		_next_step()
 
 
-## Stands on the centre of the tile holding `world_pos` at once, walk
-## cancelled.
+## Stands on the tile holding `world_pos` at once (feet at its bottom
+## centre), walk cancelled.
 func teleport(world_pos: Vector2) -> void:
 	_queue.clear()
 	_on_arrive = Callable()
 	_stepping = false
 	_tile = Vector2i((world_pos / TILE_SIZE).floor())
-	position = tile_center(_tile)
+	position = feet_point(_tile)
 	_redraw()
 
 
@@ -105,10 +113,10 @@ func _process(delta: float) -> void:
 		return
 	_step_t += delta * walk_speed
 	if _step_t >= 1.0:
-		position = tile_center(_tile)
+		position = feet_point(_tile)
 		_next_step()
 	if _stepping:
-		position = tile_center(_step_from).lerp(tile_center(_tile), _step_t).round()
+		position = feet_point(_step_from).lerp(feet_point(_tile), _step_t).round()
 	_redraw()
 
 
@@ -138,10 +146,11 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
-## The sprite's rect around the player's position (same framing as the
-## placed resources' sprites).
+## The sprite's rect, standing on the player's position (its feet): the
+## same framing as the placed resources' sprites, one tile up from the tile
+## centre framing by half a tile.
 func sprite_rect() -> Rect2:
-	return ResourceMarkerChunkScript.sprite_rect(Vector2.ZERO, float(TILE_SIZE))
+	return ResourceMarkerChunkScript.sprite_rect(Vector2(0, -TILE_SIZE * 0.5), float(TILE_SIZE))
 
 
 func texture() -> Texture2D:

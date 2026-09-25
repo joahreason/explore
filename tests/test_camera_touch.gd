@@ -247,11 +247,14 @@ func _init() -> void:
 	# camera eases along until they are back at the edge - not centred.
 	await reset(4.0)
 	var zone: Vector2 = root.get_viewport().get_visible_rect().size / cam.zoom * rig.FOLLOW_ZONE
-	player.teleport(home + zone * 0.5)
+	# (teleport takes a point inside the tile; the player's position is its
+	# feet, on the tile's bottom edge)
+	var home_tile_center: Vector2 = player.tile_center(player.tile())
+	player.teleport(home_tile_center)
 	for k in 10:
 		await process_frame
 	var inside_still := rig.global_position == home
-	player.teleport(home + Vector2(zone.x + 40.0, 0))
+	player.teleport(home_tile_center + Vector2(zone.x + 40.0, 0))
 	var jump := player.position.x - home.x
 	await process_frame
 	var first_step := rig.global_position.x - home.x

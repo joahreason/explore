@@ -436,7 +436,7 @@ func travel_to_biome(biome: String) -> void:
 	_finder_biome = biome
 	_finder_seed = world_seed
 	_finder_cancel = false
-	var pos := _player.position if _player else (_target.global_position if _target else Vector2.ZERO)
+	var pos: Vector2 = _player.tile_center(_player.tile()) if _player else (_target.global_position if _target else Vector2.ZERO)
 	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
 	var avoid: Array = _travel_visited.get(biome, []).duplicate()
 	if _threads_available():
