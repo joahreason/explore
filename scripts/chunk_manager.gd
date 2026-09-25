@@ -33,6 +33,7 @@ const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WorldChangesScript := preload("res://scripts/world_changes.gd")
 const GameClockScript := preload("res://scripts/game_clock.gd")
 const WindScript := preload("res://scripts/wind.gd")
+const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 const TentSleepEffectScript := preload("res://scripts/tent_sleep_effect.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
@@ -244,14 +245,6 @@ var _walkable: Dictionary = {}
 ## the border holds the loaded neighbours' edge tiles (_share_borders()), so
 ## terrain.gdshader can blend ground across chunk borders.
 var _chunk_images: Dictionary = {}
-## The harvest sound (assets/sfx/harvest.wav, tools/generate_sfx.gd), its
-## pitch varied a little each time; harvest_sounds counts plays (tests).
-const HARVEST_SOUND := preload("res://assets/sfx/harvest.wav")
-const HARVEST_SOUND_DB := -18.0
-const HARVEST_SOUND_PITCH := Vector2(0.92, 1.1)
-var harvest_sounds := 0
-var _harvest_player: AudioStreamPlayer
-var _sound_rng := RandomNumberGenerator.new()
 var _world_gen: WorldGen
 ## Landmark layer: sites for the current seed (StructureSites, which caches
 ## them per cell; used under _gen_mutex like _world_gen).
@@ -338,13 +331,6 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 	_structures = StructureSitesScript.new(_world_gen, world_seed)
-	_harvest_player = AudioStreamPlayer.new()
-	_harvest_player.name = "HarvestSound"
-	_harvest_player.stream = HARVEST_SOUND
-	_harvest_player.volume_db = HARVEST_SOUND_DB
-	_harvest_player.max_polyphony = 2
-	add_child(_harvest_player)
-	_sound_rng.randomize()
 	if player_path != NodePath():
 		_player = get_node(player_path)
 		_player.set_shadow_material(shadow_material)
@@ -1746,10 +1732,24 @@ func _on_harvest_clicked(world_pos: Vector2):
 	_gen_mutex.unlock()
 	if entity != null:
 		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
-		_harvest_player.pitch_scale = _sound_rng.randf_range(HARVEST_SOUND_PITCH.x, HARVEST_SOUND_PITCH.y)
-		_harvest_player.play()
-		harvest_sounds += 1
+		_spawn_harvest_effect(entity)
 	return entity
+
+
+## Polish: the pop-and-specks feedback at a harvested object's tile centre
+## (where its sprite was drawn), in its sprite colour.
+func _spawn_harvest_effect(entity) -> void:
+	var definition: ResourceDefinition = _definitions_by_id().get(entity.resource_id)
+	if definition == null:
+		return
+	var effect := HarvestEffectScript.new()
+	var has_sprite := definition.sprite_tile.x >= 0
+	var texture: Texture2D = ResourceMarkerChunkScript.sprite_texture(definition.sprite_tile) if has_sprite else null
+	var color: Color = sprite_fill(definition) if has_sprite else definition.debug_color
+	effect.setup(texture, color, definition.sprite_size * TILE_SIZE, entity.key)
+	effect.position = (entity.world_position.floor() + Vector2(0.5, 0.5)) * TILE_SIZE
+	effect.name = "HarvestEffect"
+	resources_root.add_child(effect)
 
 
 ## Rebuilds one loaded chunk's marker node from its stored placements (no

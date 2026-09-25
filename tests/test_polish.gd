@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## First polish pass: cast shadows (silhouettes thrown by the sun / moon
-## under trees, rocks, ore, shrubs, deadwood - not grass), chunk fade-in, drifting
+## under trees, rocks, ore, shrubs, deadwood - not grass), chunk fade-in, the harvest pop effect, drifting
 ## cloud shadows and the desktop hover highlight. Visuals were checked on a
 ## real renderer by hand; this checks the wiring. Momentum and eased zoom
 ## are in test_camera_touch. Run via tests/run_tests.sh.
@@ -89,7 +89,7 @@ func _init() -> void:
 		prev = cur
 	check(smooth, "shadows change smoothly minute by minute through the day and night")
 
-	# Harvesting still works but spawns no visual effect (removed on request).
+	# Harvest effect: spawned at the object, frees itself.
 	var target := {}
 	for c in world._chunk_placements:
 		for entry in world._chunk_placements[c]:
@@ -101,7 +101,10 @@ func _init() -> void:
 	var click: Vector2 = ((target["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
 	var e = world._on_harvest_clicked(click)
 	var effects: Array = world.resources_root.get_children().filter(func(n): return n.name.begins_with("HarvestEffect"))
-	check(e != null and effects.is_empty(), "harvesting works and spawns no pop effect")
+	var at_object: bool = effects.size() == 1 and effects[0].position == (e.world_position.floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	await create_timer(0.5).timeout
+	var left: Array = world.resources_root.get_children().filter(func(n): return is_instance_valid(n) and n.name.begins_with("HarvestEffect"))
+	check(e != null and at_object and left.is_empty(), "harvesting spawns one pop effect at the object, which frees itself")
 
 	# Clouds: only in the gameplay views, cover the view, drift with the wind
 	# and hold while paused.
