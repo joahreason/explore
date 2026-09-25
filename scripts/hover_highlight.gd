@@ -1,7 +1,8 @@
 extends Node2D
 
 ## Desktop polish: a thin outline around the resource a left click would
-## harvest (ChunkManager.hover_target(): the same pick as harvesting). Only
+## harvest (ChunkManager.hover_target(): the same pick as harvesting), or
+## the camp tent it would sleep in (ChunkManager.is_tent()). Only
 ## for a real mouse - after any touch it hides until the mouse moves again
 ## (touch screens have no hover, and the emulated mouse would leave it on
 ## the last tapped spot). Hidden over UI. Looks up the object only when the
@@ -36,6 +37,9 @@ func _process(_delta: float) -> void:
 	if tile == _tile:
 		return
 	_tile = tile
+	if _world.is_tent(tile):
+		_set_target(true, tile)
+		return
 	var inst: Dictionary = _world.hover_target(point)
 	_set_target(not inst.is_empty(), Vector2i((inst.get("position", Vector2.ZERO) as Vector2).floor()))
 

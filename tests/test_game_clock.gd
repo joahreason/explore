@@ -67,6 +67,39 @@ func _init() -> void:
 	check(ff_ok and pause_ok and sc.minutes == 0.0 and sc.speed_text() == "<< x4",
 		"x64 runs an in-game hour per real second, pause holds the time, rewind stops at the very start")
 
+	# Sleeping in a tent: fast-forward to the next night start or dawn.
+	var d0 := 3.0 * GameClock.MINUTES_PER_DAY
+	check(GameClock.next_wake(d0 + 8 * 60) == d0 + 20 * 60 and GameClock.next_wake(d0 + 21 * 60) == d0 + GameClock.MINUTES_PER_DAY + 4.5 * 60
+		and GameClock.next_wake(d0 + 3 * 60) == d0 + 4.5 * 60 and GameClock.next_wake(d0 + 19.5 * 60) == d0 + GameClock.MINUTES_PER_DAY + 4.5 * 60,
+		"sleep wakes at the next night start (20:00) or dawn (04:30), whichever comes first at least an hour away")
+	var sl := GameClock.new()
+	sl.minutes = d0 + 8 * 60
+	sl.fast_forward()
+	sl.sleep()
+	var real := 0.0
+	var peak := 0.0
+	var jump := 0.0
+	var last_rate := sl.rate()
+	var end_rates: Array[float] = []
+	while sl.sleeping and real < 60.0:
+		sl.advance(1.0 / 60.0)
+		real += 1.0 / 60.0
+		var r := sl.rate()
+		peak = maxf(peak, r)
+		jump = maxf(jump, absf(r - last_rate))
+		last_rate = r
+		end_rates.append(r)
+	check(not sl.sleeping and sl.minutes == d0 + 20 * 60 and sl.rate() == 1.0 and sl.speed_text() == "",
+		"a sleep from 08:00 ends exactly at 20:00, back at normal speed (%s)" % sl.time_text())
+	check(real > 1.5 and real < 6.0 and peak > 0.9 * GameClock.SLEEP_SPEED,
+		"12 hours pass in %.1f real seconds at up to x%d" % [real, int(peak)])
+	check(jump < 0.1 * GameClock.SLEEP_SPEED and end_rates[end_rates.size() - 10] < 0.05 * GameClock.SLEEP_SPEED,
+		"time eases in and slows down to normal speed rather than jumping (largest change per frame x%.1f)" % jump)
+	sl.sleep()
+	var asleep_text := sl.speed_text()
+	sl.fast_forward()
+	check(asleep_text == "Sleeping" and not sl.sleeping and sl.rate() == GameClock.SPEEDS[0], "the time controls wake a sleeper")
+
 	# Daylight.
 	var noon := GameClock.light_at(12.0)
 	var night := GameClock.light_at(0.0)

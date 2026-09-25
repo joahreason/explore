@@ -36,21 +36,50 @@ const LIGHT_COLORS: Array[Color] = [
 ## to normal speed from fast-forward / rewind.
 const SPEEDS: Array[float] = [4.0, 16.0, 64.0]
 
+## Sleeping in a camp tent (ChunkManager.enter_tent()) passes time until
+## the next night start or dawn (the light's night and dawn keys above),
+## whichever comes first at least SLEEP_MIN_MINUTES away. Time speeds up to
+## SLEEP_SPEED over SLEEP_EASE_IN real seconds, then slows back to normal
+## speed over the last SLEEP_EASE_OUT_MINUTES, stopping the sleep exactly
+## at wake_minutes.
+const NIGHT_START_HOUR := 20.0
+const DAWN_START_HOUR := 4.5
+const SLEEP_MIN_MINUTES := 60.0
+const SLEEP_SPEED := 300.0
+const SLEEP_EASE_IN := 0.4
+const SLEEP_EASE_OUT_MINUTES := 60.0
+
 var minutes: float = START_MINUTES
 var paused: bool = false
 ## 0 normal speed, 1 fast-forward, -1 rewind; speed_level indexes SPEEDS.
 var direction: int = 0
 var speed_level: int = 0
+var sleeping: bool = false
+var wake_minutes: float = 0.0
+var _sleep_seconds := 0.0
 
 
 ## Runs the clock for `real_seconds` of real time at the current rate
-## (rate()); rewinding stops at the very start (minute 0).
+## (rate()); rewinding stops at the very start (minute 0), sleeping at
+## wake_minutes (which ends the sleep).
 func advance(real_seconds: float) -> void:
-	minutes = maxf(minutes + maxf(real_seconds, 0.0) * MINUTES_PER_SECOND * rate(), 0.0)
+	var dt := maxf(real_seconds, 0.0)
+	if sleeping:
+		minutes = minf(minutes + dt * MINUTES_PER_SECOND * rate(), wake_minutes)
+		_sleep_seconds += dt
+		if minutes >= wake_minutes:
+			sleeping = false
+		return
+	minutes = maxf(minutes + dt * MINUTES_PER_SECOND * rate(), 0.0)
 
 
-## Multiplier on real time: 0 paused, 1 normal, +-SPEEDS[speed_level].
+## Multiplier on real time: 0 paused, 1 normal, +-SPEEDS[speed_level];
+## asleep, eased between 1 and SLEEP_SPEED (see SLEEP_SPEED).
 func rate() -> float:
+	if sleeping:
+		var ease_in := minf(_sleep_seconds / SLEEP_EASE_IN, 1.0)
+		var ease_out := minf((wake_minutes - minutes) / SLEEP_EASE_OUT_MINUTES, 1.0)
+		return maxf(1.0, SLEEP_SPEED * ease_in * ease_out)
 	if paused:
 		return 0.0
 	if direction == 0:
@@ -58,17 +87,50 @@ func rate() -> float:
 	return direction * SPEEDS[speed_level]
 
 
+## Starts sleeping at normal speed (time controls reset) until
+## next_wake().
+func sleep() -> void:
+	wake_minutes = next_wake(minutes)
+	sleeping = true
+	_sleep_seconds = 0.0
+	direction = 0
+	paused = false
+
+
+## Ends a sleep early (time carries on at normal speed).
+func wake() -> void:
+	sleeping = false
+
+
+## The first night start or dawn at least SLEEP_MIN_MINUTES after `from`.
+static func next_wake(from: float) -> float:
+	var day_start := floorf(from / MINUTES_PER_DAY) * MINUTES_PER_DAY
+	var best := INF
+	for day in 3:
+		for hour in [DAWN_START_HOUR, NIGHT_START_HOUR]:
+			var t: float = day_start + day * MINUTES_PER_DAY + hour * 60.0
+			if t >= from + SLEEP_MIN_MINUTES and t < best:
+				best = t
+	return best
+
+
+## The time controls wake a sleeper first.
 func fast_forward() -> void:
+	wake()
 	_step_speed(1)
 
 
 func rewind() -> void:
+	wake()
 	_step_speed(-1)
 
 
 ## Pauses or resumes at normal speed; from fast-forward / rewind it goes
-## back to normal speed (playing).
+## back to normal speed (playing). Wakes a sleeper, still playing.
 func play_pause() -> void:
+	if sleeping:
+		wake()
+		return
 	if direction != 0:
 		direction = 0
 		paused = false
@@ -76,8 +138,10 @@ func play_pause() -> void:
 		paused = not paused
 
 
-## "Paused", ">> x16", "<< x4", or "" at normal speed.
+## "Sleeping", "Paused", ">> x16", "<< x4", or "" at normal speed.
 func speed_text() -> String:
+	if sleeping:
+		return "Sleeping"
 	if paused:
 		return "Paused"
 	if direction == 0:

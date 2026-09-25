@@ -152,6 +152,51 @@ func _init() -> void:
 		await process_frame
 	check(same.call(world.hover_target(other_at / world.TILE_SIZE), other), "another tap on the way cancels the harvest (%s still stands)" % other.get("id", "?"))
 
+	# Tapping a camp tent: walk up, go inside (hidden), sleep until 20:00.
+	world._gen_mutex.lock()
+	var camp_at = world._structures.find("camp", player.tile())
+	var camp: Dictionary = world._structures.site_at(camp_at) if camp_at != null else {}
+	world._gen_mutex.unlock()
+	var tent_tile := Vector2i(1 << 30, 0)
+	for part in camp.get("parts", []):
+		if part["kind"] == "tent":
+			tent_tile = part["tile"]
+	world.teleport_player((Vector2(camp_at) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	world.flush_chunk_work()
+	world.clock.minutes = 2.0 * GameClock.MINUTES_PER_DAY + 10 * 60
+	world._on_map_tapped((Vector2(tent_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	frames = 0
+	while player.is_walking() and frames < 600:
+		await process_frame
+		frames += 1
+	var effect: Node2D = world.resources_root.get_node_or_null("TentSleep")
+	var chunk := Vector2i((Vector2(tent_tile) / world.CHUNK_SIZE).floor())
+	var markers = world._loaded_placements.get(chunk)
+	var marker_hidden := true
+	if markers != null:
+		for k in markers.instance_count():
+			marker_hidden = marker_hidden and Vector2i((markers._positions[k] / world.TILE_SIZE).floor()) + chunk * world.CHUNK_SIZE != tent_tile
+	check(world.is_tent(tent_tile) and world.is_in_tent() and not player.visible and effect != null and marker_hidden and world.clock.sleeping,
+		"tapping a camp tent (%s) walks the player in: hidden, the tent's marker swapped for the bouncing one, time asleep" % tent_tile)
+	var heights := {}
+	var z_count := 0
+	for f in 12:
+		effect._process(0.2)  # real time, stepped: headless frames are too short to see it move
+		heights[snappedf(effect.stretch(), 0.01)] = true
+		z_count = maxi(z_count, effect.zs().size())
+	check(heights.size() > 2 and z_count >= 1, "the tent bounces (%d heights) with Zs rising (%d at once)" % [heights.size(), z_count])
+	world.clock.minutes = world.clock.wake_minutes - 2.0
+	frames = 0
+	while world.clock.sleeping and frames < 600:
+		await process_frame
+		frames += 1
+	await process_frame
+	check(not world.is_in_tent() and player.visible and not is_instance_valid(effect) and world.clock.time_text().begins_with("20:0") and world.clock.rate() == 1.0,
+		"at night start the player comes out and time runs at normal speed (%s)" % world.clock.time_text())
+	world.enter_tent(tent_tile)
+	world._on_map_tapped((Vector2(tent_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	check(not world.clock.sleeping and player.visible and not player.is_walking(), "tapping the tent again while inside wakes the player")
+
 	# Saved per seed: a reloaded world puts the player back.
 	var saved: Vector2 = player.position
 	world._save_gameplay_state()
