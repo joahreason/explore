@@ -27,7 +27,7 @@ const HOP_PX := 2.0
 ## Tiles per real second (a diagonal step takes as long as a straight one).
 @export var walk_speed := 4.0
 const FOOTSTEP := preload("res://assets/sfx/footstep.wav")
-const FOOTSTEP_DB := -20.0
+const FOOTSTEP_DB := -26.0
 ## Per-step variation: pitch scale range, the least change from the last
 ## step's pitch, and volume jitter (dB, either way).
 const FOOTSTEP_PITCH := Vector2(0.82, 1.18)
