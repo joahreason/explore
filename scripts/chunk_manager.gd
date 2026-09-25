@@ -239,6 +239,10 @@ var _player: Node2D
 ## is walkable). Filled for free wherever a chunk image is baked tile by
 ## tile, else sampled on demand (is_walkable()); guarded by _gen_mutex.
 var _walkable: Dictionary = {}
+## Chunk -> the shown image padded with a 1-texel border (_padded_image()):
+## the border holds the loaded neighbours' edge tiles (_share_borders()), so
+## terrain.gdshader can blend ground across chunk borders.
+var _chunk_images: Dictionary = {}
 var _world_gen: WorldGen
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
@@ -513,6 +517,7 @@ func _process(delta: float) -> void:
 	wind.apply(shadow_material, clock.minutes)
 	SunShadowScript.apply(shadow_material, clock.minutes)
 	terrain_material.set_shader_parameter("water_phase", wind.phase)
+	terrain_material.set_shader_parameter("ground_detail", is_time_tinted_view())
 	terrain_material.set_shader_parameter("wave_dir", WindScript.direction_at(clock.minutes))
 	var grass: Color = SeasonsScript.tint("grass", SeasonsScript.year_fraction(clock))
 	terrain_material.set_shader_parameter("grass_tint", Vector4(grass.r, grass.g, grass.b, grass.a))
@@ -1186,7 +1191,12 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		sprite.material = terrain_material
 		chunks_root.add_child(sprite)
 		_loaded_chunks[chunk_coord] = sprite
-	sprite.texture = ImageTexture.create_from_image(data["image"])
+	var padded := _padded_image(data["image"])
+	_chunk_images[chunk_coord] = padded
+	_share_borders(chunk_coord)
+	sprite.texture = ImageTexture.create_from_image(padded)
+	sprite.region_enabled = true
+	sprite.region_rect = Rect2(1, 1, padded.get_width() - 2, padded.get_height() - 2)
 	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
 	_shown_epoch[chunk_coord] = data["epoch"]
 
@@ -1214,6 +1224,52 @@ func _apply_chunk_data(data: Dictionary) -> void:
 			if node != null:
 				node.modulate.a = 0.0
 				node.create_tween().tween_property(node, "modulate:a", 1.0, FADE_IN_SEC)
+
+
+## A chunk image with a 1-texel border, its edge tiles repeated there until
+## a neighbour fills it (_share_borders()); the sprite shows only the inside
+## (region_rect).
+static func _padded_image(img: Image) -> Image:
+	var n := img.get_width()
+	var padded := Image.create(n + 2, n + 2, false, img.get_format())
+	padded.blit_rect(img, Rect2i(0, 0, n, n), Vector2i(1, 1))
+	for i in range(-1, n + 1):
+		var c := clampi(i, 0, n - 1)
+		padded.set_pixel(i + 1, 0, img.get_pixel(c, 0))
+		padded.set_pixel(i + 1, n + 1, img.get_pixel(c, n - 1))
+		padded.set_pixel(0, i + 1, img.get_pixel(0, c))
+		padded.set_pixel(n + 1, i + 1, img.get_pixel(n - 1, c))
+	return padded
+
+
+const NEIGHBOUR_STEPS: Array[Vector2i] = [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]
+
+
+## Main thread, when a chunk is shown: fills its border from each loaded
+## neighbour of the same size (LOD) and theirs from it, re-uploading the
+## neighbours' textures - so tile blending carries across chunk borders.
+func _share_borders(chunk_coord: Vector2i) -> void:
+	var img: Image = _chunk_images[chunk_coord]
+	var n := img.get_width() - 2
+	for d in NEIGHBOUR_STEPS:
+		var other: Image = _chunk_images.get(chunk_coord + d)
+		if other == null or other.get_width() != img.get_width():
+			continue
+		_copy_border(img, other, d, n)
+		_copy_border(other, img, -d, n)
+		var sprite: Sprite2D = _loaded_chunks.get(chunk_coord + d)
+		if sprite != null and sprite.texture is ImageTexture:
+			(sprite.texture as ImageTexture).update(other)
+
+
+## Copies into `dst`'s border on side `d` the matching edge tiles of `src`,
+## the neighbour on that side (n = tiles per side).
+static func _copy_border(dst: Image, src: Image, d: Vector2i, n: int) -> void:
+	var xs := [0] if d.x < 0 else ([n + 1] if d.x > 0 else range(1, n + 1))
+	var ys := [0] if d.y < 0 else ([n + 1] if d.y > 0 else range(1, n + 1))
+	for y in ys:
+		for x in xs:
+			dst.set_pixel(x, y, src.get_pixel(x - d.x * n, y - d.y * n))
 
 
 func _free_chunk_node(nodes: Dictionary, chunk_coord: Vector2i) -> void:
@@ -1263,6 +1319,7 @@ func _overlay_grids(chunk_coord: Vector2i) -> Array:
 
 func _unload_chunk(chunk_coord: Vector2i) -> void:
 	_free_chunk_node(_loaded_chunks, chunk_coord)
+	_chunk_images.erase(chunk_coord)
 	_shown_epoch.erase(chunk_coord)
 	_free_chunk_node(_loaded_overlays, chunk_coord)
 	_free_chunk_node(_loaded_placements, chunk_coord)

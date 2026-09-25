@@ -92,6 +92,29 @@ func _init() -> void:
 	var sprite: Sprite2D = world._loaded_chunks.values()[0]
 	check(water_ok and grass_ok and sprite.material == world.terrain_material and sprite.texture.get_image().get_format() == Image.FORMAT_RGBA8,
 		"World view: water and grass tiles carry their codes; chunks use the terrain shader")
+	# Ground blending across chunk borders: each shown image has a 1-texel
+	# border holding its neighbours' edge tiles; the sprite shows the inside.
+	var borders_ok := true
+	var pairs := 0
+	for chunk in world._chunk_images:
+		var right: Vector2i = chunk + Vector2i(1, 0)
+		var below: Vector2i = chunk + Vector2i(0, 1)
+		var img: Image = world._chunk_images[chunk]
+		var n: int = img.get_width() - 2
+		borders_ok = borders_ok and world._loaded_chunks[chunk].region_rect == Rect2(1, 1, n, n)
+		if world._chunk_images.has(right):
+			var r: Image = world._chunk_images[right]
+			for y in range(1, n + 1):
+				borders_ok = borders_ok and img.get_pixel(n + 1, y) == r.get_pixel(1, y) and r.get_pixel(0, y) == img.get_pixel(n, y)
+			pairs += 1
+		if world._chunk_images.has(below):
+			var b: Image = world._chunk_images[below]
+			for x in range(1, n + 1):
+				borders_ok = borders_ok and img.get_pixel(x, n + 1) == b.get_pixel(x, 1) and b.get_pixel(x, 0) == img.get_pixel(x, n)
+			pairs += 1
+	await process_frame
+	var detail_world: bool = world.terrain_material.get_shader_parameter("ground_detail")
+	check(borders_ok and pairs > 50 and detail_world, "chunk images carry their neighbours' edge tiles in a 1-texel border (%d neighbour pairs) and show only their inside; ground detail is on in the World view" % pairs)
 	# Shoreline (the coast only - ocean and sea, not lakes or rivers): open
 	# sea beside land carries FOAM_CODE + its shore shape, ground on a sea
 	# shore WASH_CODE (grass WASH_GRASS_CODE) + its shape -
@@ -202,6 +225,8 @@ func _init() -> void:
 	var s0: Dictionary = world._world_gen.sample(0, 0)
 	check(world._color_for(s0, 0, 0).a == 1.0 and world._loaded_chunks.values()[0].texture.get_image().get_format() == Image.FORMAT_RGB8,
 		"data views bake plain opaque images (no codes)")
+	await process_frame
+	check(not world.terrain_material.get_shader_parameter("ground_detail"), "no ground noise or blending in the data views")
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 
