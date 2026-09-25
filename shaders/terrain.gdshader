@@ -18,8 +18,14 @@
 // ground beside it is washed by white swash that runs up, thinning to wet
 // ground and foam specks at its front, and drains - the first row always
 // stays washed, so water and ground meet in white instead of a hard edge.
-// Grass ground takes the season's grass tint (Seasons). The output is
-// always opaque. Other views bake plain opaque RGB images, which pass
+// Grass ground takes the season's grass tint (Seasons). With ground_detail
+// (the gameplay views), plain ground (grass and GRASS_CODE-less ground, 253
+// / 255) blends into a different neighbouring ground tile over BLEND_PX by
+// dithering - near an edge a pixel may show the neighbour instead, 50/50
+// at the edge - and ground (and swashed ground) gets a subtle grain and
+// mottle. The chunk image has a 1-texel border holding the neighbouring
+// chunks' edge tiles (ChunkManager._share_borders()), so blending crosses
+// chunk borders. The output is always opaque. Other views bake plain opaque RGB images, which pass
 // through unchanged.
 shader_type canvas_item;
 
@@ -42,6 +48,9 @@ const vec3 FOAM = vec3(0.93, 0.97, 1.0);
 uniform float water_phase = 0.0;
 uniform vec4 grass_tint = vec4(0.0);  // rgb target, a = strength
 uniform vec2 wave_dir = vec2(1.0, 0.0);
+uniform bool ground_detail = false;
+// Pixels over which neighbouring ground tiles dither into each other.
+const float BLEND_PX = 4.0;
 
 varying vec2 world_px;
 
@@ -152,16 +161,58 @@ vec3 swash(vec3 rgb, vec2 p, float d) {
 	return rgb;
 }
 
+float code_of(vec4 c) {
+	return floor(c.a * 255.0 + 0.5);
+}
+
+// Plain ground: grass (GRASS_CODE) or other ground (no code, 255).
+bool plain_ground(float code) {
+	return code >= GRASS_CODE;
+}
+
+// Near a tile edge, a pixel may take the neighbouring tile's texel instead
+// (hash dither: half the pixels at the edge, none BLEND_PX in), if that
+// tile is plain ground too.
+vec4 ground_blend(sampler2D tex, vec4 c, vec2 uv, vec2 texel, vec2 p) {
+	vec2 f = fract(uv / texel);
+	vec2 side = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
+	vec2 d = min(f, 1.0 - f) * TILE;
+	if (hash(p + 3.7) < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.x))) {
+		vec4 n = texture(tex, uv + vec2(side.x, 0.0) * texel);
+		if (plain_ground(code_of(n)))
+			return n;
+	}
+	if (hash(p + 9.1) < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.y))) {
+		vec4 n = texture(tex, uv + vec2(0.0, side.y) * texel);
+		if (plain_ground(code_of(n)))
+			return n;
+	}
+	return c;
+}
+
+// Subtle ground texture: per-pixel grain and a soft mottle.
+vec3 ground_noise(vec3 rgb, vec2 p) {
+	float grain = hash(p + 21.3) - 0.5;
+	float mottle = vnoise(p / 5.0 + 7.7) - 0.5;
+	return rgb * (1.0 + 0.07 * grain + 0.08 * mottle);
+}
+
 void vertex() {
 	world_px = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy;
 }
 
 void fragment() {
-	vec4 c = texture(TEXTURE, UV);
-	float code = floor(c.a * 255.0 + 0.5);
-	vec3 rgb = c.rgb;
 	// Whole-pixel steps (TILE per tile) keep it in the pixel-art grid.
 	vec2 p = floor(world_px);
+	vec4 c = texture(TEXTURE, UV);
+	float code = code_of(c);
+	if (ground_detail && plain_ground(code)) {
+		c = ground_blend(TEXTURE, c, UV, TEXTURE_PIXEL_SIZE, p);
+		code = code_of(c);
+	}
+	vec3 rgb = c.rgb;
+	if (ground_detail && (plain_ground(code) || (code > WASH_CODE && code <= WASH_GRASS_CODE + 46.0)))
+		rgb = ground_noise(rgb, p);
 	vec2 tile = floor(p / TILE);
 	vec2 in_tile = p - tile * TILE;
 	if (code >= WATER_CODE_ICE && code <= WATER_CODE) {
