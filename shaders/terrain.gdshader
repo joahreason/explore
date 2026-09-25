@@ -170,24 +170,14 @@ bool plain_ground(float code) {
 	return code >= GRASS_CODE;
 }
 
-// Near a tile edge, a pixel may take the neighbouring tile's texel instead
-// (hash dither: half the pixels at the edge, none BLEND_PX in), if that
-// tile is plain ground too.
-vec4 ground_blend(sampler2D tex, vec4 c, vec2 uv, vec2 texel, vec2 p) {
-	vec2 f = fract(uv / texel);
-	vec2 side = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
+// Near a tile edge, a pixel may show the neighbouring tile instead (hash
+// dither: half the pixels at the edge, none BLEND_PX in) - the chance for
+// the x and the y neighbour. `f` is the position within the tile (0..1).
+vec2 blend_chance(vec2 f, vec2 p) {
 	vec2 d = min(f, 1.0 - f) * TILE;
-	if (hash(p + 3.7) < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.x))) {
-		vec4 n = texture(tex, uv + vec2(side.x, 0.0) * texel);
-		if (plain_ground(code_of(n)))
-			return n;
-	}
-	if (hash(p + 9.1) < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.y))) {
-		vec4 n = texture(tex, uv + vec2(0.0, side.y) * texel);
-		if (plain_ground(code_of(n)))
-			return n;
-	}
-	return c;
+	vec2 roll = vec2(hash(p + 3.7), hash(p + 9.1));
+	return vec2(roll.x < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.x)) ? 1.0 : 0.0,
+		roll.y < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.y)) ? 1.0 : 0.0);
 }
 
 // Subtle ground texture: per-pixel grain and a soft mottle.
@@ -207,7 +197,17 @@ void fragment() {
 	vec4 c = texture(TEXTURE, UV);
 	float code = code_of(c);
 	if (ground_detail && plain_ground(code)) {
-		c = ground_blend(TEXTURE, c, UV, TEXTURE_PIXEL_SIZE, p);
+		// Dither into a different plain-ground neighbour near the edges
+		// (TEXTURE can only be sampled here, not in a helper).
+		vec2 f = fract(UV / TEXTURE_PIXEL_SIZE);
+		vec2 side = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
+		vec2 take = blend_chance(f, p);
+		vec4 nx = texture(TEXTURE, UV + vec2(side.x, 0.0) * TEXTURE_PIXEL_SIZE);
+		vec4 ny = texture(TEXTURE, UV + vec2(0.0, side.y) * TEXTURE_PIXEL_SIZE);
+		if (take.x > 0.5 && plain_ground(code_of(nx)))
+			c = nx;
+		else if (take.y > 0.5 && plain_ground(code_of(ny)))
+			c = ny;
 		code = code_of(c);
 	}
 	vec3 rgb = c.rgb;
