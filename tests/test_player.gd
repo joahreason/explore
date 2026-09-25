@@ -122,6 +122,9 @@ func _init() -> void:
 		await process_frame
 		frames += 1
 	var d: Vector2i = player.tile() - tile
+	var hs: AudioStreamPlayer = world.get_node("HarvestSound")
+	check(world.harvest_sounds == 1 and hs.stream != null and hs.volume_db < -12.0 and hs.pitch_scale >= world.HARVEST_SOUND_PITCH.x and hs.pitch_scale <= world.HARVEST_SOUND_PITCH.y,
+		"the harvest plays one soft harvest sound (%d, %.0f dB, pitch %.2f)" % [world.harvest_sounds, hs.volume_db, hs.pitch_scale])
 	check(before_arrival and maxi(absi(d.x), absi(d.y)) <= 1 and not same.call(world.hover_target(tap_at / world.TILE_SIZE), target),
 		"tapping a %s walks up to it (stopped %s away) and harvests it on arrival" % [target.get("id", "?"), d])
 
