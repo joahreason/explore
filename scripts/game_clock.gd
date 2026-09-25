@@ -42,8 +42,8 @@ const SPEEDS: Array[float] = [4.0, 16.0, 64.0]
 ## SLEEP_SPEED over SLEEP_EASE_IN real seconds, then slows back to normal
 ## speed over the last SLEEP_EASE_OUT_MINUTES, stopping the sleep exactly
 ## at wake_minutes.
-const NIGHT_START_HOUR := 20.0
-const DAWN_START_HOUR := 4.5
+const NIGHT_START_HOUR := 19.5
+const DAWN_START_HOUR := 6.0
 const SLEEP_MIN_MINUTES := 60.0
 const SLEEP_SPEED := 300.0
 const SLEEP_EASE_IN := 0.4
