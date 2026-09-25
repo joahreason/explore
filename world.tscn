@@ -17,16 +17,21 @@
 [ext_resource type="Script" path="res://scripts/cloud_shadows.gd" id="15"]
 [ext_resource type="Script" path="res://scripts/hover_highlight.gd" id="16"]
 [ext_resource type="Script" path="res://scripts/ambient_particles.gd" id="17"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="18"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
 target_path = NodePath("CameraRig")
+player_path = NodePath("Player")
 
 [node name="Chunks" type="Node2D" parent="."]
 
 [node name="ShadowLayer" type="Node2D" parent="."]
 
 [node name="Resources" type="Node2D" parent="."]
+
+[node name="Player" type="Node2D" parent="."]
+script = ExtResource("18")
 
 [node name="CloudShadows" type="ColorRect" parent="."]
 mouse_filter = 2
@@ -46,6 +51,7 @@ script = ExtResource("12")
 [node name="CameraRig" type="Node2D" parent="."]
 script = ExtResource("2")
 ui_root_path = NodePath("../UI")
+player_path = NodePath("../Player")
 
 [node name="Camera2D" type="Camera2D" parent="CameraRig"]
 zoom = Vector2(4, 4)

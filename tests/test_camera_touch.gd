@@ -1,16 +1,19 @@
 extends SceneTree
 
-## Camera touch input (camera_rig.gd) through Godot's real input pipeline,
-## with the project's emulate_mouse_from_touch=true: a finger's synthetic
-## mouse mirror must not move the camera a second time, a pinch must zoom
-## around the fingers' midpoint without drift, a pinch never counts as a tap,
-## and a real mouse still drags and clicks. Run via tests/run_tests.sh.
+## Camera input (camera_rig.gd) through Godot's real input pipeline, with
+## the project's emulate_mouse_from_touch=true: a tap or left click is one
+## map tap (walks the player), a long press or right click is info, drags
+## never move the camera, a pinch zooms without moving it and is never a
+## tap, lifting a pinch finger changes nothing; and the camera follows the
+## player loosely (still inside the follow zone, eased back to its edge
+## outside it, never locked on). Run via tests/run_tests.sh.
 
 var _fails := 0
 var _passes := 0
 var rig: Node2D
 var cam: Camera2D
-var clicks := 0  # harvest_clicked: left click / tap
+var clicks := 0  # map_tapped: left click / tap
+var player: Node2D
 var infos := 0  # info_clicked: right click / long press
 
 
@@ -49,8 +52,8 @@ func world_under(screen: Vector2) -> Vector2:
 
 
 func reset(zoom: float) -> void:
-	rig._stop_glide()
 	rig._zoom_target = -1.0
+	player.teleport(Vector2.ZERO)  # at the camera: inside the follow zone
 	rig.global_position = Vector2.ZERO
 	cam.zoom = Vector2(zoom, zoom)
 	await process_frame
@@ -72,14 +75,15 @@ func _init() -> void:
 		control.visible = false
 	rig = world.get_node("CameraRig")
 	cam = rig.get_node("Camera2D")
-	rig.momentum = false  # exact pan distances below; momentum is checked at the end
-	rig.harvest_clicked.connect(func(_p): clicks += 1)
+	player = world.get_node("Player")
+	rig.map_tapped.connect(func(_p): clicks += 1)
 	rig.info_clicked.connect(func(_p): infos += 1)
 	var center: Vector2 = root.get_viewport().get_visible_rect().size * 0.5
 	var map_point := center + Vector2(-150, 60)  # off-centre
 
-	# One finger drags 100 px at zoom 4: the map follows the finger, 25 world px.
+	# One finger drags 100 px: the camera doesn't move, and it isn't a tap.
 	await reset(4.0)
+	clicks = 0
 	var p := map_point
 	touch(0, p, true)
 	for k in 10:
@@ -88,7 +92,7 @@ func _init() -> void:
 		await process_frame
 	touch(0, p, false)
 	await process_frame
-	check(rig.global_position.is_equal_approx(Vector2(-25, 0)), "one-finger drag moves the camera once, not twice (%s, expect (-25, 0))" % rig.global_position)
+	check(rig.global_position == Vector2.ZERO and clicks == 0, "one-finger drag doesn't move the camera (%s) and isn't a tap (%d)" % [rig.global_position, clicks])
 
 	# Symmetric pinch around the screen centre: zooms in, no pan.
 	await reset(2.0)
@@ -107,48 +111,26 @@ func _init() -> void:
 	await process_frame
 	check(rig.global_position.length() < 0.01 and absf(cam.zoom.x - 3.0) < 0.01, "centred pinch zooms without drifting (moved %s, zoom %.2f, expect 3)" % [rig.global_position, cam.zoom.x])
 
-	# Off-centre pinch: the world point between the fingers stays under them.
+	# Off-centre pinch, and two fingers moving together: zoom only, the
+	# camera stays with the player.
 	await reset(2.0)
-	var mid := map_point
-	a = mid - Vector2(40, 0)
-	b = mid + Vector2(40, 0)
-	var anchor := world_under(mid)
+	a = map_point - Vector2(40, 0)
+	b = map_point + Vector2(40, 0)
 	touch(0, a, true)
 	touch(1, b, true)
 	for k in 5:
-		drag(0, a, a - Vector2(8, 0))
-		a -= Vector2(8, 0)
-		drag(1, b, b + Vector2(8, 0))
-		b += Vector2(8, 0)
-		await process_frame
-	await process_frame
-	var drift := world_under(mid) - anchor
-	touch(0, a, false)
-	touch(1, b, false)
-	await process_frame
-	check(drift.length() < 0.05 and absf(cam.zoom.x - 4.0) < 0.01, "off-centre pinch keeps the point under the fingers (drift %s world px, zoom %.2f)" % [drift, cam.zoom.x])
-
-	# Two fingers moving together pan like one.
-	await reset(4.0)
-	a = map_point
-	b = map_point + Vector2(80, 0)
-	touch(0, a, true)
-	touch(1, b, true)
-	for k in 5:
-		drag(0, a, a + Vector2(0, 8))
-		a += Vector2(0, 8)
-		drag(1, b, b + Vector2(0, 8))
-		b += Vector2(0, 8)
+		drag(0, a, a + Vector2(-8, 6))
+		a += Vector2(-8, 6)
+		drag(1, b, b + Vector2(8, 6))
+		b += Vector2(8, 6)
 		await process_frame
 	touch(0, a, false)
 	touch(1, b, false)
 	await process_frame
-	check(rig.global_position.is_equal_approx(Vector2(0, -10)) and is_equal_approx(cam.zoom.x, 4.0), "two-finger pan moves with the fingers (%s, expect (0, -10))" % rig.global_position)
+	check(rig.global_position == Vector2.ZERO and absf(cam.zoom.x - 4.0) < 0.01, "off-centre / moving pinch zooms (%.2f) without moving the camera (%s)" % [cam.zoom.x, rig.global_position])
 
-	# Lifting one finger of a pinch never moves the camera, even when the
-	# browser renumbers the remaining finger or reports a bogus relative
-	# motion (measured from the lifted finger); the remaining finger then
-	# pans smoothly by its own motion.
+	# Lifting one finger of a pinch changes nothing, even when the browser
+	# renumbers the remaining finger or reports a bogus relative motion.
 	await reset(4.0)
 	a = map_point
 	b = map_point + Vector2(120, 0)
@@ -160,31 +142,26 @@ func _init() -> void:
 		drag(1, b, b + Vector2(10, 0))
 		b += Vector2(10, 0)
 		await process_frame
-	var after_pinch_pos := rig.global_position
 	var after_pinch_zoom := cam.zoom.x
 	touch(0, a, false)
 	await process_frame
-	var lift_still := rig.global_position == after_pinch_pos and cam.zoom.x == after_pinch_zoom
-	# Renumbered: finger 1 now reported as index 0, relative from finger 0.
 	var bogus := InputEventScreenDrag.new()
 	bogus.index = 0
 	bogus.position = b + Vector2(1, 0)
 	bogus.relative = b + Vector2(1, 0) - a
 	_send(bogus)
 	await process_frame
-	var renumber_still := rig.global_position.distance_to(after_pinch_pos) < 0.01
 	for k in 4:
 		var e := InputEventScreenDrag.new()
 		e.index = 0
 		e.position = b + Vector2(1 + 8 * (k + 1), 0)
-		e.relative = Vector2(500, 0)  # bogus: must not be used
+		e.relative = Vector2(500, 0)
 		_send(e)
 		await process_frame
-	var panned := rig.global_position - after_pinch_pos
 	touch(0, b + Vector2(33, 0), false)
 	await process_frame
-	check(lift_still and renumber_still and panned.is_equal_approx(Vector2(-32, 0) / after_pinch_zoom),
-		"lifting a pinch finger doesn't move the camera (renumbered or bogus motion ignored); the other finger then pans by its own motion (%s)" % panned)
+	check(rig.global_position == Vector2.ZERO and cam.zoom.x == after_pinch_zoom and after_pinch_zoom > 4.0,
+		"lifting a pinch finger (renumbered, bogus motion) leaves zoom (%.2f) and camera (%s) alone" % [cam.zoom.x, rig.global_position])
 
 	# A pinch whose last finger lifts near where it started is not a tap;
 	# a plain tap is exactly one.
@@ -203,7 +180,7 @@ func _init() -> void:
 	touch(0, map_point, true)
 	touch(0, map_point, false)
 	await process_frame
-	check(after_pinch == 0 and clicks == 1 and infos == 0, "pinch fires no tap (%d); a tap fires one harvest (%d), no info (%d)" % [after_pinch, clicks - after_pinch, infos])
+	check(after_pinch == 0 and clicks == 1 and infos == 0, "pinch fires no tap (%d); a tap fires one map tap (%d), no info (%d)" % [after_pinch, clicks - after_pinch, infos])
 
 	# Long press (Phase 16): a finger held still fires info while still down,
 	# and its release is not also a tap.
@@ -214,9 +191,9 @@ func _init() -> void:
 	var info_while_held := infos
 	touch(0, map_point, false)
 	await process_frame
-	check(info_while_held == 1 and infos == 1 and clicks == 0, "long press fires info once while held (%d), no harvest on release (%d)" % [infos, clicks])
+	check(info_while_held == 1 and infos == 1 and clicks == 0, "long press fires info once while held (%d), no map tap on release (%d)" % [infos, clicks])
 
-	# A real mouse (not emulated) still drags 1:1 and clicks.
+	# A real mouse (not emulated): a drag moves nothing and isn't a click.
 	await reset(4.0)
 	clicks = 0
 	var press := InputEventMouseButton.new()
@@ -233,9 +210,9 @@ func _init() -> void:
 	release.position = map_point + Vector2(40, 0)
 	_send(release)
 	await process_frame
-	check(rig.global_position.is_equal_approx(Vector2(-10, 0)) and clicks == 0, "mouse drag pans once (%s, expect (-10, 0)), no click" % rig.global_position)
+	check(rig.global_position == Vector2.ZERO and clicks == 0, "mouse drag doesn't move the camera (%s), no click" % rig.global_position)
 
-	# Mouse buttons (Phase 16): left click harvests, right click shows info.
+	# Mouse buttons: left click is a map tap, right click shows info.
 	clicks = 0
 	infos = 0
 	for button in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
@@ -248,35 +225,7 @@ func _init() -> void:
 		up.pressed = false
 		_send(up)
 		await process_frame
-	check(clicks == 1 and infos == 1, "left click harvests (%d), right click shows info (%d)" % [clicks, infos])
-
-	# Momentum (polish): a flick glides on after release and slows to a stop;
-	# a drag that stopped before release doesn't glide.
-	rig.momentum = true
-	await reset(4.0)
-	p = map_point
-	touch(0, p, true)
-	for k in 5:
-		drag(0, p, p + Vector2(30, 0))
-		p += Vector2(30, 0)
-		await process_frame
-	touch(0, p, false)
-	var at_release := rig.global_position
-	var gliding: bool = rig.is_gliding()
-	for k in 5:
-		await process_frame
-	var after_glide := rig.global_position
-	await create_timer(1.5).timeout
-	var stopped: bool = not rig.is_gliding()
-	check(gliding and after_glide.x < at_release.x - 0.5 and stopped,
-		"a flick keeps gliding the same way after release (%.1f -> %.1f) and comes to a stop" % [at_release.x, after_glide.x])
-	await reset(4.0)
-	p = map_point
-	touch(0, p, true)
-	drag(0, p, p + Vector2(40, 0))
-	await create_timer(0.3).timeout
-	touch(0, p + Vector2(40, 0), false)
-	check(not rig.is_gliding(), "a drag that stopped before release doesn't glide")
+	check(clicks == 1 and infos == 1, "left click is a map tap (%d), right click shows info (%d)" % [clicks, infos])
 
 	# Wheel zoom eases to its target instead of jumping.
 	await reset(2.0)
@@ -291,7 +240,22 @@ func _init() -> void:
 	await create_timer(0.8).timeout
 	check(first == 2.0 and eased > 2.0 and eased < 2.0 * rig.zoom_factor and is_equal_approx(cam.zoom.x, 2.0 * rig.zoom_factor),
 		"wheel zoom eases (2.00 -> %.3f -> %.3f, target %.3f)" % [eased, cam.zoom.x, 2.0 * rig.zoom_factor])
-	rig.momentum = false
+
+	# Following: the player moves freely inside the zone; past its edge the
+	# camera eases along until they are back at the edge - not centred.
+	await reset(4.0)
+	var zone: Vector2 = root.get_viewport().get_visible_rect().size / cam.zoom * rig.FOLLOW_ZONE
+	player.teleport(zone * 0.5)
+	for k in 10:
+		await process_frame
+	var inside_still := rig.global_position == Vector2.ZERO
+	player.teleport(Vector2(zone.x + 40.0, 0))
+	await process_frame
+	var first_step := rig.global_position.x
+	await create_timer(1.5).timeout
+	var offset := player.position - rig.global_position
+	check(inside_still and first_step > 0.0 and first_step < 40.0 and absf(offset.x - zone.x) < 0.5 and absf(offset.y) < 0.01,
+		"camera still while the player is inside the follow zone; past it, eases (first step %.1f of 40 px) until the player is back at the zone edge (offset %.1f, edge %.1f), not locked on" % [first_step, offset.x, zone.x])
 
 	# On-screen keyboard (mobile web): a tap or click on the map releases a
 	# focused text field (hiding the keyboard), and so does applying a seed.

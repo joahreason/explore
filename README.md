@@ -2,14 +2,14 @@
 
 A procedural 2D top-down world generator built in Godot 4.7, deployed as a web build to [joahreason.github.io/explore](https://joahreason.github.io/explore/).
 
-The world is infinite and deterministic per seed: chunks stream in around the camera as you pan, and every tile's terrain, biome, and history are derived from a set of interacting environmental fields (elevation, temperature, moisture, geology, erosion, disturbance, water topology, and more) rather than painted or hand-authored.
+The world is infinite and deterministic per seed: chunks stream in around the camera as you explore, and every tile's terrain, biome, and history are derived from a set of interacting environmental fields (elevation, temperature, moisture, geology, erosion, disturbance, water topology, and more) rather than painted or hand-authored.
 
 ## Controls
 
-- **Pan**: click-and-drag (mouse), one-finger drag (touch); a flick keeps gliding briefly
+- **Move**: left-click / tap the ground - the player walks there, around water (frozen water can be crossed); a spot that can't be reached walks to the closest point. The camera follows loosely: the player can move around the middle of the screen before it scrolls along. Dragging doesn't pan
 - **Zoom**: scroll wheel (mouse, eased), pinch (touch)
-- **Hover** (mouse only): the object a left click would harvest gets a thin outline
-- **Harvest**: left-click / tap a placed resource (without dragging) to harvest it - it disappears and stays gone: harvests are saved automatically per world seed (`user://world_changes/<seed>.json`; browser storage on web)
+- **Hover** (mouse only): the object a left click would walk to and harvest gets a thin outline
+- **Harvest**: left-click / tap a placed resource - the player walks up to it and harvests it (another tap on the way cancels). It disappears and stays gone: harvests, the player's position and the time are saved automatically per world seed (`user://world_changes/<seed>.json`; browser storage on web)
 - **Inspect a tile**: right-click / long-press it to open a panel showing the placed resource under the click (e.g. "Oak (Canopy Trees)"), its full generated field data plus classified biome/subtype/modifiers
 - **B**: toggle the Base Biome overlay (region outlines + labels)
 

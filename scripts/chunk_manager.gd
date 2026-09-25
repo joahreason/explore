@@ -211,6 +211,9 @@ enum ViewMode {
 @export var world_gen_params: WorldGen
 @export var world_seed: int = 1337
 @export var target_path: NodePath
+## The player (scripts/player.gd): taps walk it (see _on_map_tapped()), its
+## position is saved per seed, biome travel moves it.
+@export var player_path: NodePath
 ## Generate chunks on a worker thread where threads exist; off = always on
 ## the main thread (the web fallback), e.g. for debugging.
 @export var threaded_generation: bool = true
@@ -231,6 +234,11 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 @onready var _seed_input: LineEdit = $UI/SeedInput
 
 var _target: Node2D
+var _player: Node2D
+## Tile -> whether the player can stand there (not open water; frozen water
+## is walkable). Filled for free wherever a chunk image is baked tile by
+## tile, else sampled on demand (is_walkable()); guarded by _gen_mutex.
+var _walkable: Dictionary = {}
 var _world_gen: WorldGen
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
@@ -307,6 +315,9 @@ func _ready() -> void:
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
+	if player_path != NodePath():
+		_player = get_node(player_path)
+		_player.set_shadow_material(shadow_material)
 	_load_gameplay_state()
 
 	# A guild's warnings include its members' (oak among them).
@@ -320,7 +331,9 @@ func _ready() -> void:
 	if target_path != NodePath():
 		_target = get_node(target_path)
 		_target.connect("info_clicked", _on_tile_clicked)
-		_target.connect("harvest_clicked", _on_harvest_clicked)
+		_target.connect("map_tapped", _on_map_tapped)
+		if _target.has_method("snap_to_player"):
+			_target.snap_to_player()
 
 	if threaded_generation and _threads_available():
 		_worker = Thread.new()
@@ -400,6 +413,8 @@ func regenerate(seed_text: String) -> void:
 	_invalidate_chunks()
 	_finder_cancel = true  # a running search is looking at the old world
 	_travel_visited.clear()
+	if _target and _target.has_method("snap_to_player"):
+		_target.snap_to_player()
 
 
 func _threads_available() -> bool:
@@ -421,7 +436,7 @@ func travel_to_biome(biome: String) -> void:
 	_finder_biome = biome
 	_finder_seed = world_seed
 	_finder_cancel = false
-	var pos := _target.global_position if _target else Vector2.ZERO
+	var pos := _player.position if _player else (_target.global_position if _target else Vector2.ZERO)
 	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
 	var avoid: Array = _travel_visited.get(biome, []).duplicate()
 	if _threads_available():
@@ -447,7 +462,9 @@ func _finish_biome_travel() -> void:
 	var found := not cancelled and _finder_result != null
 	if found:
 		var tile: Vector2i = _finder_result
-		if _target:
+		if _player:
+			teleport_player((Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE)
+		elif _target:
 			_target.global_position = (Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE
 		var visited: Array = _travel_visited.get(_finder_biome, [])
 		visited.append(tile)
@@ -1017,6 +1034,7 @@ func clear_generation_caches() -> void:
 	_raw_guild_chunks.clear()
 	_density_chunks.clear()
 	_env_chunks.clear()
+	_walkable.clear()
 	_gen_mutex.unlock()
 
 
@@ -1099,6 +1117,8 @@ func _bake_rows(img: Image, chunk_coord: Vector2i, lod_step: int, y0: int, y1: i
 			var wy := base.y + ly * lod_step + lod_step / 2
 			var sample := _world_gen.sample(wx, wy)
 			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
+			if lod_step == 1:
+				_walkable[Vector2i(wx, wy)] = _walkable_sample(sample)
 
 
 ## Fills _tile_env() for tile rows y0..y1-1 of a chunk (a warm-up job step).
@@ -1588,8 +1608,8 @@ func changes_path() -> String:
 	return "%s/%d.json" % [changes_dir, world_seed]
 
 
-## Phase 16, driven by CameraRig's "harvest_clicked" (a left click / tap
-## that wasn't a drag): harvests the resource under the click - the same
+## Phase 16: harvests the resource at `world_pos` - the player's tap walks
+## up to it first (_on_map_tapped()) - the resource under the click - the same
 ## pick as the inspector, ignoring what's already harvested - records it in
 ## the gameplay changes, saves them, and redraws that chunk's markers.
 ## Returns the harvested ResourceInstance, or null if nothing was there.
@@ -1726,12 +1746,17 @@ func debug_breakdown(wx: int, wy: int) -> Array[String]:
 func _load_gameplay_state() -> void:
 	_changes.load_file(changes_path(), world_seed)
 	clock.minutes = _changes.time_minutes if _changes.time_minutes >= 0.0 else GameClockScript.START_MINUTES
+	if _player:
+		_player.teleport(_changes.player_position if _changes.has_player_position else _nearest_walkable(Vector2i.ZERO))
 
 
 ## Saves the changes and the current time for this seed (nothing under a
 ## test harness with the default dir - see changes_path()).
 func _save_gameplay_state() -> void:
 	_changes.time_minutes = clock.minutes
+	if _player:
+		_changes.player_position = _player.position
+		_changes.has_player_position = true
 	_changes.save(changes_path(), world_seed)
 
 
@@ -1743,6 +1768,187 @@ func _notification(what: int) -> void:
 ## Views the day/night cycle tints (DayNight): the gameplay views only.
 func is_time_tinted_view() -> bool:
 	return _view_mode == ViewMode.RESOURCES or _view_mode == ViewMode.MATERIAL
+
+
+## Player (user request): a tap / left click (CameraRig "map_tapped") walks
+## the player there along find_path() - around water; to the nearest
+## reachable tile if the spot itself can't be reached. Tapping a resource
+## walks up to it (within one tile) and harvests it on arrival
+## (_on_harvest_clicked()), unless another tap redirects the player first.
+## Returns the path.
+func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
+	if _player == null:
+		_on_harvest_clicked(world_pos)
+		return []
+	var inst := hover_target(world_pos / TILE_SIZE)
+	var goal := Vector2i((world_pos / TILE_SIZE).floor())
+	var on_arrive := Callable()
+	if not inst.is_empty():
+		goal = Vector2i((inst["position"] as Vector2).floor())
+		var target := (Vector2(goal) + Vector2(0.5, 0.5)) * TILE_SIZE
+		on_arrive = func() -> void: _on_harvest_clicked(target)
+	_gen_mutex.lock()
+	var path := find_path(_player.tile(), goal, not inst.is_empty())
+	_gen_mutex.unlock()
+	# Stopped short of a tapped resource (unreachable): no harvest.
+	if not inst.is_empty():
+		var end: Vector2i = path[-1] if not path.is_empty() else _player.tile()
+		if maxi(absi(end.x - goal.x), absi(end.y - goal.y)) > 1:
+			on_arrive = Callable()
+	_player.walk(path, on_arrive)
+	return path
+
+
+## Moves the player to the walkable tile nearest `world_pos` (its centre if
+## the spot itself is water) and centres the camera on them.
+func teleport_player(world_pos: Vector2) -> void:
+	if _player == null:
+		return
+	var tile := Vector2i((world_pos / TILE_SIZE).floor())
+	_gen_mutex.lock()
+	var walkable := is_walkable(tile)
+	_gen_mutex.unlock()
+	_player.teleport(world_pos if walkable else _nearest_walkable(tile))
+	if _target and _target.has_method("snap_to_player"):
+		_target.snap_to_player()
+
+
+## Max tiles A* expands per path: enough to route round a lake across the
+## screen; beyond it the player heads for the closest tile found.
+const MAX_PATH_NODES := 6000
+const PATH_STEPS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
+
+
+## A* over tiles, 8 directions (no cutting a corner past water): the tiles
+## to step through from `from` (excluded) to `to`, or to within one tile of
+## it with `near` (walking up to a resource). If `to` can't be reached
+## within MAX_PATH_NODES, the path to the closest tile explored. Call with
+## _gen_mutex held (is_walkable() may sample).
+func find_path(from: Vector2i, to: Vector2i, near: bool = false) -> Array[Vector2i]:
+	var done := func(t: Vector2i) -> bool:
+		return t == to or (near and maxi(absi(t.x - to.x), absi(t.y - to.y)) <= 1)
+	var came := {from: from}
+	var cost := {from: 0.0}
+	var open_f: Array[float] = [_octile(from, to)]
+	var open_t: Array[Vector2i] = [from]
+	var best := from
+	var best_h := _octile(from, to)
+	var expanded := 0
+	var reached := false
+	while not open_t.is_empty() and expanded < MAX_PATH_NODES:
+		var current: Vector2i = _heap_pop(open_f, open_t)
+		if done.call(current):
+			best = current
+			reached = true
+			break
+		expanded += 1
+		var h := _octile(current, to)
+		if h < best_h:
+			best_h = h
+			best = current
+		for step in PATH_STEPS:
+			var next: Vector2i = current + step
+			if not is_walkable(next):
+				continue
+			if step.x != 0 and step.y != 0 and not (is_walkable(current + Vector2i(step.x, 0)) and is_walkable(current + Vector2i(0, step.y))):
+				continue
+			var g: float = cost[current] + (1.41421356 if step.x != 0 and step.y != 0 else 1.0)
+			if g < cost.get(next, INF):
+				cost[next] = g
+				came[next] = current
+				_heap_push(open_f, open_t, g + _octile(next, to), next)
+	var path: Array[Vector2i] = []
+	var t := best
+	while t != from:
+		path.push_front(t)
+		t = came[t]
+	return path
+
+
+static func _octile(a: Vector2i, b: Vector2i) -> float:
+	var dx := absi(a.x - b.x)
+	var dy := absi(a.y - b.y)
+	return maxi(dx, dy) + 0.41421356 * mini(dx, dy)
+
+
+static func _heap_push(f: Array[float], t: Array[Vector2i], priority: float, tile: Vector2i) -> void:
+	f.append(priority)
+	t.append(tile)
+	var i := f.size() - 1
+	while i > 0:
+		var parent := (i - 1) / 2
+		if f[parent] <= f[i]:
+			break
+		var pf := f[parent]
+		f[parent] = f[i]
+		f[i] = pf
+		var pt := t[parent]
+		t[parent] = t[i]
+		t[i] = pt
+		i = parent
+
+
+static func _heap_pop(f: Array[float], t: Array[Vector2i]) -> Vector2i:
+	var top := t[0]
+	var last := f.size() - 1
+	f[0] = f[last]
+	t[0] = t[last]
+	f.resize(last)
+	t.resize(last)
+	var i := 0
+	while true:
+		var l := i * 2 + 1
+		var r := l + 1
+		var m := i
+		if l < f.size() and f[l] < f[m]:
+			m = l
+		if r < f.size() and f[r] < f[m]:
+			m = r
+		if m == i:
+			break
+		var mf := f[m]
+		f[m] = f[i]
+		f[i] = mf
+		var mt := t[m]
+		t[m] = t[i]
+		t[i] = mt
+		i = m
+	return top
+
+
+## Whether the player can stand on a tile: anything but open water (a sea,
+## lake or river that isn't frozen solid). Call with _gen_mutex held.
+func is_walkable(tile: Vector2i) -> bool:
+	var known = _walkable.get(tile)
+	if known != null:
+		return known
+	if _walkable.size() > 400000:
+		_walkable.clear()
+	var walkable := _walkable_sample(_world_gen.sample(tile.x, tile.y))
+	_walkable[tile] = walkable
+	return walkable
+
+
+static func _walkable_sample(sample: Dictionary) -> bool:
+	return TerrainSurfaceScript.water_liquid(sample) <= 0.0
+
+
+## The walkable tile nearest `tile` (spiral search), as a world position at
+## its centre; `tile` itself if none within 64 tiles.
+func _nearest_walkable(tile: Vector2i) -> Vector2:
+	_gen_mutex.lock()
+	var found := tile
+	var done := is_walkable(tile)
+	for r in range(1, 65):
+		if done:
+			break
+		for dy in range(-r, r + 1):
+			for dx in [-r, r] if absi(dy) != r else range(-r, r + 1):
+				if not done and is_walkable(tile + Vector2i(dx, dy)):
+					found = tile + Vector2i(dx, dy)
+					done = true
+	_gen_mutex.unlock()
+	return (Vector2(found) + Vector2(0.5, 0.5)) * TILE_SIZE
 
 
 ## Polish (HoverHighlight): the resource a left click at `point` (tile

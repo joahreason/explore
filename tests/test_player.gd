@@ -1,0 +1,171 @@
+extends SceneTree
+
+## The player (user request, before Phase 19): taps walk it along A* paths
+## that go round water and never cut a corner past it; a tap it can't reach
+## walks to the closest reachable tile; tapping a resource walks up to it
+## and harvests it on arrival (another tap on the way cancels that); a new
+## world spawns it on dry land near the origin; its position is saved per
+## seed; biome travel and teleports land it on dry land with the camera
+## centred on it. Run via tests/run_tests.sh.
+
+const SEED := 4242
+const DIR := "user://test_player"
+
+var _fails := 0
+var _passes := 0
+
+
+func check(cond: bool, msg: String) -> void:
+	print(("PASS " if cond else "FAIL ") + msg)
+	if cond:
+		_passes += 1
+	else:
+		_fails += 1
+
+
+func _init() -> void:
+	_clean()
+	var world: Node2D = await _world()
+	var player: Node2D = world.get_node("Player")
+	player.walk_speed = 60.0  # headless frames are short; same paths, sooner
+	var rig: Node2D = world.get_node("CameraRig")
+	# The same placed resource: species and exact position.
+	var same := func(a: Dictionary, b: Dictionary) -> bool:
+		return not a.is_empty() and not b.is_empty() and a["id"] == b["id"] and a["position"] == b["position"]
+	var walkable := func(t: Vector2i) -> bool:
+		world._gen_mutex.lock()
+		var w: bool = world.is_walkable(t)
+		world._gen_mutex.unlock()
+		return w
+
+	check(walkable.call(player.tile()) and rig.global_position == player.position,
+		"a new world spawns the player on dry land near the origin (%s), camera on them" % player.tile())
+
+	# A path around water: find a water tile with land on both sides along x.
+	var lake := Vector2i(1 << 30, 0)
+	for r in range(0, 400, 2):
+		for y in range(-r, r + 1, 2):
+			for x in [-r, r]:
+				var t := Vector2i(x, y)
+				if lake.x == 1 << 30 and not walkable.call(t) and walkable.call(t + Vector2i(-12, 0)) and not walkable.call(t + Vector2i(-6, 0)):
+					lake = t
+		if lake.x != 1 << 30:
+			break
+	var from: Vector2i = lake + Vector2i(-12, 0)
+	var to: Vector2i = lake
+	world._gen_mutex.lock()
+	var path: Array[Vector2i] = world.find_path(from, to)
+	var path_ok := not path.is_empty()
+	var prev := from
+	for t in path:
+		var step: Vector2i = t - prev
+		path_ok = path_ok and world.is_walkable(t) and maxi(absi(step.x), absi(step.y)) == 1
+		if step.x != 0 and step.y != 0:
+			path_ok = path_ok and world.is_walkable(prev + Vector2i(step.x, 0)) and world.is_walkable(prev + Vector2i(0, step.y))
+		prev = t
+	world._gen_mutex.unlock()
+	var end: Vector2i = path[-1] if not path.is_empty() else from
+	check(path_ok and end != to and Vector2(end - to).length() < Vector2(from - to).length(),
+		"tapping water (%s) from %s: a path of %d steps over dry land, no cut corners, ending at the closest reachable tile %s" % [to, from, path.size(), end])
+
+	# Walking: a tap on open ground a few tiles away gets there.
+	world.teleport_player((Vector2(from) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var goal: Vector2i = end
+	var tapped: Array[Vector2i] = world._on_map_tapped((Vector2(goal) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var frames := 0
+	while player.is_walking() and frames < 600:
+		await process_frame
+		frames += 1
+	check(not tapped.is_empty() and player.tile() == goal and not player.is_walking(), "a tap walks the player there (%s in %d frames)" % [player.tile(), frames])
+
+	# Tapping a resource: walks up to it and harvests it on arrival.
+	var target := {}
+	var near: Vector2i = player.tile()
+	for r in range(2, 40):
+		for dy in range(-r, r + 1):
+			for dx in [-r, r]:
+				if target.is_empty():
+					var inst: Dictionary = world.hover_target(Vector2(near + Vector2i(dx, dy)) + Vector2(0.5, 0.5))
+					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())):
+						target = inst
+		if not target.is_empty():
+			break
+	var tile: Vector2i = Vector2i((target["position"] as Vector2).floor())
+	var tap_at: Vector2 = (Vector2(tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	world._on_map_tapped(tap_at)
+	var before_arrival: bool = same.call(world.hover_target(tap_at / world.TILE_SIZE), target)
+	frames = 0
+	while player.is_walking() and frames < 1200:
+		await process_frame
+		frames += 1
+	var d: Vector2i = player.tile() - tile
+	check(before_arrival and maxi(absi(d.x), absi(d.y)) <= 1 and not same.call(world.hover_target(tap_at / world.TILE_SIZE), target),
+		"tapping a %s walks up to it (stopped %s away) and harvests it on arrival" % [target.get("id", "?"), d])
+
+	# A second tap on the way cancels the harvest.
+	var other := {}
+	for r in range(2, 40):
+		for dy in range(-r, r + 1):
+			for dx in [-r, r]:
+				if other.is_empty():
+					var inst: Dictionary = world.hover_target(Vector2(player.tile() + Vector2i(dx, dy)) + Vector2(0.5, 0.5))
+					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())):
+						other = inst
+		if not other.is_empty():
+			break
+	var other_at: Vector2 = ((other["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var empty: Vector2i = player.tile()
+	for r in range(3, 40):
+		for dx in [-r, r]:
+			var t: Vector2i = player.tile() + Vector2i(dx, 0)
+			if empty == player.tile() and walkable.call(t) and world.hover_target(Vector2(t) + Vector2(0.5, 0.5)).is_empty() and Vector2(t - Vector2i((other["position"] as Vector2).floor())).length() > 3.0:
+				empty = t
+	world._on_map_tapped(other_at)
+	world._on_map_tapped((Vector2(empty) + Vector2(0.5, 0.5)) * world.TILE_SIZE)  # redirect to bare ground
+	for f in 60:
+		await process_frame
+	check(same.call(world.hover_target(other_at / world.TILE_SIZE), other), "another tap on the way cancels the harvest (%s still stands)" % other.get("id", "?"))
+
+	# Saved per seed: a reloaded world puts the player back.
+	var saved: Vector2 = player.position
+	world._save_gameplay_state()
+	world.queue_free()
+	await process_frame
+	var world2: Node2D = await _world()
+	var player2: Node2D = world2.get_node("Player")
+	check(player2.position.is_equal_approx(saved) and world2.get_node("CameraRig").global_position == player2.position,
+		"a reloaded world puts the player back where they stood (%s), camera on them" % player2.tile())
+
+	# Teleporting onto water lands on the nearest dry tile.
+	world2.teleport_player((Vector2(lake) + Vector2(0.5, 0.5)) * world2.TILE_SIZE)
+	world2._gen_mutex.lock()
+	var dry: bool = world2.is_walkable(player2.tile())
+	world2._gen_mutex.unlock()
+	check(dry and Vector2(player2.tile() - lake).length() < 12.0 and world2.get_node("CameraRig").global_position == player2.position,
+		"teleporting onto water lands on the nearest dry tile (%s, %.1f tiles off)" % [player2.tile(), Vector2(player2.tile() - lake).length()])
+	world2.queue_free()
+	await process_frame
+
+	_clean()
+	print("RESULT %d passed, %d failed" % [_passes, _fails])
+	quit(1 if _fails > 0 else 0)
+
+
+func _world() -> Node2D:
+	var world: Node2D = load("res://world.tscn").instantiate()
+	world.world_seed = SEED
+	world.changes_dir = DIR
+	world.threaded_generation = false
+	root.add_child(world)
+	await process_frame
+	world.flush_chunk_work()
+	return world
+
+
+func _clean() -> void:
+	var d := DirAccess.open(DIR)
+	if d == null:
+		return
+	for f in d.get_files():
+		d.remove(f)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR))
