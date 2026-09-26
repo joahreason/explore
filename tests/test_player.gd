@@ -198,7 +198,7 @@ func _init() -> void:
 		await process_frame
 	check(same.call(world.hover_target(other_at / world.TILE_SIZE), other), "another tap on the way cancels the harvest (%s still stands)" % other.get("id", "?"))
 
-	# Tapping a camp tent: walk up, go inside (hidden), sleep until 20:00.
+	# Tapping a camp tent: walk up, go inside (hidden), sleep until night start.
 	world._gen_mutex.lock()
 	var camp_at = world._structures.find("camp", player.tile())
 	var camp: Dictionary = world._structures.site_at(camp_at) if camp_at != null else {}
@@ -237,7 +237,8 @@ func _init() -> void:
 		await process_frame
 		frames += 1
 	await process_frame
-	check(not world.is_in_tent() and player.visible and world.clock.time_text().begins_with("20:0") and world.clock.rate() == 1.0,
+	var night_start := GameClock.NIGHT_START_HOUR * 60
+	check(not world.is_in_tent() and player.visible and world.clock.time_text().begins_with("%02d:%d" % [int(night_start / 60), int(fmod(night_start, 60)) / 10]) and world.clock.rate() == 1.0,
 		"at night start the player comes out and time runs at normal speed (%s)" % world.clock.time_text())
 	var z_alpha := 0.0
 	if is_instance_valid(effect):

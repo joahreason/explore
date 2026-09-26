@@ -69,9 +69,12 @@ func _init() -> void:
 
 	# Sleeping in a tent: fast-forward to the next night start or dawn.
 	var d0 := 3.0 * GameClock.MINUTES_PER_DAY
-	check(GameClock.next_wake(d0 + 8 * 60) == d0 + 20 * 60 and GameClock.next_wake(d0 + 21 * 60) == d0 + GameClock.MINUTES_PER_DAY + 4.5 * 60
-		and GameClock.next_wake(d0 + 3 * 60) == d0 + 4.5 * 60 and GameClock.next_wake(d0 + 19.5 * 60) == d0 + GameClock.MINUTES_PER_DAY + 4.5 * 60,
-		"sleep wakes at the next night start (20:00) or dawn (04:30), whichever comes first at least an hour away")
+	var night_start := GameClock.NIGHT_START_HOUR * 60
+	var dawn_start := GameClock.DAWN_START_HOUR * 60
+	var clock_text := func(m: float) -> String: return "%02d:%02d" % [int(m / 60), int(fmod(m, 60))]
+	check(GameClock.next_wake(d0 + 8 * 60) == d0 + night_start and GameClock.next_wake(d0 + 21 * 60) == d0 + GameClock.MINUTES_PER_DAY + dawn_start
+		and GameClock.next_wake(d0 + dawn_start - 3 * 60) == d0 + dawn_start and GameClock.next_wake(d0 + night_start - 30) == d0 + GameClock.MINUTES_PER_DAY + dawn_start,
+		"sleep wakes at the next night start (%s) or dawn (%s), whichever comes first at least an hour away" % [clock_text.call(night_start), clock_text.call(dawn_start)])
 	var sl := GameClock.new()
 	sl.minutes = d0 + 8 * 60
 	sl.fast_forward()
@@ -89,8 +92,8 @@ func _init() -> void:
 		jump = maxf(jump, absf(r - last_rate))
 		last_rate = r
 		end_rates.append(r)
-	check(not sl.sleeping and sl.minutes == d0 + 20 * 60 and sl.rate() == 1.0 and sl.speed_text() == "",
-		"a sleep from 08:00 ends exactly at 20:00, back at normal speed (%s)" % sl.time_text())
+	check(not sl.sleeping and sl.minutes == d0 + night_start and sl.rate() == 1.0 and sl.speed_text() == "",
+		"a sleep from 08:00 ends exactly at night start (%s), back at normal speed (%s)" % [clock_text.call(night_start), sl.time_text()])
 	check(real > 1.5 and real < 6.0 and peak > 0.9 * GameClock.SLEEP_SPEED,
 		"12 hours pass in %.1f real seconds at up to x%d" % [real, int(peak)])
 	check(jump < 0.1 * GameClock.SLEEP_SPEED and end_rates[end_rates.size() - 10] < 0.05 * GameClock.SLEEP_SPEED,
