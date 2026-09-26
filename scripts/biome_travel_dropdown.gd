@@ -6,12 +6,14 @@ extends OptionButton
 ## the biomes, after a separator: picking one goes to the nearest site of
 ## it (StructureSites.find()), the next one on each repeat. The first item is a
 ## placeholder the menu returns to, so picking the same biome again hops on.
+## While a search runs the menu shows it, and the first item cancels it.
 ## Sits just below the view dropdown (which moves up on desktop - see
 ## reload_button.gd).
 
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const StructureSitesScript := preload("res://scripts/structure_sites.gd")
 const PLACEHOLDER := "Go to..."
+const CANCEL := "Cancel search"
 const SPACING := 8
 
 @onready var _world := get_node("../..")
@@ -34,17 +36,20 @@ func _ready() -> void:
 
 
 func _on_item_selected(index: int) -> void:
+	if _world.is_finding_biome():
+		_world.cancel_biome_travel()  # any pick while searching cancels
+		return
 	if index == 0:
 		return
 	var biome := get_item_text(index)
-	disabled = true
 	_world.travel_to_biome(biome)
 	if _world.is_finding_biome():
+		set_item_text(0, CANCEL)
 		text = "Finding %s..." % biome
 
 
 func _on_travel_finished(biome: String, found: bool, cancelled: bool) -> void:
-	disabled = false
+	set_item_text(0, PLACEHOLDER)
 	select(0)
 	if not found and not cancelled:
 		text = "No %s nearby" % biome

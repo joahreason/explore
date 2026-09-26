@@ -119,6 +119,8 @@ const MAX_PLACEMENT_LOD_STEP := 2
 ## Without a worker thread: time per frame spent on chunk job steps on the
 ## main thread (at least one step per frame while any are queued).
 const INLINE_BUDGET_USEC := 5000
+## Review W1: main-thread time per frame for a "Go to" search without threads.
+const TRAVEL_BUDGET_USEC := 4000
 ## Pixel rows a chunk job bakes per step (see _chunk_job_steps). 2 since
 ## Phase 13.5: choosing each tile's ground costs ~50 us, so a 4-row band was
 ## ~4.5 ms on desktop - too big a step for the web fallback.
@@ -320,6 +322,7 @@ var _finder_thread: Thread
 var _finder_biome: String = ""
 var _finder_seed: int = 0
 var _finder_result: Variant = null  # written by the search thread, read after it finishes
+var _finder_search: RefCounted  # a search stepped from _process() where there's no thread (web)
 var _finder_cancel: bool = false
 var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
 var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
@@ -444,9 +447,11 @@ func _threads_available() -> bool:
 ## Biome travel dropdown: moves the camera to the nearest tile of `biome`
 ## (a BiomeClassifier base biome name) - or, if the camera already stands in
 ## that biome, to the nearest other patch of it; repeated trips to the same
-## biome hop onward (see BiomeFinder). The search takes up to a few seconds,
-## so it runs on a thread (inline where threads are unavailable) and
-## biome_travel_finished reports the outcome. Ignored while a search runs.
+## biome hop onward (see BiomeFinder). The search can take seconds, so it
+## runs on a thread, or without threads (web, threaded_generation off) a
+## slice per frame from _process() (TRAVEL_BUDGET_USEC); either way
+## biome_travel_finished reports the outcome. Ignored while a search runs;
+## cancel_biome_travel() stops one.
 func travel_to_biome(biome: String) -> void:
 	if is_finding_biome():
 		return
@@ -459,30 +464,45 @@ func travel_to_biome(biome: String) -> void:
 	var pos: Vector2 = _player.tile_center(_player.tile()) if _player else (_target.global_position if _target else Vector2.ZERO)
 	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
 	var avoid: Array = _travel_visited.get(biome, []).duplicate()
-	if _threads_available():
+	_finder_result = null
+	var search := _new_search(biome, start, avoid)
+	if threaded_generation and _threads_available():
 		_finder_thread = Thread.new()
-		_finder_thread.start(_find_biome.bind(biome, start, avoid))
+		_finder_thread.start(_run_search.bind(search))
 	else:
-		_find_biome(biome, start, avoid)
-		_finish_biome_travel()
+		_finder_search = search
 
 
 func is_finding_biome() -> bool:
-	return _finder_thread != null
+	return _finder_thread != null or _finder_search != null
 
 
-## Landmark layer: a structure's display name (StructureSites.DEFINITIONS)
-## searches sites directly - the nearest site of that type other than one
-## at the start or already visited - instead of scanning tiles.
-func _find_biome(biome: String, start: Vector2i, avoid: Array) -> void:
-	var cancel := func() -> bool: return _finder_cancel
+## Stops a running "Go to" search; biome_travel_finished then reports it
+## cancelled.
+func cancel_biome_travel() -> void:
+	if is_finding_biome():
+		_finder_cancel = true
+
+
+## The search for a travel target, not yet run: BiomeFinder, or for a
+## structure's display name (StructureSites.DEFINITIONS) a StructureSites
+## search - the nearest site of that type other than one at the start or
+## already visited - instead of scanning tiles. Both step() until done.
+func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
 	for def in StructureSitesScript.DEFINITIONS:
 		if def.display_name == biome:
 			if _finder_sites == null or _finder_sites.world_seed != _finder_seed:
 				_finder_sites = StructureSitesScript.new(_finder_gen, _finder_seed)
-			_finder_result = _finder_sites.find(def.id, start, avoid, cancel)
+			return _finder_sites.search(def.id, start, avoid)
+	return BiomeFinderScript.new(_finder_gen, biome, start, avoid)
+
+
+## The search thread: runs `search` to the end unless cancelled.
+func _run_search(search: RefCounted) -> void:
+	while not search.step(Time.get_ticks_usec() + 20000):
+		if _finder_cancel:
 			return
-	_finder_result = BiomeFinderScript.find(_finder_gen, biome, start, avoid, cancel)
+	_finder_result = search.result
 
 
 ## Main thread, once the search is done: moves the camera there (chunks
@@ -558,6 +578,11 @@ func _process(delta: float) -> void:
 	if _finder_thread != null and not _finder_thread.is_alive():
 		_finder_thread.wait_to_finish()
 		_finder_thread = null
+		_finish_biome_travel()
+	if _finder_search != null and (_finder_cancel or _finder_search.step(Time.get_ticks_usec() + TRAVEL_BUDGET_USEC)):
+		if not _finder_cancel:
+			_finder_result = _finder_search.result
+		_finder_search = null
 		_finish_biome_travel()
 	_refresh_streaming()
 	if _worker == null:
@@ -1592,12 +1617,27 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
+	var candidates := []
+	for guild in GUILD_STACK:
+		candidates.append([guild, stack[guild]])
+	var best := _pick(point, candidates, include_harvested)
+	if not best.is_empty():
+		best["name"] = String(best["id"]).capitalize()
+		best["guild_name"] = String(best["guild"]).capitalize()
+		best["entity"] = get_resource_instance(best)
+	return best
+
+
+## The pick rule of _resource_at() over `candidates`, [[source (a guild or
+## ResourceDefinition), instances], ...]; a copy of the picked instance, or {}.
+func _pick(point: Vector2, candidates: Array, include_harvested: bool) -> Dictionary:
+	var tile := Vector2i(floori(point.x), floori(point.y))
 	var best := {}
 	var best_dist := INF
 	var sprites := _view_mode == ViewMode.RESOURCES
-	for guild in GUILD_STACK:
-		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
-		for inst in stack[guild]:
+	for layer in candidates:
+		var reach := maxf(layer[0].minimum_spacing * 0.35, 0.5)
+		for inst in layer[1]:
 			if not include_harvested and _changes.is_instance_harvested(inst):
 				continue
 			var pos: Vector2 = inst["position"]
@@ -1613,11 +1653,26 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 			if (in_tile or near) and dist < best_dist:
 				best = inst.duplicate()
 				best_dist = dist
-	if not best.is_empty():
-		best["name"] = String(best["id"]).capitalize()
-		best["guild_name"] = String(best["guild"]).capitalize()
-		best["entity"] = get_resource_instance(best)
 	return best
+
+
+## The shown instances standing within 2 tiles of `tile` (the rect
+## _resource_at() places), as _pick() candidates: what the current view
+## draws, nothing where it draws no markers (heatmap and terrain views,
+## zoomed out past MAX_PLACEMENT_LOD_STEP). Main thread; no generation.
+func _drawn_near(tile: Vector2i) -> Array:
+	var rect := Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5))
+	var result := []
+	var center := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			for entry in _chunk_placements.get(center + Vector2i(dx, dy), []):
+				if entry[0][0] == null:  # skip the structure-parts layer
+					continue
+				var near := (entry[1] as Array).filter(func(inst): return rect.has_point(Vector2i((inst["position"] as Vector2).floor())))
+				if not near.is_empty():
+					result.append([entry[0][0], near])
+	return result
 
 
 ## Whether the World view draws an opaque pixel of `inst`'s sprite at
@@ -1789,13 +1844,14 @@ func changes_path() -> String:
 
 
 ## Phase 16: harvests the resource at `world_pos` - the player's tap walks
-## up to it first (_on_map_tapped()) - the resource under the click - the same
-## pick as the inspector, ignoring what's already harvested - records it in
-## the gameplay changes, saves them, and redraws that chunk's markers.
+## up to it first (_on_map_tapped()) - the resource under the click, as
+## hover_target() picks it (only what is drawn, ignoring what's already
+## harvested) - records it in the gameplay changes, saves them, and redraws
+## that chunk's markers.
 ## Returns the harvested ResourceInstance, or null if nothing was there.
 func _on_harvest_clicked(world_pos: Vector2):
+	var inst := hover_target(world_pos / TILE_SIZE)
 	_gen_mutex.lock()  # the worker may be generating a chunk
-	var inst := _resource_at(world_pos / TILE_SIZE, false)
 	var entity = get_resource_instance(inst) if not inst.is_empty() else null
 	if entity != null:
 		_changes.harvest(entity.key, entity.resource_id)
@@ -2289,12 +2345,12 @@ func _nearest_walkable(tile: Vector2i) -> Vector2:
 
 
 ## Polish (HoverHighlight): the resource a left click at `point` (tile
-## units) would harvest - _resource_at() without harvested ones - or {}.
+## units) would harvest, or {}: _resource_at()'s pick among what is drawn
+## there (_drawn_near()) and not harvested. It never generates or waits on
+## the worker, so hovering can't stall a frame; where the view draws no
+## markers there's nothing to pick. No "entity" or display names.
 func hover_target(point: Vector2) -> Dictionary:
-	_gen_mutex.lock()
-	var inst := _resource_at(point, false)
-	_gen_mutex.unlock()
-	return inst
+	return _pick(point, _drawn_near(Vector2i(point.floor())), false)
 
 
 ## Polish pass 2: sprites take their season colour (Seasons, per

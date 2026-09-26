@@ -163,5 +163,19 @@ func _init() -> void:
 	await process_frame
 	check(shown and not hover.has_target(), "hover highlight outlines the sprite of the object a click would harvest, and hides after a touch")
 
+	# Picks come from what is drawn (review W2): no placing on the main
+	# thread, and nothing to pick where the view draws no markers.
+	world._raw_guild_chunks.clear()
+	var drawn_pick: Dictionary = world.hover_target(on_art)
+	var placed_nothing: bool = world._raw_guild_chunks.is_empty()
+	world.set_view_mode(world.get_script().ViewMode.MATERIAL)
+	world.flush_chunk_work()
+	world._raw_guild_chunks.clear()
+	var terrain_pick: Dictionary = world.hover_target(on_art)
+	check(not drawn_pick.is_empty() and drawn_pick["position"] == want["position"] and placed_nothing and terrain_pick.is_empty() and world._raw_guild_chunks.is_empty(),
+		"hover picks the drawn object without placing anything; nothing in Terrain Only")
+	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
+	world.flush_chunk_work()
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

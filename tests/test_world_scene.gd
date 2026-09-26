@@ -412,6 +412,41 @@ func _init() -> void:
 		same = same and shown == one_go
 	check(same and markers_total > 0, "no worker: Resources built in steps - all %d markers match one-go placement" % markers_total)
 
+	# Without threads a "Go to" search runs a slice per frame (review W1):
+	# the frame stays short, the result is the one a one-go search finds,
+	# and picking in the menu while it runs cancels it.
+	var outcomes := []
+	inline_world.biome_travel_finished.connect(func(b: String, found: bool, cancelled: bool) -> void: outcomes.append([b, found, cancelled]))
+	var from: Vector2i = inline_world._player.tile()
+	var finder_gen := WorldGen.new()
+	finder_gen.configure(4242)
+	var beach: Variant = BiomeFinder.find(finder_gen, "Beach", from)
+	inline_world.travel_to_biome("Beach")
+	var searching: bool = inline_world.is_finding_biome()
+	var search_frames := 0
+	var longest := 0
+	while outcomes.is_empty() and search_frames < 2000:
+		var t_frame := Time.get_ticks_usec()
+		await process_frame
+		longest = maxi(longest, Time.get_ticks_usec() - t_frame)
+		search_frames += 1
+	check(searching and outcomes == [["Beach", true, false]] and inline_world._player.tile() == beach,
+		"no threads: Go to Beach from %s steps over %d frames (longest %.1f ms) to %s, as a one-go search does" % [from, search_frames, longest / 1000.0, beach])
+	var menu: OptionButton = inline_world.get_node("UI/BiomeTravelDropdown")
+	var frozen := -1
+	for i in menu.item_count:
+		if menu.get_item_text(i) == "Frozen Sea":
+			frozen = i
+	outcomes.clear()
+	menu.item_selected.emit(frozen)
+	for i in 3:
+		await process_frame
+	var still: bool = inline_world.is_finding_biome() and menu.get_item_text(0) == "Cancel search"
+	menu.item_selected.emit(0)
+	await process_frame
+	check(still and outcomes == [["Frozen Sea", false, true]] and not inline_world.is_finding_biome() and menu.get_item_text(0) == "Go to..." and menu.selected == 0,
+		"no threads: a long search can be cancelled from the menu (%s)" % [outcomes])
+
 	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
 	quit(1 if _fails > 0 else 0)
 

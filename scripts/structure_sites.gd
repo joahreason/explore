@@ -141,30 +141,71 @@ func parts_in_rect(rect: Rect2i) -> Array:
 ## searched cell ring by cell ring (the ring after the first hit too, since
 ## ring order is only roughly distance order), skipping sites within
 ## FIND_AVOID_RADIUS of the start or an `avoid` tile. null if none within
-## FIND_MAX_RADIUS or cancelled (cancel: Callable -> true to stop, per ring).
+## FIND_MAX_RADIUS or cancelled (cancel: Callable -> true to stop, checked
+## about every 20 ms). search() gives the same search in resumable form.
 func find(type_id: String, start: Vector2i, avoid: Array = [], cancel: Callable = Callable()) -> Variant:
-	var origin := cell_of(start)
-	var best: Variant = null
-	var best_dist := INF
-	var last_ring := FIND_MAX_RADIUS / CELL_SIZE
-	var k := 0
-	while k <= last_ring:
+	var s := search(type_id, start, avoid)
+	while not s.step(Time.get_ticks_usec() + 20000):
 		if cancel.is_valid() and cancel.call():
 			return null
-		for cell in _ring(k):
-			var site := site_for_cell(origin + cell)
-			if site.is_empty() or site["id"] != type_id:
+	return s.result
+
+
+## find() as a resumable Search (review W1): step() it until it returns
+## true, then read its result - the web build spreads it over frames.
+func search(type_id: String, start: Vector2i, avoid: Array = []) -> Search:
+	return Search.new(self, type_id, start, avoid)
+
+
+class Search:
+	extends RefCounted
+	var result: Variant = null  # the found centre (Vector2i) or null, once step() returns true
+	var _sites
+	var _type_id: String
+	var _start: Vector2i
+	var _avoid: Array
+	var _origin: Vector2i
+	var _last_ring: int
+	var _k := 0
+	var _ring_cells: Array[Vector2i] = []
+	var _ri := 0
+	var _best: Variant = null
+	var _best_dist := INF
+	var _done := false
+
+	func _init(sites, type_id: String, start: Vector2i, avoid: Array) -> void:
+		_sites = sites
+		_type_id = type_id
+		_start = start
+		_avoid = avoid
+		_origin = sites.cell_of(start)
+		_last_ring = FIND_MAX_RADIUS / CELL_SIZE
+		_ring_cells = StructureSites._ring(0)
+
+	## Advances until done or Time.get_ticks_usec() passes deadline_usec
+	## (checked between cells); true once done and `result` is set.
+	func step(deadline_usec: int) -> bool:
+		while not _done and Time.get_ticks_usec() < deadline_usec:
+			var site: Dictionary = _sites.site_for_cell(_origin + _ring_cells[_ri])
+			_ri += 1
+			if not site.is_empty() and site["id"] == _type_id:
+				var center: Vector2i = site["center"]
+				var dist := Vector2(center - _start).length()
+				if dist >= FIND_AVOID_RADIUS and dist < _best_dist and not StructureSites._near_any(center, _avoid):
+					_best = center
+					_best_dist = dist
+			if _ri < _ring_cells.size():
 				continue
-			var center: Vector2i = site["center"]
-			var dist := Vector2(center - start).length()
-			if dist < FIND_AVOID_RADIUS or dist >= best_dist or _near_any(center, avoid):
-				continue
-			best = center
-			best_dist = dist
-		if best != null and last_ring > k + 1:
-			last_ring = k + 1
-		k += 1
-	return best
+			if _best != null and _last_ring > _k + 1:
+				_last_ring = _k + 1
+			_k += 1
+			if _k > _last_ring:
+				result = _best
+				_done = true
+			else:
+				_ring_cells = StructureSites._ring(_k)
+				_ri = 0
+		return _done
 
 
 ## Index of the definition a cell's type roll picks from per-definition

@@ -215,14 +215,14 @@ func _check_scene(found: Array) -> void:
 	world._finder_gen.configure(SEED)
 	world._finder_seed = SEED
 	var t0 := Time.get_ticks_msec()
-	world._find_biome("Ruins", start, [])
+	world._run_search(world._new_search("Ruins", start, []))
 	var first = world._finder_result
 	check(first != null and world._structures.site_at(first).get("id", "") == "ruins", "Go to Ruins lands on a ruins centre (%s, %d ms)" % [first, Time.get_ticks_msec() - t0])
 	if first != null:
-		world._find_biome("Ruins", start, [first])
+		world._run_search(world._new_search("Ruins", start, [first]))
 		var second = world._finder_result
 		check(second != null and second != first and world._structures.site_at(second).get("id", "") == "ruins", "Go to Ruins again hops to another site (%s)" % [second])
-	world._find_biome("Grassland", start, [])
+	world._run_search(world._new_search("Grassland", start, []))
 	check(world._finder_result != null, "biomes still travel through BiomeFinder")
 	world.queue_free()
 	await process_frame
