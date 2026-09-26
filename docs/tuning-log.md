@@ -36,6 +36,25 @@ Windows desktop, and Windows headless frame times floor at the OS timer tick
 - Code review baseline at 2c97bf0 (cloud container): 23 suites, 412 checks,
   18 min 18 s; the timing-sensitive no-worker check passed at 4,595 of its
   5,000 allowed frames (fixed by T3).
+- P1 (`tests/bench_tile_cost.gd`, seed 4242, 3 x 48x48 tiles, best of 5,
+  us per tile): sample 35, EnvironmentalState copy 18, classify 20, all 37
+  species' suitability ~225, all 10 guild densities ~285 -> ~265 after the
+  noise-key fix, terrain material + colour ~70 -> ~67. Biome memberships
+  once per tile: ~4 us saved per biome-weighted resource on a land tile, no
+  measurable change per tile in this mix (not kept).
+- P3: one season recolour of the default 81-chunk World view (2,154 marker
+  rows): 59-76 ms rebuilding nodes -> 2.8-3.0 ms recolouring in place.
+- P4 (81 chunks, set_view_mode + flush): World -> Terrain Only 2.5-2.7 s ->
+  5 ms; Terrain Only -> World 3.2-3.4 s -> 0.6 s; Subtype -> Quality
+  3.1-3.2 s -> 0.6 s.
+- P2 (`tests/bench_markers.gd`, GL Compatibility under Xvfb = Mesa software
+  rendering, 1080p, frame ms median with markers / hidden): zoom 2 (81
+  chunks, 2,637 rows) 99 / 90; zoom 1 (165 chunks, 5,613 rows) 115 / 85;
+  zoom 0.5 (401 chunks, 13,917 rows) 144 / 88. Bucketing rows by whole
+  tiles (option 1) cut rows 2.5x (to 5,661 at zoom 0.5) but the markers'
+  cost only from 55 to 53 ms: the cost is per sprite drawn, not per sorted
+  node, so option 1 was not kept. Still owed: the same numbers from the F3
+  overlay (W4) in a real browser, where per-node overhead may weigh more.
 
 ## 2026-09-25
 
