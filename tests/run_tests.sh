@@ -43,6 +43,13 @@ for t in tests/test_*.gd; do
   out=$(timeout 900 "$GODOT" --headless --path . --script "res://$t" 2>&1) || status=1
   echo "$out" | grep -E "^(PASS|FAIL|INFO|RESULT)|SCRIPT ERROR|ERROR:" || true
   echo "$out" | grep -q "^RESULT" || { echo "no RESULT line - script crashed or hung"; status=1; }
+  # A script or engine error fails the suite even if its checks passed: a
+  # run full of load errors can otherwise still print RESULT PASS. A clean
+  # run prints none; allow-list a known harmless one in allowed_errors (an
+  # extended regex) if that ever changes.
+  allowed_errors='^$'
+  errors=$(echo "$out" | grep -E "SCRIPT ERROR|ERROR:" | grep -vcE "$allowed_errors" || true)
+  (( errors == 0 )) || { echo "$errors script/engine error line(s)"; status=1; }
 done
 
 if [[ "${1:-}" == "--by-biome" ]]; then
