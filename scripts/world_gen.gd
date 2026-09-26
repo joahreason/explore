@@ -12,6 +12,8 @@ extends Resource
 ##   slope + moisture + wind -> erosion -> exposed rock / sediment deposits
 ##   temperature + moisture + soil + exposure + disturbance -> vegetation
 ##   geology + erosion -> resource concentration
+##   magic overlay: ley (region x lines, dimmed on fresh scars), void (rare
+##   pockets leaning toward caves) - read by content only, never above
 
 # --- World scale ---
 # Stretches the REGIONAL fields (elevation, climate, hydrology, wind, geology)
@@ -177,6 +179,38 @@ extends Resource
 ## (rock_exposure's second source, next to erosion - see sample()).
 @export var resource_cliff_exposure_requirement: float = 0.1
 
+# --- Magic (an overlay: nothing above reads these, so they add to the world
+# without changing any physical field) ---
+@export_group("Magic")
+## Ley: mystic energy running in lines across the land, strongest where two
+## lines cross (a nexus). = region x line, then a mild lean toward old,
+## undisturbed ground (succession). Regional - stretched by world_scale.
+@export var ley_region_frequency: float = 0.004
+## smoothstep range on the 0..1 region noise: below x no ley at all, above y
+## full strength - keeps magic to a few regions instead of everywhere.
+@export var ley_region_range: Vector2 = Vector2(0.55, 0.7)
+## Line spacing - local, like rivers' lines but not stretched by world_scale.
+@export var ley_line_frequency: float = 0.0025
+## Half-width of a line in noise units (|line noise| below this is on it);
+## larger = wider halo, so 64-tile landmark sites can land on one.
+@export var ley_line_width: float = 0.05
+## Extra strength where both lines meet (1 = up to double before clamping).
+@export var ley_nexus_boost: float = 1.0
+## How much fresh disturbance scars dim ley (0 = not at all).
+@export var ley_succession_bias: float = 0.3
+## Void: rare corrupted pockets, built like disturbance scars - a cellular
+## blob per cell, only void_share of cells host one, dark core fading out.
+## Local, not stretched by world_scale.
+@export var void_frequency: float = 0.003
+@export var void_share: float = 0.12
+## Pocket radius in the cellular distance's normalized 0..1 units.
+@export var void_radius: float = 0.3
+@export var void_size_variation: float = 0.5
+@export var void_warp_strength: float = 14.0
+## How strongly pockets favour cave-prone ground (0 = ignore caves): away
+## from caves a pocket keeps 1 - void_cave_bias of its strength.
+@export var void_cave_bias: float = 0.5
+
 enum Geology { SEDIMENTARY, METAMORPHIC, IGNEOUS, VOLCANIC }
 
 # hardness = erosion resistance (0 soft/erodes easily .. 1 hard/resists erosion)
@@ -245,6 +279,11 @@ var _river_warp := FastNoiseLite.new()
 var _temp_variation := FastNoiseLite.new()
 var _precip_seasonality := FastNoiseLite.new()
 var _lake := FastNoiseLite.new()
+var _ley_region := FastNoiseLite.new()
+var _ley_line := FastNoiseLite.new()
+var _void := FastNoiseLite.new()
+var _void_cell := FastNoiseLite.new()
+var _void_warp := FastNoiseLite.new()
 
 const WaterTopologyScript := preload("res://scripts/water_topology.gd")
 var _water_topology = WaterTopologyScript.new()
@@ -267,13 +306,19 @@ var _configured_seed: int = -1
 # +21 lake basins.
 # +22 landmark/structure site hashes (not owned here - see StructureSites:
 # position, type, rotation, age and stamp rolls per coarse site cell).
-# Next free offset: +23.
+# +23 ley region, +24 ley lines, +25 void pockets (distance + cell value,
+# shared cells), +26 void warp.
+# Next free offset: +27.
 const RESOURCE_DISTRIBUTION_SEED_OFFSET := 17
 const RESOURCE_PLACEMENT_SEED_OFFSET := 18
 const DEPOSIT_VEIN_SEED_OFFSET := 19
 const SURFACE_PATCH_SEED_OFFSET := 20
 const LAKE_SEED_OFFSET := 21
 const STRUCTURE_SITE_SEED_OFFSET := 22
+const LEY_REGION_SEED_OFFSET := 23
+const LEY_LINE_SEED_OFFSET := 24
+const VOID_SEED_OFFSET := 25
+const VOID_WARP_SEED_OFFSET := 26
 
 
 func configure(world_seed: int) -> void:
@@ -310,6 +355,15 @@ func configure(world_seed: int) -> void:
 	_setup(_resource_vein, world_seed + 9, FastNoiseLite.TYPE_SIMPLEX, resource_frequency, 2)
 	_setup(_micro, world_seed + 10, FastNoiseLite.TYPE_SIMPLEX, 0.05, 1)
 	_setup(_lake, world_seed + LAKE_SEED_OFFSET, FastNoiseLite.TYPE_SIMPLEX, lake_frequency, 1)
+
+	# Magic overlay.
+	_setup(_ley_region, world_seed + LEY_REGION_SEED_OFFSET, FastNoiseLite.TYPE_SIMPLEX, ley_region_frequency / world_scale, 2)
+	_setup(_ley_line, world_seed + LEY_LINE_SEED_OFFSET, FastNoiseLite.TYPE_SIMPLEX, ley_line_frequency, 2)
+	_setup(_void, world_seed + VOID_SEED_OFFSET, FastNoiseLite.TYPE_CELLULAR, void_frequency, 1)
+	_void.cellular_return_type = FastNoiseLite.RETURN_DISTANCE
+	_setup(_void_cell, world_seed + VOID_SEED_OFFSET, FastNoiseLite.TYPE_CELLULAR, void_frequency, 1)
+	_void_cell.cellular_return_type = FastNoiseLite.RETURN_CELL_VALUE
+	_setup(_void_warp, world_seed + VOID_WARP_SEED_OFFSET, FastNoiseLite.TYPE_SIMPLEX, void_frequency * 2.5, 2)
 
 
 func _setup(n: FastNoiseLite, s: int, type: FastNoiseLite.NoiseType, freq: float, octaves: int) -> void:
@@ -622,6 +676,30 @@ func sample(wx: int, wy: int) -> Dictionary:
 	var cliff_gate := smoothstep(resource_cliff_exposure_requirement, resource_cliff_exposure_requirement + 0.3, cliff_tendency)
 	var rock_exposure := 0.0 if water_body != "none" else maxf(exposure_gate, cliff_gate)
 
+	# --- magic overlay (read by nothing above - see @export_group("Magic")) ---
+	var ley01 := 0.0
+	var ley_region := smoothstep(ley_region_range.x, ley_region_range.y, (_ley_region.get_noise_2d(fx, fy) + 1.0) * 0.5)
+	if ley_region > 0.0:
+		# Two lines from one noise: the second reads it rotated ~60 degrees and
+		# shifted, so its lines are independent of and cross the first.
+		var line_a := 1.0 - smoothstep(0.0, ley_line_width, absf(_ley_line.get_noise_2d(fx, fy)))
+		var line_b := 1.0 - smoothstep(0.0, ley_line_width, absf(_ley_line.get_noise_2d(
+			fx * 0.5 - fy * 0.866 + 7919.0, fx * 0.866 + fy * 0.5 - 7919.0)))
+		var lines := maxf(line_a, line_b) * (1.0 + ley_nexus_boost * line_a * line_b)
+		ley01 = clampf(ley_region * lines * (1.0 - ley_succession_bias * (1.0 - succession)), 0.0, 1.0)
+
+	var vwx := fx + _void_warp.get_noise_2d(fx, fy) * void_warp_strength
+	var vwy := fy + _void_warp.get_noise_2d(fx + 1000.0, fy - 1000.0) * void_warp_strength
+	var void_cell := _void_cell.get_noise_2d(vwx, vwy)
+	var void01 := 0.0
+	var void_pick := void_cell * 3.91 - floorf(void_cell * 3.91)
+	if void_pick < void_share:
+		var void_size := void_cell * 6.13 - floorf(void_cell * 6.13)
+		var void_r := void_radius * lerpf(1.0 - void_size_variation, 1.0 + void_size_variation, void_size)
+		var void_dist := clampf(inverse_lerp(-1.0, 0.1, _void.get_noise_2d(vwx, vwy)), 0.0, 1.0)
+		var cave_lean := 1.0 - void_cave_bias * (1.0 - smoothstep(0.1, 0.5, cave_potential))
+		void01 = clampf((1.0 - smoothstep(0.0, void_r, void_dist)) * cave_lean, 0.0, 1.0)
+
 	return {
 		"elevation": e,
 		"slope": slope,
@@ -658,6 +736,8 @@ func sample(wx: int, wy: int) -> Dictionary:
 		"cave_potential": cave_potential,
 		"cliff_tendency": cliff_tendency,
 		"rock_exposure": rock_exposure,
+		"ley": ley01,
+		"void_taint": void01,
 	}
 
 

@@ -66,6 +66,10 @@ func show_info(tile: Vector2i, sample: Dictionary, classified: Dictionary, resou
 		lines.append("[b]Farming potential:[/b] %.2f" % farming)
 	if shade >= 0.0:
 		lines.append("[b]Shade:[/b] %.2f" % shade)
+	var ley: float = sample.get("ley", 0.0)
+	var void_taint: float = sample.get("void_taint", 0.0)
+	if ley > 0.0 or void_taint > 0.0:
+		lines.append("[b]Magic:[/b] ley %.2f, void %.2f" % [ley, void_taint])
 	lines.append("[b]Biome:[/b] %s" % classified["base_biome"])
 
 	var subtype: String = classified["subtype"]

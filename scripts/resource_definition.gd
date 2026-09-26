@@ -123,6 +123,21 @@ extends Resource
 	set(value):
 		wind_exposure_curve = value
 		curve_plan = null
+## Magic overlay: ley strength (WorldGen's `ley`, 0 on most of the map ..
+## 1 on a strong line or nexus). Put it in required_curves (0 at ley 0) for
+## content that only exists on ley lines.
+@export var ley_curve: Curve:
+	set(value):
+		ley_curve = value
+		curve_plan = null
+## Magic overlay: void taint (WorldGen's `void_taint`, 0 on most of the
+## map .. 1 at a void pocket's core). Void never changes other fields; a
+## plant that suffers from it says so here (falling curve), void content
+## requires it (rising curve).
+@export var void_curve: Curve:
+	set(value):
+		void_curve = value
+		curve_plan = null
 ## Names of the curves above (e.g. "temperature_curve") that form this
 ## resource's tolerance envelope: ResourceManager multiplies by the lowest of
 ## them instead of averaging them in with the rest, so falling outside any
@@ -273,6 +288,8 @@ const CURVE_FIELD_RANGES := {
 	"shade_curve": Vector2(0.0, 1.0),
 	"vegetation_curve": Vector2(0.0, 1.0),
 	"wind_exposure_curve": Vector2(0.0, 1.0),
+	"ley_curve": Vector2(0.0, 1.0),
+	"void_curve": Vector2(0.0, 1.0),
 }
 
 

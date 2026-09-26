@@ -60,6 +60,10 @@ var disturbance_type: String
 var disturbance_age: float
 var succession: float  # Phase 11: 0 fresh scar .. 1 mature/undisturbed
 
+# Magic overlay (WorldGen's "Magic" group): 0 on most of the map.
+var ley: float  # 0 none .. 1 on a strong line / nexus
+var void_taint: float  # 0 none .. 1 a void pocket's core
+
 ## Phase 13: canopy shade, 0 open ground .. 1 dense canopy = the density of
 ## ResourceManager.SHADE_SOURCE (canopy trees) at this tile. Not part of
 ## sample(): ResourceManager.get_shade() computes it on first need and sets
@@ -124,5 +128,8 @@ static func from_sample(s: Dictionary):
 	state.disturbance_type = s["disturbance_type"]
 	state.disturbance_age = s["disturbance_age"]
 	state.succession = s["succession"]
+
+	state.ley = s["ley"]
+	state.void_taint = s["void_taint"]
 
 	return state

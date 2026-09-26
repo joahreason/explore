@@ -10,6 +10,9 @@ Keep this list actionable and current.
 
 ## Next
 
+- [ ] Magic overlay step 2: visible tells - modifier tags (LeyTouched, Nexus, Voidtouched, dominant element from the land), ground tints on ley/void, motes/ash particles; check rarity by eye (Ley/Void views)
+- [ ] Magic overlay step 3: first content - ley shrine, void rift, glowcap mushrooms; standing stones lean onto ley lines
+
 - [ ] Landmarks: check camps, standing stones and ruins by eye (Go to... menu); tune frequencies/stamps; decide whether walls block walking and structures cast shadows; next natural features (volcanoes, hot springs, oases)
 
 - [ ] Phase 11/12: check scars and new species by eye in the web build (Succession + Resources views); tune pioneer/ground cover/deadwood abundance
