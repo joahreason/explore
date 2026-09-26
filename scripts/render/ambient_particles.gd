@@ -58,8 +58,8 @@ static func weights(env: Dictionary) -> Dictionary:
 	var shade: float = env["shade"]
 	var wind: float = env["wind"]
 	var biome: String = env.get("biome", "")
-	var night := _band(hour, 20.0, 22.0, 3.0, 5.0)  # 1 deep night, fading at dusk/dawn
-	var day := _band(hour, 7.0, 9.0, 17.0, 19.0)
+	var night := _band(hour, GameClock.NIGHT_CREATURE_HOURS)  # 1 deep night, fading at dusk/dawn
+	var day := _band(hour, GameClock.DAY_CREATURE_HOURS)
 	var warm_season := 1.0 - smoothstep(0.45, 0.55, year)  # spring and summer
 	var autumn := smoothstep(0.48, 0.55, year) * (1.0 - smoothstep(0.72, 0.78, year))
 	var winter := smoothstep(0.72, 0.8, year)
@@ -76,9 +76,14 @@ static func weights(env: Dictionary) -> Dictionary:
 	return w
 
 
-## 1 inside [start_full, end_full] (wrapping past midnight), 0 outside
-## [start, end], smooth ramps between.
-static func _band(hour: float, start: float, start_full: float, end_full: float, end: float) -> float:
+## hours is [start, start_full, end_full, end]: 1 inside [start_full,
+## end_full] (wrapping past midnight), 0 outside [start, end], smooth ramps
+## between.
+static func _band(hour: float, hours: Array[float]) -> float:
+	var start := hours[0]
+	var start_full := hours[1]
+	var end_full := hours[2]
+	var end := hours[3]
 	var h := fposmod(hour, 24.0)
 	if start < end:
 		return smoothstep(start, start_full, h) * (1.0 - smoothstep(end_full, end, h))
