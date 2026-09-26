@@ -27,13 +27,8 @@ func _ready() -> void:
 		add_item("%s (%s)" % [String(definition.id).capitalize(), guild_names[definition.id]])
 	select(_resources.find(_world.debug_resource()))
 	item_selected.connect(func(index: int): _world.set_debug_resource(_resources[index]))
-	visible = false
-
-
-## Shown only in Debug views, and kept on the world's current resource
-## (it can also be set from code, e.g. by tests).
-func _process(_delta: float) -> void:
 	visible = _world.is_debug_view()
-	var current := _resources.find(_world.debug_resource())
-	if current != selected:
-		select(current)
+	# Shown only in Debug views, and kept on the world's current resource
+	# (it can also be set from code, e.g. by tests).
+	_world.view_changed.connect(func(_mode): visible = _world.is_debug_view())
+	_world.debug_resource_changed.connect(func(definition: ResourceDefinition): select(_resources.find(definition)))
