@@ -383,7 +383,8 @@ func _exit_tree() -> void:
 ## by ReloadButton/RandomizeButton/SeedInput's Enter from whatever's in the
 ## seed field (see _seed_from_text). If no param was given at all, a fresh
 ## random seed is generated instead of falling back to the fixed exported
-## default, so every plain visit gets a different world. Elsewhere the
+## default, so every plain visit gets a different world, and written into
+## the URL so a refresh keeps it. Elsewhere the
 ## exported world_seed is used (the seed UI regenerates in place instead -
 ## see regenerate()). Either way, _seed_text is left holding whatever seed
 ## ended up in effect, so _ready() can show it in the seed field.
@@ -398,6 +399,9 @@ func _resolve_world_seed() -> int:
 	var raw_str := str(raw) if raw != null else ""
 	if raw_str == "":
 		raw_str = str(randi())
+		# Put it in the URL, so refreshing, bookmarking or sharing the page
+		# gives the same world (and its save) - review W6.
+		JavaScriptBridge.eval("history.replaceState(null, '', '?seed=%s' + location.hash)" % raw_str.uri_encode())
 	_seed_text = raw_str
 	return _seed_from_text(raw_str)
 
@@ -2000,8 +2004,10 @@ func _save_gameplay_state() -> void:
 	_changes.save(changes_path(), world_seed)
 
 
+## Saves on quit, and whenever the game loses focus or is paused (a browser
+## tab can close without a close request; review W6).
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+	if what in [NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
 		_save_gameplay_state()
 
 
