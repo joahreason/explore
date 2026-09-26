@@ -1592,12 +1592,27 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
+	var candidates := []
+	for guild in GUILD_STACK:
+		candidates.append([guild, stack[guild]])
+	var best := _pick(point, candidates, include_harvested)
+	if not best.is_empty():
+		best["name"] = String(best["id"]).capitalize()
+		best["guild_name"] = String(best["guild"]).capitalize()
+		best["entity"] = get_resource_instance(best)
+	return best
+
+
+## The pick rule of _resource_at() over `candidates`, [[source (a guild or
+## ResourceDefinition), instances], ...]; a copy of the picked instance, or {}.
+func _pick(point: Vector2, candidates: Array, include_harvested: bool) -> Dictionary:
+	var tile := Vector2i(floori(point.x), floori(point.y))
 	var best := {}
 	var best_dist := INF
 	var sprites := _view_mode == ViewMode.RESOURCES
-	for guild in GUILD_STACK:
-		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
-		for inst in stack[guild]:
+	for layer in candidates:
+		var reach := maxf(layer[0].minimum_spacing * 0.35, 0.5)
+		for inst in layer[1]:
 			if not include_harvested and _changes.is_instance_harvested(inst):
 				continue
 			var pos: Vector2 = inst["position"]
@@ -1613,11 +1628,26 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 			if (in_tile or near) and dist < best_dist:
 				best = inst.duplicate()
 				best_dist = dist
-	if not best.is_empty():
-		best["name"] = String(best["id"]).capitalize()
-		best["guild_name"] = String(best["guild"]).capitalize()
-		best["entity"] = get_resource_instance(best)
 	return best
+
+
+## The shown instances standing within 2 tiles of `tile` (the rect
+## _resource_at() places), as _pick() candidates: what the current view
+## draws, nothing where it draws no markers (heatmap and terrain views,
+## zoomed out past MAX_PLACEMENT_LOD_STEP). Main thread; no generation.
+func _drawn_near(tile: Vector2i) -> Array:
+	var rect := Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5))
+	var result := []
+	var center := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			for entry in _chunk_placements.get(center + Vector2i(dx, dy), []):
+				if entry[0][0] == null:  # skip the structure-parts layer
+					continue
+				var near := (entry[1] as Array).filter(func(inst): return rect.has_point(Vector2i((inst["position"] as Vector2).floor())))
+				if not near.is_empty():
+					result.append([entry[0][0], near])
+	return result
 
 
 ## Whether the World view draws an opaque pixel of `inst`'s sprite at
@@ -1789,13 +1819,14 @@ func changes_path() -> String:
 
 
 ## Phase 16: harvests the resource at `world_pos` - the player's tap walks
-## up to it first (_on_map_tapped()) - the resource under the click - the same
-## pick as the inspector, ignoring what's already harvested - records it in
-## the gameplay changes, saves them, and redraws that chunk's markers.
+## up to it first (_on_map_tapped()) - the resource under the click, as
+## hover_target() picks it (only what is drawn, ignoring what's already
+## harvested) - records it in the gameplay changes, saves them, and redraws
+## that chunk's markers.
 ## Returns the harvested ResourceInstance, or null if nothing was there.
 func _on_harvest_clicked(world_pos: Vector2):
+	var inst := hover_target(world_pos / TILE_SIZE)
 	_gen_mutex.lock()  # the worker may be generating a chunk
-	var inst := _resource_at(world_pos / TILE_SIZE, false)
 	var entity = get_resource_instance(inst) if not inst.is_empty() else null
 	if entity != null:
 		_changes.harvest(entity.key, entity.resource_id)
@@ -2289,12 +2320,12 @@ func _nearest_walkable(tile: Vector2i) -> Vector2:
 
 
 ## Polish (HoverHighlight): the resource a left click at `point` (tile
-## units) would harvest - _resource_at() without harvested ones - or {}.
+## units) would harvest, or {}: _resource_at()'s pick among what is drawn
+## there (_drawn_near()) and not harvested. It never generates or waits on
+## the worker, so hovering can't stall a frame; where the view draws no
+## markers there's nothing to pick. No "entity" or display names.
 func hover_target(point: Vector2) -> Dictionary:
-	_gen_mutex.lock()
-	var inst := _resource_at(point, false)
-	_gen_mutex.unlock()
-	return inst
+	return _pick(point, _drawn_near(Vector2i(point.floor())), false)
 
 
 ## Polish pass 2: sprites take their season colour (Seasons, per

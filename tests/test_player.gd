@@ -149,7 +149,9 @@ func _init() -> void:
 	check(not lone.is_empty() and by_canopy and below_free,
 		"a click on a tree's canopy picks it; one just below its base doesn't (%s)" % lone.get("id", "none found"))
 
-	# Tapping a resource: walks up to it and harvests it on arrival.
+	# Tapping a resource: walks up to it and harvests it on arrival. Picks
+	# come from what is drawn, so let the chunks around the player stream in.
+	world.flush_chunk_work()
 	var target := {}
 	var near: Vector2i = player.tile()
 	for r in range(2, 40):
