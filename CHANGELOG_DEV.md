@@ -124,6 +124,8 @@ end.
 - Sea-washed shore tiles take part; land never takes a water tile's colour;
   swash and foam stay tied to each pixel's own tile.
 - `hash()` avoids `sin()`, which broke down far from the origin.
+- These borders replace the dithered blending between grounds from PR #31
+  (the grain and mottle stay).
 - Mangrove art added.
 
 ## 2026-09-25

@@ -24,7 +24,8 @@ of their folders. *Why:* they belong to the world scene / are shared by
 everything. *Revisit:* when a folder grows a second meaning.
 
 **GenerationContext locks itself (§4.1 step 5, C2).** Every public method
-takes the mutex; private ones expect it held. *Why:* the threading rule was
+takes the mutex; private ones expect it held (the threading rule:
+architecture.md §5). *Why:* the threading rule was
 convention only, and callers forgot. *Revisit:* with multi-worker streaming
 (Phase 17 leftover).
 
@@ -228,7 +229,7 @@ draw. *Trade-off:* saturates near 0.3 instances / spacing² (tuning-log).
 **Phase 5: per-resource noise in ResourceManager.** Patch (+17), placement
 (+18) and later vein (+19) noise are seeded per resource id but owned by the
 resource layer, not WorldGen. *Why:* layer separation (plan Rule 4). Resource
-ids must be unique.
+ids must be unique. The offset registry is in architecture.md §6.
 
 **Phase 3: geometric mean.** Physical curve factors and geology weight
 combine by geometric mean; biome / subtype weights multiply after;
