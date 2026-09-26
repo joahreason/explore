@@ -1,20 +1,18 @@
 extends Node2D
 
 ## The player character: a sprite (assets/sprites/player.png, pivot at its
-## bottom middle) that moves tile by
-## tile along a path (ChunkManager.find_path(), started by a tap / left
-## click - see ChunkManager._on_map_tapped()), diagonals included. Its
-## position (the node's origin, the pivot for the hop and the facing flip)
-## is its feet: the bottom middle of the tile it stands on (feet_point()),
-## the sprite's pivot, the sprite drawn above. Each step glides to the next tile's feet point
-## with a small hop. tile() is the tile it stands on - or, mid-step, the one it
-## is stepping onto (a new walk starts from there once the step is done).
-## Walking runs in real time (not the game clock: a paused clock doesn't
-## freeze the player). At the end of a path it calls the walk's `on_arrive`
-## Callable, if any (harvesting a tapped resource). Drawn facing its
-## direction of travel, with a cast shadow on the ground (the world's
-## shadow material, like the plants) that stays put while it hops. Each
-## step lands with a faint footstep (assets/sfx/footstep.wav, made by
+## bottom middle) that walks freely - not tile by tile - through a list of
+## world points (ChunkManager._on_map_tapped(): an A* tile path round water,
+## string-pulled, ending at the tapped point). Its position (the node's
+## origin, the pivot for the hop and the facing flip) is its feet, the
+## sprite's pivot, the sprite drawn above. tile() is the tile its feet are
+## on. It hops a little every STEP_TILES of distance walked. Walking runs in
+## real time (not the game clock: a paused clock doesn't freeze the player).
+## At the end of a walk it calls the walk's `on_arrive` Callable, if any
+## (harvesting a tapped resource). Drawn facing its direction of travel,
+## with a cast shadow on the ground (the world's shadow material, like the
+## plants) that stays put while it hops. Each step lands with a faint
+## footstep (assets/sfx/footstep.wav, made by
 ## tools/generate_sfx.gd), its pitch and volume varied per step - never
 ## close to the previous step's pitch - so the repetition doesn't grate.
 
@@ -25,8 +23,10 @@ const SPRITE := preload("res://assets/sprites/player.png")
 const COLOR := Color(1.0, 0.86, 0.6)
 ## Hop height (world px) at the middle of each step.
 const HOP_PX := 2.0
-## Tiles per real second (a diagonal step takes as long as a straight one).
+## Tiles per real second.
 @export var walk_speed := 4.0
+## Distance (tiles) of one step: one hop, one footstep.
+const STEP_TILES := 0.75
 const FOOTSTEP := preload("res://assets/sfx/footstep.wav")
 const FOOTSTEP_DB := -26.0
 ## Per-step variation: pitch scale range, the least change from the last
@@ -43,11 +43,8 @@ var _rng := RandomNumberGenerator.new()
 
 signal arrived
 
-var _tile := Vector2i.ZERO
-var _queue: Array[Vector2i] = []  # tiles still to step onto, after the current step
-var _stepping := false
-var _step_from := Vector2i.ZERO
-var _step_t := 0.0  # 0..1 through the current step
+var _path: Array[Vector2] = []  # world points still to reach
+var _stride := 0.0  # distance walked (tiles) since the walk started
 var _on_arrive := Callable()
 var _facing_left := false
 var _texture: Texture2D
@@ -83,73 +80,60 @@ func set_shadow_material(material: Material, layer: Node = null) -> void:
 
 
 func tile() -> Vector2i:
-	return _tile
+	return Vector2i((position / TILE_SIZE).floor())
 
 
 static func tile_center(t: Vector2i) -> Vector2:
 	return (Vector2(t) + Vector2(0.5, 0.5)) * TILE_SIZE
 
 
-## Where the player's feet (its position) are when standing on tile `t`:
-## the tile's bottom middle, where sprites stand their pivot.
-static func feet_point(t: Vector2i) -> Vector2:
-	return (Vector2(t) + Vector2(0.5, 1.0)) * TILE_SIZE
-
-
-## Steps through `tiles` (each a neighbour of the one before, starting next
-## to tile(); empty = stay), then calls `on_arrive`. Replaces any walk in
-## progress (its on_arrive is dropped); a step already under way finishes
-## first.
-func walk(tiles: Array[Vector2i], on_arrive := Callable()) -> void:
-	_queue = tiles.duplicate()
+## Walks straight through `points` (world px, in order; empty = stay), then
+## calls `on_arrive`. Replaces any walk in progress (its on_arrive is
+## dropped).
+func walk(points: Array[Vector2], on_arrive := Callable()) -> void:
+	_path = points.duplicate()
 	_on_arrive = on_arrive
-	if not _stepping:
-		_next_step()
+	_stride = 0.0
+	if _path.is_empty():
+		_finish()
 
 
-## Stands on the tile holding `world_pos` at once (feet at its bottom
-## middle), walk cancelled.
+## Stands at `world_pos` at once, walk cancelled.
 func teleport(world_pos: Vector2) -> void:
-	_queue.clear()
+	_path.clear()
 	_on_arrive = Callable()
-	_stepping = false
-	_tile = Vector2i((world_pos / TILE_SIZE).floor())
-	position = feet_point(_tile)
+	position = world_pos
 	_redraw()
 
 
 func is_walking() -> bool:
-	return _stepping or not _queue.is_empty()
+	return not _path.is_empty()
 
 
 ## The tile the current walk ends on (tile() when standing).
 func destination() -> Vector2i:
-	return _queue[-1] if not _queue.is_empty() else _tile
-
-
-func _next_step() -> void:
-	if _queue.is_empty():
-		_stepping = false
-		_finish()
-		return
-	_step_from = _tile
-	_tile = _queue.pop_front()
-	_step_t = 0.0
-	_stepping = true
-	if _tile.x != _step_from.x:
-		_facing_left = _tile.x < _step_from.x
+	return Vector2i((_path[-1] / TILE_SIZE).floor()) if not _path.is_empty() else tile()
 
 
 func _process(delta: float) -> void:
-	if not _stepping:
+	if _path.is_empty():
 		return
-	_step_t += delta * walk_speed
-	if _step_t >= 1.0:
-		position = feet_point(_tile)
+	var budget := walk_speed * TILE_SIZE * delta
+	var steps_before := floori(_stride / STEP_TILES)
+	while budget > 0.0 and not _path.is_empty():
+		var to := _path[0] - position
+		if absf(to.x) > 0.5:
+			_facing_left = to.x < 0.0
+		var moved := minf(to.length(), budget)
+		position += to.normalized() * moved if to.length() > 0.0 else Vector2.ZERO
+		_stride += moved / TILE_SIZE
+		budget -= moved
+		if to.length() <= moved:
+			position = _path.pop_front()
+	if floori(_stride / STEP_TILES) > steps_before:
 		_play_footstep()
-		_next_step()
-	if _stepping:
-		position = feet_point(_step_from).lerp(feet_point(_tile), _step_t).round()
+	if _path.is_empty():
+		_finish()
 	_redraw()
 
 
@@ -181,24 +165,25 @@ func _redraw() -> void:
 	queue_redraw()
 	if _shadow != null:
 		if _shadow.get_parent() != self:
-			_shadow.global_position = global_position
+			_shadow.global_position = global_position.round()
 			_shadow.visible = is_visible_in_tree()
 		_shadow.queue_redraw()
 
 
 ## Current hop height (world px, whole pixels): an arc over each step.
 func hop() -> float:
-	return roundf(HOP_PX * sin(PI * clampf(_step_t, 0.0, 1.0))) if _stepping else 0.0
+	return roundf(HOP_PX * sin(PI * fposmod(_stride / STEP_TILES, 1.0))) if is_walking() else 0.0
 
 
 func _draw() -> void:
-	draw_set_transform(Vector2(0, -hop()), 0.0, Vector2(-1, 1) if _facing_left else Vector2.ONE)
+	# Drawn on whole pixels, wherever between them the walk is.
+	draw_set_transform(position.round() - position + Vector2(0, -hop()), 0.0, Vector2(-1, 1) if _facing_left else Vector2.ONE)
 	draw_texture_rect(_texture, sprite_rect(), false, COLOR)
 	draw_set_transform(Vector2.ZERO)
 
 
 ## The sprite's rect, its pivot on the player's position (its feet), as
-## the placed resources' sprites stand on their tile's bottom middle.
+## the placed resources' sprites stand on theirs.
 func sprite_rect() -> Rect2:
 	return ResourceMarkerChunkScript.pivot_rect(Vector2.ZERO, _texture.get_size())
 

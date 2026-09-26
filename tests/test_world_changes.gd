@@ -73,7 +73,7 @@ func _init() -> void:
 	check(not target.is_empty(), "found a tree in a loaded chunk")
 	var chunk := Vector2i(((target["position"] as Vector2) / world.CHUNK_SIZE).floor())
 	var before: int = world._loaded_placements[chunk]._positions.size()
-	var click: Vector2 = ((target["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var click: Vector2 = world.sprite_point(target) * world.TILE_SIZE
 	var harvested = world._on_harvest_clicked(click)
 	var after: int = world._loaded_placements[chunk]._positions.size()
 	check(harvested != null and harvested.harvest_state == ResourceInstance.HARVESTED and harvested.health == 0.0,

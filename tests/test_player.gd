@@ -8,6 +8,7 @@ extends SceneTree
 ## seed; biome travel and teleports land it on dry land with the camera
 ## centred on it. Run via tests/run_tests.sh.
 
+const MarkerChunk := preload("res://scripts/resource_marker_chunk.gd")
 const SEED := 4242
 const DIR := "user://test_player"
 
@@ -68,24 +69,27 @@ func _init() -> void:
 	check(path_ok and end != to and Vector2(end - to).length() < Vector2(from - to).length(),
 		"tapping water (%s) from %s: a path of %d steps over dry land, no cut corners, ending at the closest reachable tile %s" % [to, from, path.size(), end])
 
-	# Walking: a tap on open ground a few tiles away gets there.
+	# Walking: a tap on open ground a few tiles away gets there - to the
+	# exact point, walking freely (not tile centre to tile centre).
 	world.teleport_player((Vector2(from) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	var goal: Vector2i = end
+	var goal_point: Vector2 = (Vector2(goal) + Vector2(0.3, 0.7)) * world.TILE_SIZE
 	player.footsteps = 0
-	var tapped: Array[Vector2i] = world._on_map_tapped((Vector2(goal) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
+	var tapped: Array[Vector2i] = world._on_map_tapped(goal_point)
+	var legs: int = player._path.size()
 	var frames := 0
-	var on_grid := true  # every frame on the segment between two neighbouring tile centres
+	var on_land := true  # every frame on walkable ground
 	while player.is_walking() and frames < 600:
 		await process_frame
 		frames += 1
-		if player._stepping:
-			var a: Vector2 = player.feet_point(player._step_from)
-			var b: Vector2 = player.feet_point(player.tile())
-			var step: Vector2i = player.tile() - player._step_from
-			var along := clampf((player.position - a).dot(b - a) / (b - a).length_squared(), 0.0, 1.0)
-			on_grid = on_grid and maxi(absi(step.x), absi(step.y)) == 1 and player.position.distance_to(a.lerp(b, along)) <= 1.0
-	check(not tapped.is_empty() and player.tile() == goal and not player.is_walking(), "a tap walks the player there (%s in %d frames)" % [player.tile(), frames])
-	check(player.footsteps == tapped.size(), "one footstep per step (%d for %d steps)" % [player.footsteps, tapped.size()])
+		world._gen_mutex.lock()
+		on_land = on_land and world.is_walkable(player.tile())
+		world._gen_mutex.unlock()
+	check(not tapped.is_empty() and player.position == goal_point and not player.is_walking(), "a tap walks the player to the exact point tapped (%s in %d frames)" % [player.position, frames])
+	check(on_land and legs < tapped.size(), "the walk is free: straight legs over dry land (%d legs for a %d-tile path)" % [legs, tapped.size()])
+	# At most one per frame (the test walks fast; at walk speed a frame never spans two steps).
+	check(player.footsteps > 0 and player.footsteps <= floori(player._stride / player.STEP_TILES),
+		"footsteps as the player walks, one per step (%d over %.1f tiles, %d frames)" % [player.footsteps, player._stride, frames])
 	# Footstep variation: pitches within range, never repeating closely.
 	var pitches: Array[float] = []
 	for k in 40:
@@ -98,20 +102,33 @@ func _init() -> void:
 	var fs: AudioStreamPlayer = player.get_node("Footstep")
 	check(varied and fs.stream != null and fs.stream.get_length() > 0.05 and fs.stream.get_length() < 0.2 and fs.volume_db < -8.0,
 		"footsteps vary in pitch (%.2f..%.2f, never within %.2f of the last) at a faint volume (%.1f dB, %.0f ms sound)" % [pitches.min(), pitches.max(), player.FOOTSTEP_MIN_PITCH_CHANGE, fs.volume_db, fs.stream.get_length() * 1000.0])
-	check(on_grid and player.position == player.feet_point(goal) and player.hop() == 0.0 and player.sprite_rect().end.y == 0.0 and player.sprite_rect().get_center().x == 0.0,
-		"movement is locked to tiles: each step goes straight or diagonally to a neighbouring tile, and the player comes to rest with the pivot at their feet - the tile's bottom middle (%s), the sprite standing on it" % player.position)
+	check(player.hop() == 0.0 and player.sprite_rect().end.y == 0.0 and player.sprite_rect().get_center().x == 0.0,
+		"the player comes to rest with the sprite standing on its pivot, their feet")
 	var rows_at_pivots := true
 	var row_count := 0
 	for markers in world._loaded_placements.values():
 		rows_at_pivots = rows_at_pivots and markers.y_sort_enabled
 		for row in markers.get_children():
 			row_count += 1
-			rows_at_pivots = rows_at_pivots and fposmod(row.position.y, world.TILE_SIZE) == 0.0
+			for i in row.indices:
+				rows_at_pivots = rows_at_pivots and markers._positions[i].y == row.position.y
 	check(row_count > 0 and rows_at_pivots and world.resources_root.y_sort_enabled and player.get_parent() == world.resources_root,
-		"sprites depth-sort with the player: markers draw in tile rows at the pivot y (%d rows), y-sorted together with the player" % row_count)
-	# Picking follows the drawn sprites: a tree with empty tiles above and
-	# below is picked through its canopy in the tile above, never from the
-	# top of the tile below.
+		"sprites depth-sort with the player: markers draw in nodes at their pivot y (%d), y-sorted together with the player" % row_count)
+	# Sprites stand on their pivots, offset from their tile centres by
+	# their placement - within the tile, not all at one spot.
+	var offsets := {}
+	var in_tile := true
+	for placements in world._chunk_placements.values():
+		for entry in placements:
+			if entry[0][0] == null:
+				continue  # structure parts stay on the grid
+			for inst in entry[1]:
+				var pivot: Vector2 = MarkerChunk.pivot(inst)
+				in_tile = in_tile and Vector2i(pivot.floor()) == Vector2i((inst["position"] as Vector2).floor())
+				offsets[((pivot - pivot.floor()) * world.TILE_SIZE).round()] = true
+	check(in_tile and offsets.size() > 20, "resource sprites stand at varied offsets inside their tile (%d distinct)" % offsets.size())
+	# Picking follows the drawn sprites: a lone tree is picked through its
+	# canopy, never from the ground just below its base.
 	var occupied := {}
 	var trees := []
 	for placements in world._chunk_placements.values():
@@ -126,11 +143,11 @@ func _init() -> void:
 		if not (occupied.has(t + Vector2i(0, -1)) or occupied.has(t + Vector2i(0, 1)) or occupied.has(t + Vector2i(0, 2))):
 			lone = inst
 			break
-	var lone_base: Vector2 = (lone.get("position", Vector2.ZERO) as Vector2).floor()
-	var by_canopy: bool = same.call(world.hover_target(lone_base + Vector2(0.5, -0.3)), lone)
-	var below_free: bool = world.hover_target(lone_base + Vector2(0.5, 1.1)).is_empty()
+	var lone_base: Vector2 = MarkerChunk.pivot(lone) if not lone.is_empty() else Vector2.ZERO
+	var by_canopy: bool = same.call(world.hover_target(lone_base - Vector2(0, 20.0 / world.TILE_SIZE)), lone)
+	var below_free: bool = world.hover_target(lone_base + Vector2(0, 3.0 / world.TILE_SIZE)).is_empty()
 	check(not lone.is_empty() and by_canopy and below_free,
-		"a click on a tree's canopy (tile above) picks it; one just below its tile doesn't (%s)" % lone.get("id", "none found"))
+		"a click on a tree's canopy picks it; one just below its base doesn't (%s)" % lone.get("id", "none found"))
 
 	# Tapping a resource: walks up to it and harvests it on arrival.
 	var target := {}
@@ -140,12 +157,12 @@ func _init() -> void:
 			for dx in [-r, r]:
 				if target.is_empty():
 					var inst: Dictionary = world.hover_target(Vector2(near + Vector2i(dx, dy)) + Vector2(0.5, 0.5))
-					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())):
+					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())) and same.call(world.hover_target(world.sprite_point(inst)), inst):
 						target = inst
 		if not target.is_empty():
 			break
 	var tile: Vector2i = Vector2i((target["position"] as Vector2).floor())
-	var tap_at: Vector2 = (Vector2(tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var tap_at: Vector2 = world.sprite_point(target) * world.TILE_SIZE
 	world._on_map_tapped(tap_at)
 	var before_arrival: bool = same.call(world.hover_target(tap_at / world.TILE_SIZE), target)
 	frames = 0
@@ -164,11 +181,11 @@ func _init() -> void:
 			for dx in [-r, r]:
 				if other.is_empty():
 					var inst: Dictionary = world.hover_target(Vector2(player.tile() + Vector2i(dx, dy)) + Vector2(0.5, 0.5))
-					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())):
+					if not inst.is_empty() and walkable.call(Vector2i((inst["position"] as Vector2).floor())) and same.call(world.hover_target(world.sprite_point(inst)), inst):
 						other = inst
 		if not other.is_empty():
 			break
-	var other_at: Vector2 = ((other["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var other_at: Vector2 = world.sprite_point(other) * world.TILE_SIZE
 	var empty: Vector2i = player.tile()
 	for r in range(3, 40):
 		for dx in [-r, r]:
@@ -204,8 +221,7 @@ func _init() -> void:
 	var marker_hidden := true
 	if markers != null:
 		for k in markers.instance_count():
-			var marker_tile := Vector2i(floori(markers._positions[k].x / world.TILE_SIZE), markers._row_of[k])
-			marker_hidden = marker_hidden and marker_tile + chunk * world.CHUNK_SIZE != tent_tile
+			marker_hidden = marker_hidden and markers._tiles[k] != tent_tile
 	check(world.is_tent(tent_tile) and world.is_in_tent() and not player.visible and effect != null and marker_hidden and world.clock.sleeping,
 		"tapping a camp tent (%s) walks the player in: hidden, the tent's marker swapped for the bouncing one, time asleep" % tent_tile)
 	var heights := {}
@@ -221,8 +237,18 @@ func _init() -> void:
 		await process_frame
 		frames += 1
 	await process_frame
-	check(not world.is_in_tent() and player.visible and not is_instance_valid(effect) and world.clock.time_text().begins_with("20:0") and world.clock.rate() == 1.0,
+	check(not world.is_in_tent() and player.visible and world.clock.time_text().begins_with("20:0") and world.clock.rate() == 1.0,
 		"at night start the player comes out and time runs at normal speed (%s)" % world.clock.time_text())
+	var z_alpha := 0.0
+	if is_instance_valid(effect):
+		effect._process(effect.WAKE_FADE * 0.5)
+		for z in effect.zs():
+			z_alpha = maxf(z_alpha, z[2])
+	var fading: bool = is_instance_valid(effect) and effect.is_waking() and z_alpha > 0.0 and z_alpha <= 0.5
+	if is_instance_valid(effect):
+		effect._process(effect.WAKE_FADE)
+	await process_frame
+	check(fading and not is_instance_valid(effect), "on waking the Zs fade out (alpha %.2f halfway) and the effect frees itself" % z_alpha)
 	world.enter_tent(tent_tile)
 	world._on_map_tapped((Vector2(tent_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
 	check(not world.clock.sleeping and player.visible and not player.is_walking(), "tapping the tent again while inside wakes the player")

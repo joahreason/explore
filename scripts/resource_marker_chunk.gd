@@ -15,19 +15,21 @@ extends Node2D
 ## outline and dark interior detail baked into one texture (outlined_image()),
 ## drawn in one call, snapped to whole sprite pixels. The sheet art stays at
 ## its native 12 px (1 art pixel = 1 world pixel) inside the 16 px tiles,
-## standing on the tile's bottom edge like the pivoted art.
+## its bottom middle as its pivot like the pivoted art.
 ##
 ## Art-style test (16 px tiles): an entry can instead carry its own
 ## "texture" (ResourceDefinition.sprite_texture) - art with its outline
-## already drawn and its pivot at the bottom middle, drawn 1:1 with the
-## pivot on the tile's bottom middle (pivot_rect()), so tall art (trees) reaches up
-## into the tiles above.
+## already drawn and its pivot at the bottom middle, drawn 1:1
+## (pivot_rect()), so tall art (trees) reaches up into the tiles above.
+## A sprite's pivot is its tile centre offset by up to PIVOT_SPREAD / 2 of a
+## tile each way, from where in the tile the instance was placed (pivot()),
+## so it is deterministic; an instance's own "pivot" (tile units -
+## structure parts, kept on the grid) overrides it.
 ##
-## Depth: the drawing is split into one child node per tile row (_Row), at
-## the row's bottom edge y - the sprites' pivot. This node y-sorts them, and
-## as it sits in the y-sorted Resources node (with the Player) every row
-## sorts with the player and the other chunks' rows: whatever stands further
-## south draws in front.
+## Depth: the drawing is split into child nodes (_Row), one per pivot y
+## (whole pixels), at that y. This node y-sorts them, and as it sits in the
+## y-sorted Resources node (with the Player) each sorts with the player and
+## the other chunks' sprites: whatever stands further south draws in front.
 
 enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND, HEXAGON, SPRITE }
 
@@ -43,6 +45,9 @@ const OUTLINE := Color(0.02, 0.06, 0.02)
 ## Cast shadows get their sprite's drawn height (px) through the red channel
 ## of their draw colour, divided by this (shaders/cast_shadow.gdshader).
 const SHADOW_HEIGHT_SCALE := 64.0
+## How far (share of a tile, in all) a sprite's pivot may sit from its tile
+## centre: 0.75 = up to 6 px each way in a 16 px tile.
+const PIVOT_SPREAD := 0.75
 
 var _positions: PackedVector2Array = PackedVector2Array()
 var _fills: PackedColorArray = PackedColorArray()
@@ -50,8 +55,8 @@ var _radii: PackedFloat32Array = PackedFloat32Array()
 var _shapes: PackedInt32Array = PackedInt32Array()
 var _textures: Array[Texture2D] = []  # per instance; null unless drawn as a sprite
 var _rects: Array[Rect2] = []  # per instance: where its sprite is drawn (unused for shapes)
-var _rows: Dictionary = {}  # tile row within the chunk -> _Row
-var _row_of: PackedInt32Array = PackedInt32Array()  # per instance: its tile row within the chunk
+var _rows: Dictionary = {}  # pivot y (whole px, chunk-local) -> _Row
+var _tiles: Array[Vector2i] = []  # per instance: the tile it was placed in (world tiles)
 
 static var _sheet: Image
 static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
@@ -81,38 +86,51 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 		elif shape == Shape.SPRITE:
 			texture = sprite["texture"] if sprite.get("texture") != null else sprite_texture(sprite["tile"])
 		var pos: Vector2 = inst["position"]
-		var row := floori(pos.y) - origin_tile.y
+		_tiles.append(Vector2i(pos.floor()))
 		if texture != null:
-			# Sprites stand on the bottom middle of the tile their instance
-			# falls in, on the terrain grid (the exact position stays in the
-			# data).
-			pos = Vector2(pos.floor()) + Vector2(0.5, 1.0)
+			pos = pivot(inst)
 		var p := (pos - Vector2(origin_tile)) * tile_size
+		if texture != null:
+			p = p.round()
 		_positions.append(p)
 		_fills.append(inst["fill"] if inst.has("fill") else colors.get(inst["id"], DEFAULT_FILL))
 		_radii.append(radius)
 		_shapes.append(inst_shape)
 		_textures.append(texture)
-		_row_of.append(row)
-		if texture == null:
-			_rects.append(Rect2())
-		elif sprite.get("texture") != null:
-			_rects.append(pivot_rect(p, texture.get_size()))
-		else:
-			var art_px := float(sprite["size"]) * SPRITE_SIZE
-			_rects.append(sprite_rect(p - Vector2(0, art_px * 0.5), art_px))
+		_rects.append(sprite_draw(sprite, p)[1] if texture != null else Rect2())
 	y_sort_enabled = true
 	for i in range(first, _positions.size()):
-		var row := _row_of[i]
-		if not _rows.has(row):
+		var y := roundi(_positions[i].y)
+		if not _rows.has(y):
 			var node := _Row.new()
 			node.chunk = self
 			node.use_parent_material = true  # the sway shader
-			node.position = Vector2(0, (row + 1) * tile_size)
+			node.position = Vector2(0, y)
 			add_child(node)
-			_rows[row] = node
-		_rows[row].indices.append(i)
-		_rows[row].queue_redraw()
+			_rows[y] = node
+		_rows[y].indices.append(i)
+		_rows[y].queue_redraw()
+
+
+## Where an instance's sprite stands (its pivot, world tile units): its own
+## "pivot" if it has one, else its tile centre offset by where in the tile
+## it was placed, scaled by PIVOT_SPREAD.
+static func pivot(inst: Dictionary) -> Vector2:
+	if inst.has("pivot"):
+		return inst["pivot"]
+	var pos: Vector2 = inst["position"]
+	var tile := pos.floor()
+	return tile + Vector2(0.5, 0.5) + (pos - tile - Vector2(0.5, 0.5)) * PIVOT_SPREAD
+
+
+## A sprite entry ({"tile", "size", optional "texture"}, as add_instances()
+## takes) with its pivot at `pivot_px`: [the drawn texture, its rect].
+static func sprite_draw(sprite: Dictionary, pivot_px: Vector2) -> Array:
+	if sprite.get("texture") != null:
+		var texture: Texture2D = sprite["texture"]
+		return [texture, pivot_rect(pivot_px, texture.get_size())]
+	var art_px := float(sprite["size"]) * SPRITE_SIZE
+	return [sprite_texture(sprite["tile"]), sprite_rect(pivot_px - Vector2(0, art_px * 0.5), art_px)]
 
 
 ## Cast shadows (polish): the sprites of the instances added from index
@@ -140,8 +158,8 @@ func add_shadows(from: int, material: Material, casts: Array[bool]) -> void:
 	_shadows.queue_redraw()
 
 
-## One tile row of this chunk's drawing, at the row's bottom edge y so
-## y-sorting puts it in depth order; draws its instances (indices into the
+## The sprites of this chunk whose pivot is at one y, placed at that y so
+## y-sorting puts them in depth order; draws its instances (indices into the
 ## chunk's arrays, in the order added) with draw_instance().
 class _Row extends Node2D:
 	var chunk: Node2D

@@ -1523,6 +1523,12 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 			var parts: Array = entry[1]
 			if _tent_tile != null:  # the occupied tent is drawn by _tent_effect
 				parts = parts.filter(func(p): return Vector2i((p["position"] as Vector2).floor()) != _tent_tile)
+			# Structures stay on the grid: each part stands on its tile's
+			# bottom middle rather than a jittered pivot.
+			parts = parts.map(func(p):
+				var part: Dictionary = p.duplicate()
+				part["pivot"] = (p["position"] as Vector2).floor() + Vector2(0.5, 1.0)
+				return part)
 			markers.add_instances(parts, base, TILE_SIZE, 1.0, {}, ResourceMarkerChunkScript.Shape.SPRITE, sprites)
 			continue
 		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
@@ -1569,10 +1575,12 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 ## one whose tile is the clicked tile (sprites are drawn filling their tile,
 ## see resource_marker_chunk.gd), else the nearest instance whose debug
 ## marker covers the point (marker radius = 0.35 x its guild's spacing).
-## In the World view (sprites) the fallback is instead the frontmost sprite
-## whose drawn art covers the point (_sprite_covers()) - a tree's canopy
-## reaching into the tile above picks the tree, and a click in the tile
-## below a resource is never pulled onto it. Works in any view - instances exist whether or not their markers are
+## In the World view (sprites) only what is drawn under the point counts:
+## the frontmost (southernmost pivot) sprite whose art covers it
+## (_sprite_covers()) - a tree's canopy reaching into the tile above picks
+## the tree, and a click on the ground beside or below a resource isn't
+## pulled onto it (instances without a sprite still go by their tile).
+## Works in any view - instances exist whether or not their markers are
 ## drawn. Adds "guild_name" and "name" for display, and "entity": its
 ## ResourceInstance (Phase 15: quality, size, health, harvest state).
 ## include_harvested = false skips what the player harvested (Phase 16:
@@ -1591,14 +1599,14 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 				continue
 			var pos: Vector2 = inst["position"]
 			var in_tile := Vector2i(pos.floor()) == tile
-			# An instance in the clicked tile always beats one merely in reach
-			# (or, over sprites, one whose art covers the point: the frontmost,
-			# southernmost, wins).
+			# An instance in the clicked tile always beats one merely in reach.
 			var dist := point.distance_to(pos) - (1000.0 if in_tile else 0.0)
 			var near := dist <= reach
-			if sprites and not in_tile:
+			if sprites and not sprite_drawn(inst).is_empty():
+				# Only covering art counts; the frontmost wins.
+				in_tile = false
 				near = _sprite_covers(inst, point)
-				dist = -floorf(pos.y)
+				dist = -ResourceMarkerChunkScript.pivot(inst).y - 2000.0
 			if (in_tile or near) and dist < best_dist:
 				best = inst.duplicate()
 				best_dist = dist
@@ -1609,22 +1617,54 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	return best
 
 
-## Whether the World view draws an opaque pixel of `inst`'s pivoted art
-## (ResourceDefinition.sprite_texture) at `point` (tile units): the art
-## standing on its tile's bottom middle, as ResourceMarkerChunk draws it.
+## Whether the World view draws an opaque pixel of `inst`'s sprite at
+## `point` (tile units).
 func _sprite_covers(inst: Dictionary, point: Vector2) -> bool:
-	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
-	if definition == null or definition.sprite_tile.x < 0 or definition.sprite_texture == null:
+	var drawn := sprite_drawn(inst)
+	if drawn.is_empty():
 		return false
-	var texture := definition.sprite_texture
-	var base := ((inst["position"] as Vector2).floor() + Vector2(0.5, 1.0)) * TILE_SIZE
-	var rect := ResourceMarkerChunkScript.pivot_rect(base, texture.get_size())
-	var px := Vector2i((point * TILE_SIZE - rect.position).floor())
-	if not Rect2i(Vector2i.ZERO, Vector2i(rect.size)).has_point(px):
-		return false
+	var rect: Rect2 = drawn[1]
+	var image: Image = sprite_image(drawn[0])
+	var px := Vector2i(((point * TILE_SIZE - rect.position) * Vector2(image.get_size()) / rect.size).floor())
+	return Rect2i(Vector2i.ZERO, image.get_size()).has_point(px) and image.get_pixelv(px).a > 0.5
+
+
+## A point (tile units) on a placed resource's drawn sprite - its opaque
+## pixel nearest its pivot - where a click picks it in the World view
+## (unless something drawn in front covers it); its position if it has no
+## sprite.
+func sprite_point(inst: Dictionary) -> Vector2:
+	var drawn := sprite_drawn(inst)
+	if drawn.is_empty():
+		return inst["position"]
+	var rect: Rect2 = drawn[1]
+	var image := sprite_image(drawn[0])
+	var pivot := (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()
+	var best := Vector2.INF
+	for y in image.get_height():
+		for x in image.get_width():
+			var p := rect.position + Vector2(x + 0.5, y + 0.5)
+			if image.get_pixel(x, y).a > 0.5 and p.distance_squared_to(pivot) < best.distance_squared_to(pivot):
+				best = p
+	return best / TILE_SIZE
+
+
+## How the World view draws a placed resource's sprite:
+## [texture, rect in world px, draw alpha carrying its sway (sway_alpha())],
+## as ResourceMarkerChunk draws it; [] if it has no sprite.
+func sprite_drawn(inst: Dictionary) -> Array:
+	var definition: ResourceDefinition = _definitions_by_id().get(inst.get("id", ""))
+	if definition == null or definition.sprite_tile.x < 0:
+		return []
+	var sprite := {"tile": definition.sprite_tile, "size": definition.sprite_size, "texture": definition.sprite_texture}
+	return ResourceMarkerChunkScript.sprite_draw(sprite, (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()) + [sway_alpha(definition.sway)]
+
+
+## A sprite texture's pixels (cached), for hit tests and outlines.
+func sprite_image(texture: Texture2D) -> Image:
 	if not _sprite_images.has(texture):
 		_sprite_images[texture] = texture.get_image()
-	return (_sprite_images[texture] as Image).get_pixelv(px).a > 0.5
+	return _sprite_images[texture]
 
 
 ## place_guild_in_rect() for any rect, assembled from per-chunk placements
@@ -1778,7 +1818,7 @@ func _spawn_harvest_effect(entity) -> void:
 		texture = definition.sprite_texture
 	var color: Color = sprite_fill(definition) if has_sprite else definition.debug_color
 	effect.setup(texture, color, definition.sprite_size * ResourceMarkerChunkScript.SPRITE_SIZE, entity.key, definition.sprite_texture != null)
-	effect.position = (entity.world_position.floor() + Vector2(0.5, 1.0)) * TILE_SIZE
+	effect.position = (ResourceMarkerChunkScript.pivot({"position": entity.world_position}) * TILE_SIZE).round()
 	effect.name = "HarvestEffect"
 	resources_root.add_child(effect)
 
@@ -1896,7 +1936,7 @@ func _load_gameplay_state() -> void:
 func _save_gameplay_state() -> void:
 	_changes.time_minutes = clock.minutes
 	if _player:
-		_changes.player_position = _player.tile_center(_player.tile())
+		_changes.player_position = _player.position
 		_changes.has_player_position = true
 	_changes.save(changes_path(), world_seed)
 
@@ -1934,23 +1974,86 @@ func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 	var tent := is_tent(goal)
 	var inst := {} if tent else hover_target(world_pos / TILE_SIZE)
 	var on_arrive := Callable()
+	# Where the walk ends: the tapped point, or next to a tapped resource or
+	# tent (its pivot, the base of its sprite).
+	var object_at := Vector2.ZERO
 	if tent:
 		var tent_tile := goal
 		on_arrive = func() -> void: enter_tent(tent_tile)
+		object_at = (Vector2(goal) + Vector2(0.5, 1.0)) * TILE_SIZE
 	elif not inst.is_empty():
 		goal = Vector2i((inst["position"] as Vector2).floor())
-		var target := (Vector2(goal) + Vector2(0.5, 0.5)) * TILE_SIZE
-		on_arrive = func() -> void: _on_harvest_clicked(target)
+		on_arrive = func() -> void: _on_harvest_clicked(world_pos)
+		object_at = ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE
+	var to_object := tent or not inst.is_empty()
 	_gen_mutex.lock()
-	var path := find_path(_player.tile(), goal, tent or not inst.is_empty())
-	_gen_mutex.unlock()
-	# Stopped short of a tapped resource or tent (unreachable): no harvest.
-	if tent or not inst.is_empty():
-		var end: Vector2i = path[-1] if not path.is_empty() else _player.tile()
+	var path := find_path(_player.tile(), goal, to_object)
+	var end: Vector2i = path[-1] if not path.is_empty() else _player.tile()
+	var points: Array[Vector2] = []
+	for t in path:
+		points.append((Vector2(t) + Vector2(0.5, 0.5)) * TILE_SIZE)
+	if to_object:
 		if maxi(absi(end.x - goal.x), absi(end.y - goal.y)) > 1:
-			on_arrive = Callable()
-	_player.walk(path, on_arrive)
+			on_arrive = Callable()  # stopped short (unreachable): no harvest
+		else:
+			# Stand beside it, on the side the walk comes from.
+			var from: Vector2 = points[-1] if not points.is_empty() else _player.position
+			var side := from - object_at
+			side = side.normalized() if side.length() > 0.5 else Vector2.DOWN
+			var stand := object_at + side * STAND_OFF * TILE_SIZE
+			if is_walkable(Vector2i((stand / TILE_SIZE).floor())):
+				_set_last(points, stand, end)
+	elif end == goal:
+		_set_last(points, world_pos, end)
+	points = _smooth_path(_player.position, points)
+	_gen_mutex.unlock()
+	_player.walk(points, on_arrive)
 	return path
+
+
+## How far (tiles) from a tapped resource's or tent's base the player stops.
+const STAND_OFF := 0.6
+
+
+## Makes `point` the walk's last point: it replaces the last tile centre,
+## or is the only point when the walk stays on the start tile (`end`).
+func _set_last(points: Array[Vector2], point: Vector2, end: Vector2i) -> void:
+	if points.is_empty() or Vector2i((point / TILE_SIZE).floor()) != end:
+		points.append(point)
+	else:
+		points[-1] = point
+
+
+## String-pulls a walk: drops every point the player can skip by walking
+## straight to a later one over walkable ground (_walkable_line()), so the
+## walk is free rather than tile to tile. Call with _gen_mutex held.
+func _smooth_path(start: Vector2, points: Array[Vector2]) -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	var from := start
+	var i := 0
+	while i < points.size():
+		var j := points.size() - 1
+		while j > i and not _walkable_line(from, points[j]):
+			j -= 1
+		result.append(points[j])
+		from = points[j]
+		i = j + 1
+	return result
+
+
+## Whether the straight walk from `a` to `b` (world px) stays on walkable
+## tiles, with a little clearance either side so it never grazes a water
+## corner. Call with _gen_mutex held.
+func _walkable_line(a: Vector2, b: Vector2) -> bool:
+	var d := b - a
+	var n := ceili(d.length() / (TILE_SIZE * 0.25)) + 1
+	var side := d.orthogonal().normalized() * 3.0 if d.length() > 0.0 else Vector2.ZERO
+	for k in n + 1:
+		var p := a + d * (float(k) / n)
+		for q in [p, p + side, p - side]:
+			if not is_walkable(Vector2i(((q as Vector2) / TILE_SIZE).floor())):
+				return false
+	return true
 
 
 ## Whether a camp tent stands on `tile` (a "tent" part of the site there).
@@ -1962,6 +2065,19 @@ func is_tent(tile: Vector2i) -> bool:
 		if part["tile"] == tile and part["kind"] == "tent":
 			return true
 	return false
+
+
+## How the World view draws the camp tent on `tile`: [texture, rect in
+## world px, draw alpha 1 (rigid)] (a structure part, on its tile's bottom
+## middle); [] if no tent stands there.
+func tent_drawn(tile: Vector2i) -> Array:
+	_gen_mutex.lock()  # site_at() may build the site, sampling the world
+	var site := _structures.site_at(tile)
+	_gen_mutex.unlock()
+	for part in site.get("parts", []):
+		if part["tile"] == tile and part["kind"] == "tent":
+			return ResourceMarkerChunkScript.sprite_draw({"tile": part["sheet"], "size": 1.0}, (Vector2(tile) + Vector2(0.5, 1.0)) * TILE_SIZE) + [1.0]
+	return []
 
 
 ## Sleeping in a tent (user request): the player goes inside the tent on
@@ -1984,6 +2100,9 @@ func enter_tent(tile: Vector2i) -> void:
 			tent_sheet = part["tile"]
 	_tent_effect = TentSleepEffectScript.new()
 	_tent_effect.name = "TentSleep"
+	# Above the marker chunks (re)added to Resources after it, and the
+	# Overlay, so the Zs are never hidden behind neighbouring sprites.
+	_tent_effect.z_index = 1
 	_tent_effect.setup(ResourceMarkerChunkScript.sprite_texture(tent_sheet), def.kind_colors["tent"], ResourceMarkerChunkScript.SPRITE_SIZE)
 	# Its tent stands on the tile's bottom edge, as the marker's does.
 	_tent_effect.position = (Vector2(tile) + Vector2(0.5, 1.0)) * TILE_SIZE - Vector2(0, ResourceMarkerChunkScript.SPRITE_SIZE * 0.5)
@@ -2004,7 +2123,8 @@ func _leave_tent() -> void:
 	var tile: Vector2i = _tent_tile
 	_tent_tile = null
 	if is_instance_valid(_tent_effect):
-		_tent_effect.queue_free()
+		_tent_effect.name = "TentSleepFading"  # frees itself once its Zs fade
+		_tent_effect.wake()
 	_tent_effect = null
 	if _player:
 		_player.visible = true

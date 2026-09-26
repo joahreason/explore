@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ResourceMarkerChunk := preload("res://scripts/resource_marker_chunk.gd")
+
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
 ## marker layer follows view/LOD/chunk streaming, then that the guild views
 ## (Tree/Rock/Berry Placement, Resources) draw their members. If OUT_PNG is
@@ -392,10 +394,13 @@ func _init() -> void:
 		for entry in inline_world._placement_chunk(c):
 			for inst in entry[1]:
 				var pos: Vector2 = inst["position"]
-				# Sprites stand on their tile's bottom middle (resource_marker_chunk.gd).
-				if node._textures[one_go.size()] != null:
-					pos = Vector2(pos.floor()) + Vector2(0.5, 1.0)
-				one_go.append((pos - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE)
+				# Sprites stand on their pivot (resource_marker_chunk.gd), structure
+				# parts on their tile's bottom middle.
+				var drawn: bool = node._textures[one_go.size()] != null
+				if drawn:
+					pos = Vector2(pos.floor()) + Vector2(0.5, 1.0) if entry[0][0] == null else ResourceMarkerChunk.pivot(inst)
+				var local: Vector2 = (pos - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE
+				one_go.append(local.round() if drawn else local)
 		var shown: PackedVector2Array = node._positions
 		markers_total += shown.size()
 		same = same and shown == one_go

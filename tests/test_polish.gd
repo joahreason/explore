@@ -98,10 +98,10 @@ func _init() -> void:
 				break
 		if not target.is_empty():
 			break
-	var click: Vector2 = ((target["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var click: Vector2 = world.sprite_point(target) * world.TILE_SIZE
 	var e = world._on_harvest_clicked(click)
 	var effects: Array = world.resources_root.get_children().filter(func(n): return n.name.begins_with("HarvestEffect"))
-	var at_object: bool = effects.size() == 1 and effects[0].position == (e.world_position.floor() + Vector2(0.5, 1.0)) * world.TILE_SIZE
+	var at_object: bool = e != null and effects.size() == 1 and effects[0].position == (world.ResourceMarkerChunkScript.pivot({"position": e.world_position}) * world.TILE_SIZE).round()
 	await create_timer(0.5).timeout
 	var left: Array = world.resources_root.get_children().filter(func(n): return is_instance_valid(n) and n.name.begins_with("HarvestEffect"))
 	check(e != null and at_object and left.is_empty(), "harvesting spawns one pop effect at the object, which frees itself")
@@ -145,22 +145,23 @@ func _init() -> void:
 				break
 		if not next.is_empty():
 			break
-	var tile_center: Vector2 = ((next["position"] as Vector2).floor() + Vector2(0.5, 0.5))
-	var want: Dictionary = world.hover_target(tile_center)
+	var on_art: Vector2 = world.sprite_point(next)
+	var want: Dictionary = world.hover_target(on_art)
 	hover._mouse_mode = true
-	hover._tile = Vector2i(1 << 30, 0)
+	hover._pixel = Vector2i(1 << 30, 0)
 	var move := InputEventMouseMotion.new()
 	move.position = Vector2(-1000, -1000)
 	hover._input(move)
-	# Point the highlight's own lookup at that tile (headless has no real mouse).
-	var pick: Dictionary = world.hover_target(tile_center)
-	hover._set_target(not pick.is_empty(), Vector2i((pick.get("position", Vector2.ZERO) as Vector2).floor()))
-	var shown: bool = hover.has_target() and hover.target_tile() == Vector2i((want["position"] as Vector2).floor())
+	# Point the highlight's own lookup at that spot (headless has no real mouse).
+	var pick: Dictionary = world.hover_target(on_art)
+	hover._set_target(not pick.is_empty(), Vector2i((pick.get("position", Vector2.ZERO) as Vector2).floor()), world.sprite_drawn(pick))
+	var outline: Texture2D = hover.outline_texture(hover.drawn()[0]) if not hover.drawn().is_empty() else null
+	var shown: bool = hover.has_target() and hover.target_tile() == Vector2i((want["position"] as Vector2).floor()) and outline != null and outline.get_width() == (hover.drawn()[0] as Texture2D).get_width() + 2
 	var touch := InputEventScreenTouch.new()
 	touch.pressed = true
 	hover._input(touch)
 	await process_frame
-	check(shown and not hover.has_target(), "hover highlight marks the object a click would harvest, and hides after a touch")
+	check(shown and not hover.has_target(), "hover highlight outlines the sprite of the object a click would harvest, and hides after a touch")
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
