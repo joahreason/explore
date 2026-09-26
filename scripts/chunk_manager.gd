@@ -1875,16 +1875,24 @@ func changes_path() -> String:
 	return "%s/%d.json" % [changes_dir, world_seed]
 
 
-## Phase 16: harvests the resource at `world_pos` - the player's tap walks
-## up to it first (_on_map_tapped()) - the resource under the click, as
-## hover_target() picks it (only what is drawn, ignoring what's already
-## harvested) - records it in the gameplay changes, saves them, and redraws
-## that chunk's markers.
-## Returns the harvested ResourceInstance, or null if nothing was there.
+## Phase 16: harvests the resource at `world_pos` - the resource under the
+## click, as hover_target() picks it (only what is drawn, ignoring what's
+## already harvested). See _harvest().
 func _on_harvest_clicked(world_pos: Vector2):
-	var inst := hover_target(world_pos / TILE_SIZE)
+	return _harvest(hover_target(world_pos / TILE_SIZE))
+
+
+## Harvests the placed instance `inst` ({} = nothing): records it in the
+## gameplay changes, saves them, and redraws that chunk's markers. A tap
+## walks up to its target first (_on_map_tapped()) and harvests that same
+## instance on arrival, whatever the view is by then (review C3); nothing
+## happens if it was harvested meanwhile.
+## Returns the harvested ResourceInstance, or null if there was none.
+func _harvest(inst: Dictionary):
+	if inst.is_empty() or _changes.is_instance_harvested(inst):
+		return null
 	_gen_mutex.lock()  # the worker may be generating a chunk
-	var entity = get_resource_instance(inst) if not inst.is_empty() else null
+	var entity = get_resource_instance(inst)
 	if entity != null:
 		_changes.harvest(entity.key, entity.resource_id)
 		_changes.apply(entity)
@@ -2076,7 +2084,8 @@ func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 		object_at = (Vector2(goal) + Vector2(0.5, 1.0)) * TILE_SIZE
 	elif not inst.is_empty():
 		goal = Vector2i((inst["position"] as Vector2).floor())
-		on_arrive = func() -> void: _on_harvest_clicked(world_pos)
+		var target := inst
+		on_arrive = func() -> void: _harvest(target)
 		object_at = ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE
 	var to_object := tent or not inst.is_empty()
 	_gen_mutex.lock()
