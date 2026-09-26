@@ -9,6 +9,24 @@ old notes.
 
 ## 2026-09-26
 
+### Review batch 7: performance and cleanups - into `review-followup`
+
+- P1: noise caches keyed by seed then id, no per-tile String keys (guild
+  densities ~291/283 -> 263/271 us per tile). P3: a new season day recolours
+  marker nodes in place (63 -> 2.9 ms). P4: view switches that bake the same
+  images keep the chunk textures (World -> Terrain Only 2.6 s -> 5 ms). P2:
+  markers measured at ~55 ms of a 144 ms frame at zoom 0.5; tile-bucketing
+  only reached 53 ms, so rows stay as they are (PR #55; tuning-log.md).
+- Q1 one curve table (`ResourceDefinition.CURVES`); Q2 the terrain shader's
+  codes in `shaders/terrain_codes.gdshaderinc`, checked against
+  `TerrainCodes`; Q3 water depth from `WorldGen.sea_level`, the day cycle's
+  hours in `GameClock`, named biome thresholds, `default_world_gen.tres` in
+  `world.tscn`; Q4 public `ResourcePlacement.seed_for()` / `cell_unit()`
+  and `CameraRig.is_over_ui()`, terrain jitter's id reserved; Q5 current
+  headers; Q6 the menu is a VBoxContainer.
+- T6 `tests/harness.gd`; D3 numeric seeds outside -2^31..2^32 hashed like
+  text; T2 snapshot layers for desert plants and structure parts.
+
 ### Review batch 6: docs restructure (X2) - into `review-followup`
 
 PROJECT_STATE.md (126 KB) is a snapshot under 10 KB again. Its history moved

@@ -7,6 +7,34 @@ the developer chose because the user didn't specify.
 
 ## 2026-09-26
 
+**Seeds are bounded, not masked (review D3).** A numeric seed outside
+-2^31..2^32 is hashed like text; the seed stays a number in the save. *Why:*
+the review's `& 0x7FFFFFFF` would have changed every negative seed and about
+half of the text seeds (their hashes reach 2^32), and with every seed under
+2^53 the JSON number is exact. *Revisit:* if seeds ever need more bits.
+
+**Terrain jitter keeps its seed (review Q4).** It still rolls the placement
+cell hash under the id "terrain"; that id is reserved
+(`TerrainSurface.JITTER_SEED_ID`, checked in test_terrain) instead of moving
+to a new offset. *Why:* a new offset changes every tile's colour.
+*Revisit:* with the next agreed terrain colour change.
+
+**Tuning in one place, values unchanged (review Q3).** The day cycle's hours
+live in GameClock; the biome classifier's thresholds are named float
+constants (not Vector2, which would round them); `world.tscn` points at
+`resources/default_world_gen.tres`, which overrides nothing yet.
+BiomeSubtype and BiomeModifiers keep their inline numbers. *Why:* the review
+named the classifier as the most-tuned; identical output was required.
+*Revisit:* when subtype or modifier numbers get tuned.
+
+**Marker rows stay one node per row (review P2).** Measured ~55 ms of a
+144 ms frame at zoom 0.5 under Xvfb GL; tile-bucketing only reached 53 ms.
+*Why:* no gain worth the change. *Revisit:* with real-browser numbers (F3).
+
+**The Go-to menu clips its text (review Q6).** Like the other dropdowns, so
+the menu column keeps its 184 px width. *Why:* in a VBoxContainer the widest
+control sets every control's width. *Revisit:* never, unless labels grow.
+
 **Docs layout (review X2).** PROJECT_STATE.md is a snapshot under 10 KB
 (checked in CI); history goes to CHANGELOG_DEV.md, decisions here, workflow
 and gotchas to dev-workflow.md, numbers to tuning-log.md, backlog only in
