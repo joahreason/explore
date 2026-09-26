@@ -91,7 +91,7 @@ func _init() -> void:
 				var prev := ""
 				for x in range(ox, ox + 20):
 					var s := _wg.sample(x, y)
-					if TS.water_color(s) != null:
+					if TS.water_color(s, _wg.sea_level) != null:
 						prev = ""
 						continue
 					var st := _state(s, x, y)
@@ -141,7 +141,7 @@ func _init() -> void:
 		var y := i * 53 - 3000
 		var a := _wg.sample(x, y)
 		var b := other.sample(x, y)
-		if TS.water_color(a) != null:
+		if TS.water_color(a, _wg.sea_level) != null:
 			continue
 		var sa := _state(a, x, y)
 		var sb := _state(b, x, y)
@@ -149,6 +149,10 @@ func _init() -> void:
 		var mb: SurfaceMaterial = TS.material_at(sb, SEED, x, y)
 		same = same and ma == mb and TS.color_for(ma, sa, SEED, x, y) == TS.color_for(mb, sb, SEED, x, y)
 	check(same, "deterministic: same material and colour from a fresh WorldGen")
+	# Water depth is measured from the WorldGen's sea level (review Q3).
+	var at_surface := {"water_body": "ocean", "elevation": 0.2, "temperature": 0.5}
+	var deep_below := {"water_body": "ocean", "elevation": -0.4, "temperature": 0.5}
+	check(TS.water_color(at_surface, 0.2).is_equal_approx(TS.OCEAN_SHALLOW) and TS.water_color(deep_below, 0.2).is_equal_approx(TS.OCEAN_DEEP), "water depth follows the sea level passed in")
 
 	# 4. The world's render path matches a direct evaluation.
 	var world: Node2D = load("res://world.tscn").instantiate()
@@ -164,7 +168,7 @@ func _init() -> void:
 	for y in range(-40, 40, 3):
 		for x in range(-40, 40, 3):
 			var s := _wg.sample(x, y)
-			var water: Variant = TS.water_color(s)
+			var water: Variant = TS.water_color(s, _wg.sea_level)
 			if water != null:
 				water_ok = water_ok and world._builder.surface_at(s, x, y) == null and _rgb(world._builder.terrain_color(s, x, y)) == _rgb(water)
 				continue

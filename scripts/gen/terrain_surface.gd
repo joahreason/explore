@@ -45,21 +45,20 @@ const LAKE_SHALLOW := Color(0.3, 0.66, 0.72)
 const LAKE_DEEP := Color(0.16, 0.46, 0.56)
 const RIVER_WATER := Color(0.32, 0.62, 0.8)
 const ICE := Color(0.75, 0.85, 0.95)
-const SEA_LEVEL := -0.1
 
 
 ## Water-body colour for a WorldGen sample, or null for ground (land and
-## swamp).
-static func water_color(s: Dictionary) -> Variant:
+## swamp). sea_level is the WorldGen's, which depth is measured from.
+static func water_color(s: Dictionary, sea_level: float) -> Variant:
 	var elevation: float = s["elevation"]
 	var temperature: float = s["temperature"]
 	match s["water_body"]:
 		"ocean":
-			return _water(elevation, temperature, 0.6, OCEAN_SHALLOW, OCEAN_DEEP)
+			return _water(elevation, sea_level, temperature, 0.6, OCEAN_SHALLOW, OCEAN_DEEP)
 		"sea":
-			return _water(elevation, temperature, 0.3, SEA_SHALLOW, SEA_DEEP)
+			return _water(elevation, sea_level, temperature, 0.3, SEA_SHALLOW, SEA_DEEP)
 		"lake":
-			return _water(elevation, temperature, 0.15, LAKE_SHALLOW, LAKE_DEEP)
+			return _water(elevation, sea_level, temperature, 0.15, LAKE_SHALLOW, LAKE_DEEP)
 		"river":
 			return RIVER_WATER
 	return null
@@ -140,8 +139,8 @@ static func _tint(color: Color, state: EnvironmentalState, field: String, field_
 	return Color(lerpf(color.r, tint.r, amount), lerpf(color.g, tint.g, amount), lerpf(color.b, tint.b, amount))
 
 
-static func _water(elevation: float, temperature: float, depth_range: float, shallow: Color, deep: Color) -> Color:
-	var depth_t := clampf(inverse_lerp(SEA_LEVEL, SEA_LEVEL - depth_range, elevation), 0.0, 1.0)
+static func _water(elevation: float, sea_level: float, temperature: float, depth_range: float, shallow: Color, deep: Color) -> Color:
+	var depth_t := clampf(inverse_lerp(sea_level, sea_level - depth_range, elevation), 0.0, 1.0)
 	var color := shallow.lerp(deep, depth_t)
 	return color.lerp(ICE, _frozen(temperature))
 
