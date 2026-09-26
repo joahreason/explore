@@ -249,7 +249,8 @@ var _lake := FastNoiseLite.new()
 const WaterTopologyScript := preload("res://scripts/water_topology.gd")
 var _water_topology = WaterTopologyScript.new()
 
-var _configured_seed: int = -1
+var _configured := false  # a flag, not a sentinel seed: every int is a valid seed (review D2)
+var _configured_seed: int = 0
 
 # Seed offsets in use, so new fields don't collide: +1 elev_base, +2
 # elev_ridge, +3 climate, +4 rainfall, +5 wind_strength, +6 wind_dir,
@@ -277,8 +278,9 @@ const STRUCTURE_SITE_SEED_OFFSET := 22
 
 
 func configure(world_seed: int) -> void:
-	if _configured_seed == world_seed:
+	if _configured and _configured_seed == world_seed:
 		return
+	_configured = true
 	_configured_seed = world_seed
 	# A cached lake result from a previous seed would be silently wrong data
 	# for this one - not currently reachable in practice (chunk_manager.gd
