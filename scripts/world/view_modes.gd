@@ -6,28 +6,28 @@ extends RefCounted
 ## the view dropdown lists its labels, so a view is added or changed here.
 ## Constants only; any thread.
 
-const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
-const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
+const ResourceMarkerChunkScript := preload("res://scripts/render/resource_marker_chunk.gd")
+const ResourceManagerScript := preload("res://scripts/resources/resource_manager.gd")
 
 ## The guilds and resources particular views show (the stack itself is
 ## WorldContent's).
-const OAK_RESOURCE := preload("res://resources/oak.tres")
-const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
-const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
+const OAK_RESOURCE := preload("res://resources/species/oak.tres")
+const CANOPY_TREES := preload("res://resources/guilds/canopy_trees.tres")
+const SURFACE_ROCKS := preload("res://resources/guilds/surface_rocks.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const WETLAND_PLANTS := preload("res://resources/guilds/wetland_plants.tres")
 ## Phase 10 shores / river mouths: shells, beach grass, mud flats.
-const SHORE_FEATURES := preload("res://resources/shore_features.tres")
+const SHORE_FEATURES := preload("res://resources/guilds/shore_features.tres")
 ## Phase 11 succession: snags, logs and mushrooms on scars that were wooded,
 ## and pioneer grass/herbs recolonizing them.
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
+const DEADWOOD := preload("res://resources/guilds/deadwood.tres")
+const PIONEER_PLANTS := preload("res://resources/guilds/pioneer_plants.tres")
 ## Cacti in hot deserts, sagebrush in the cold Barrens.
-const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
+const DESERT_PLANTS := preload("res://resources/guilds/desert_plants.tres")
 ## Phase 12: meadow grass, herbs and wildflowers on established ground.
-const GROUND_COVER := preload("res://resources/ground_cover.tres")
+const GROUND_COVER := preload("res://resources/guilds/ground_cover.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
-const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const ORE_OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const FARMLAND := preload("res://resources/farmland.tres")
 
 ## Render-method views swap what colour a chunk's base image is built from

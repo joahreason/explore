@@ -9,11 +9,11 @@ extends SceneTree
 ## banks, and none of it on open water. Also: cacti only in (warm) Desert,
 ## and cool dry land is Barrens. Run via tests/run_tests.sh.
 
-const GROUND_COVER := preload("res://resources/ground_cover.tres")
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const ROCKS := preload("res://resources/surface_rocks.tres")
-const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
+const GROUND_COVER := preload("res://resources/guilds/ground_cover.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const DEADWOOD := preload("res://resources/guilds/deadwood.tres")
+const ROCKS := preload("res://resources/guilds/surface_rocks.tres")
+const DESERT_PLANTS := preload("res://resources/guilds/desert_plants.tres")
 ## Plan Phase 12's list -> the ids that cover it ("shrubs" = berry_bush,
 ## "grass" = meadow_grass/pioneer_grass, "fallen trees" = fallen_log).
 const PLAN_IDS := [
@@ -43,7 +43,10 @@ func check(cond: bool, msg: String) -> void:
 func _init() -> void:
 	var missing := []
 	for id in PLAN_IDS:
-		if not ResourceLoader.exists("res://resources/%s.tres" % id) or load("res://resources/%s.tres" % id).id != id:
+		var path := "res://resources/species/%s.tres" % id
+		if not ResourceLoader.exists(path):
+			path = "res://resources/deposits/%s.tres" % id
+		if not ResourceLoader.exists(path) or load(path).id != id:
 			missing.append(id)
 	check(missing.is_empty(), "every plan Phase 12 category has a definition (missing: %s)" % [missing])
 	for guild in [GROUND_COVER, CANOPY, DEADWOOD, ROCKS]:

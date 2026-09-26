@@ -8,7 +8,7 @@ extends SceneTree
 ## tests/run_tests.sh.
 
 const SEED := 4242
-const TS := preload("res://scripts/terrain_surface.gd")
+const TS := preload("res://scripts/gen/terrain_surface.gd")
 
 var _fails := 0
 var _passes := 0
@@ -144,11 +144,11 @@ func _init() -> void:
 			var s := _wg.sample(x, y)
 			var water: Variant = TS.water_color(s)
 			if water != null:
-				water_ok = water_ok and world._surface_at(s, x, y) == null and _rgb(world._terrain_color(s, x, y)) == _rgb(water)
+				water_ok = water_ok and world._builder.surface_at(s, x, y) == null and _rgb(world._builder.terrain_color(s, x, y)) == _rgb(water)
 				continue
 			var st := _state(s, x, y)
 			var m: SurfaceMaterial = TS.material_at(st, SEED, x, y)
-			path_ok = path_ok and world._surface_at(s, x, y) == m and _rgb(world._terrain_color(s, x, y)) == _rgb(TS.color_for(m, st, SEED, x, y))
+			path_ok = path_ok and world._builder.surface_at(s, x, y) == m and _rgb(world._builder.terrain_color(s, x, y)) == _rgb(TS.color_for(m, st, SEED, x, y))
 			checked += 1
 	check(path_ok and checked > 400, "chunk path: material and colour match direct evaluation (%d tiles)" % checked)
 	check(water_ok, "water tiles: no ground material, water colour")

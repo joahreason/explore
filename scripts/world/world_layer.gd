@@ -4,7 +4,7 @@ extends Resource
 ## One guild as the World (Resources) view draws it: sprites, and the
 ## marker shape for a member without art (review A3). See WorldContent.
 
-const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
+const ResourceMarkerChunkScript := preload("res://scripts/render/resource_marker_chunk.gd")
 
 @export var guild: ResourceGuild
 @export var shape: ResourceMarkerChunkScript.Shape = ResourceMarkerChunkScript.Shape.SPRITE

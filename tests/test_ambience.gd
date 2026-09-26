@@ -8,6 +8,7 @@ extends SceneTree
 ## renderer by hand; this checks the rules and the wiring.
 ## Run via tests/run_tests.sh.
 
+const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
 const SEED := 4242
 
 var _fails := 0
@@ -82,33 +83,33 @@ func _init() -> void:
 	var grass_ok := false
 	for y in range(-60, 60, 2):
 		for x in range(-60, 60, 2):
-			var s: Dictionary = world._world_gen.sample(x, y)
-			var col: Color = world._color_for(s, x, y)
+			var s: Dictionary = world._ctx.world_gen.sample(x, y)
+			var col: Color = world._builder.color_for(s, x, y)
 			var a8 := roundi(col.a * 255.0)
 			if s["water_body"] in ["ocean", "sea", "lake", "river"]:
-				water_ok = water_ok or a8 == world.WATER_CODE
-			elif world._surface_at(s, x, y).id == "grass":
-				grass_ok = grass_ok or a8 == world.GRASS_CODE
-	var sprite: Sprite2D = world._loaded_chunks.values()[0]
+				water_ok = water_ok or a8 == TerrainCodes.WATER_CODE
+			elif world._builder.surface_at(s, x, y).id == "grass":
+				grass_ok = grass_ok or a8 == TerrainCodes.GRASS_CODE
+	var sprite: Sprite2D = world._presenter.loaded_chunks.values()[0]
 	check(water_ok and grass_ok and sprite.material == world.terrain_material and sprite.texture.get_image().get_format() == Image.FORMAT_RGBA8,
 		"World view: water and grass tiles carry their codes; chunks use the terrain shader")
 	# Ground blending across chunk borders: each shown image has a 1-texel
 	# border holding its neighbours' edge tiles; the sprite shows the inside.
 	var borders_ok := true
 	var pairs := 0
-	for chunk in world._chunk_images:
+	for chunk in world._presenter.chunk_images:
 		var right: Vector2i = chunk + Vector2i(1, 0)
 		var below: Vector2i = chunk + Vector2i(0, 1)
-		var img: Image = world._chunk_images[chunk]
+		var img: Image = world._presenter.chunk_images[chunk]
 		var n: int = img.get_width() - 2
-		borders_ok = borders_ok and world._loaded_chunks[chunk].region_rect == Rect2(1, 1, n, n)
-		if world._chunk_images.has(right):
-			var r: Image = world._chunk_images[right]
+		borders_ok = borders_ok and world._presenter.loaded_chunks[chunk].region_rect == Rect2(1, 1, n, n)
+		if world._presenter.chunk_images.has(right):
+			var r: Image = world._presenter.chunk_images[right]
 			for y in range(1, n + 1):
 				borders_ok = borders_ok and img.get_pixel(n + 1, y) == r.get_pixel(1, y) and r.get_pixel(0, y) == img.get_pixel(n, y)
 			pairs += 1
-		if world._chunk_images.has(below):
-			var b: Image = world._chunk_images[below]
+		if world._presenter.chunk_images.has(below):
+			var b: Image = world._presenter.chunk_images[below]
 			for x in range(1, n + 1):
 				borders_ok = borders_ok and img.get_pixel(x, n + 1) == b.get_pixel(x, 1) and b.get_pixel(x, 0) == img.get_pixel(x, n)
 			pairs += 1
@@ -125,11 +126,11 @@ func _init() -> void:
 	# SHALLOW_CODE + 0..7, higher the shallower.
 	var shape_text := FileAccess.get_file_as_string("res://shaders/terrain.gdshader")
 	var shader_shapes := shape_text.substr(shape_text.find("SHORE_SHAPES[46] = {") + 20).get_slice("}", 0).split(",")
-	var shapes_ok: bool = shader_shapes.size() == world.SHORE_SHAPES.size()
-	for i in mini(shader_shapes.size(), world.SHORE_SHAPES.size()):
-		shapes_ok = shapes_ok and int(shader_shapes[i].strip_edges()) == world.SHORE_SHAPES[i]
-	check(shapes_ok and world.SHORE_SHAPES.size() == 46, "the shader's shore shape table matches ChunkManager's (46 shapes)")
-	var steps: Array = world.SHORE_STEPS
+	var shapes_ok: bool = shader_shapes.size() == TerrainCodes.SHORE_SHAPES.size()
+	for i in mini(shader_shapes.size(), TerrainCodes.SHORE_SHAPES.size()):
+		shapes_ok = shapes_ok and int(shader_shapes[i].strip_edges()) == TerrainCodes.SHORE_SHAPES[i]
+	check(shapes_ok and TerrainCodes.SHORE_SHAPES.size() == 46, "the shader's shore shape table matches ChunkManager's (46 shapes)")
+	var steps: Array = TerrainCodes.SHORE_STEPS
 	var open_water := Vector2i(1 << 30, 0)
 	var shore_water := Vector2i(1 << 30, 0)
 	var foam_seen := 0
@@ -145,14 +146,14 @@ func _init() -> void:
 	var coasts: Array[Vector2i] = []
 	var oceans_seen: Array = []
 	for attempt in 3:
-		var ocean_at = BiomeFinder.find(world._world_gen, "Ocean", Vector2i.ZERO, oceans_seen)
+		var ocean_at = BiomeFinder.find(world._ctx.world_gen, "Ocean", Vector2i.ZERO, oceans_seen)
 		if ocean_at == null:
 			break
 		var ocean_tile: Vector2i = ocean_at if ocean_at is Vector2i else ocean_at["tile"]
 		oceans_seen.append(ocean_tile)
 		var inward := Vector2(-ocean_tile).normalized()
 		var walk := Vector2(ocean_tile)
-		while world._world_gen.elevation(walk.x, walk.y) < world._world_gen.sea_level:
+		while world._ctx.world_gen.elevation(walk.x, walk.y) < world._ctx.world_gen.sea_level:
 			walk += inward
 		coasts.append(Vector2i(walk.round()))
 	for coast in coasts:
@@ -160,42 +161,42 @@ func _init() -> void:
 			break
 		for y in range(coast.y - 150, coast.y + 150):
 			for x in range(coast.x - 150, coast.x + 150):
-				var is_wet: bool = world._world_gen.elevation(x, y) < world._world_gen.sea_level
+				var is_wet: bool = world._ctx.world_gen.elevation(x, y) < world._ctx.world_gen.sea_level
 				var mask := 0
 				for i in steps.size():
-					if i >= 4 and mask & world.CORNER_EDGES[i - 4]:
+					if i >= 4 and mask & TerrainCodes.CORNER_EDGES[i - 4]:
 						continue
-					if (world._world_gen.elevation(x + steps[i].x, y + steps[i].y) < world._world_gen.sea_level) != is_wet:
+					if (world._ctx.world_gen.elevation(x + steps[i].x, y + steps[i].y) < world._ctx.world_gen.sea_level) != is_wet:
 						mask |= 1 << i
 				if mask == 0:
 					if is_wet and open_water.x == 1 << 30:
 						open_water = Vector2i(x, y)
-					var depth: float = world._world_gen.sea_level - world._world_gen.elevation(x, y)
-					if is_wet and depth > 0.0 and depth < world.SHALLOW_DEPTH and shallow_seen < 40:
-						var sw: Dictionary = world._world_gen.sample(x, y)
-						if TerrainSurface.water_liquid(sw) >= 1.0 and sw["water_body"] in world.SEA_BODIES:
-							var level: int = roundi(world._terrain_color(sw, x, y).a * 255.0) - world.SHALLOW_CODE
-							shallow_ok = shallow_ok and level == roundi(7.0 * (1.0 - depth / world.SHALLOW_DEPTH))
+					var depth: float = world._ctx.world_gen.sea_level - world._ctx.world_gen.elevation(x, y)
+					if is_wet and depth > 0.0 and depth < TerrainCodes.SHALLOW_DEPTH and shallow_seen < 40:
+						var sw: Dictionary = world._ctx.world_gen.sample(x, y)
+						if TerrainSurface.water_liquid(sw) >= 1.0 and sw["water_body"] in TerrainCodes.SEA_BODIES:
+							var level: int = roundi(world._builder.terrain_color(sw, x, y).a * 255.0) - TerrainCodes.SHALLOW_CODE
+							shallow_ok = shallow_ok and level == roundi(7.0 * (1.0 - depth / TerrainCodes.SHALLOW_DEPTH))
 							shallow_seen += 1
 					continue
 				if foam_seen >= 80 and wash_seen >= 80 and wash_grass_seen > 0:
 					continue
-				var shape: int = world.SHORE_SHAPES.find(mask) + 1
+				var shape: int = TerrainCodes.SHORE_SHAPES.find(mask) + 1
 				corner_seen += 1 if mask >= 16 else 0
-				var ss: Dictionary = world._world_gen.sample(x, y)
-				var code8 := roundi(world._terrain_color(ss, x, y).a * 255.0)
-				if is_wet and TerrainSurface.water_liquid(ss) >= 1.0 and ss["water_body"] in world.SEA_BODIES:
-					masks_ok = masks_ok and shape > 0 and code8 == world.FOAM_CODE + shape
+				var ss: Dictionary = world._ctx.world_gen.sample(x, y)
+				var code8 := roundi(world._builder.terrain_color(ss, x, y).a * 255.0)
+				if is_wet and TerrainSurface.water_liquid(ss) >= 1.0 and ss["water_body"] in TerrainCodes.SEA_BODIES:
+					masks_ok = masks_ok and shape > 0 and code8 == TerrainCodes.FOAM_CODE + shape
 					foam_seen += 1
 					if shore_water.x == 1 << 30 and mask < 16:
 						shore_water = Vector2i(x, y)
 				elif is_wet and ss["water_body"] == "lake":
 					lake_seen += 1
-					masks_ok = masks_ok and code8 <= world.WATER_CODE
+					masks_ok = masks_ok and code8 <= TerrainCodes.WATER_CODE
 				elif not is_wet and ss["water_body"] == "none" and ss["shore_salinity"] > 0.0 and TerrainSurface.shore_liquid(ss) >= 1.0:
 					# Every ground type washes; grass keeps its seasonal tint.
-					var grass: bool = world._surface_at(ss, x, y).id in world.GRASS_GROUND
-					masks_ok = masks_ok and shape > 0 and code8 == (world.WASH_GRASS_CODE if grass else world.WASH_CODE) + shape
+					var grass: bool = world._builder.surface_at(ss, x, y).id in TerrainCodes.GRASS_GROUND
+					masks_ok = masks_ok and shape > 0 and code8 == (TerrainCodes.WASH_GRASS_CODE if grass else TerrainCodes.WASH_CODE) + shape
 					wash_seen += 1
 					wash_grass_seen += 1 if grass else 0
 	check(masks_ok and foam_seen >= 30 and wash_seen >= 30 and wash_grass_seen > 0 and corner_seen > 0 and open_water.x != 1 << 30,
@@ -208,22 +209,22 @@ func _init() -> void:
 	var codes := []
 	for t in [0.3, -0.35, -0.8]:
 		lake["temperature"] = t
-		codes.append(roundi(world._terrain_color(lake, open_water.x, open_water.y).a * 255.0))
+		codes.append(roundi(world._builder.terrain_color(lake, open_water.x, open_water.y).a * 255.0))
 	var shore_codes := []
 	for body_temp in [["sea", 0.3], ["sea", -0.35], ["lake", 0.3], ["river", 0.3]]:
-		var at_shore := {"water_body": body_temp[0], "elevation": world._world_gen.sea_level - 0.005, "temperature": body_temp[1]}
-		shore_codes.append(roundi(world._terrain_color(at_shore, shore_water.x, shore_water.y).a * 255.0))
-	check(shore_codes[0] > world.FOAM_CODE and shore_codes[0] <= world.FOAM_CODE + 46 and shore_codes[1] < world.WATER_CODE
-		and shore_codes[2] == world.WATER_CODE and shore_codes[3] == world.WATER_CODE,
+		var at_shore := {"water_body": body_temp[0], "elevation": world._ctx.world_gen.sea_level - 0.005, "temperature": body_temp[1]}
+		shore_codes.append(roundi(world._builder.terrain_color(at_shore, shore_water.x, shore_water.y).a * 255.0))
+	check(shore_codes[0] > TerrainCodes.FOAM_CODE and shore_codes[0] <= TerrainCodes.FOAM_CODE + 46 and shore_codes[1] < TerrainCodes.WATER_CODE
+		and shore_codes[2] == TerrainCodes.WATER_CODE and shore_codes[3] == TerrainCodes.WATER_CODE,
 		"only open sea foams at a shore tile: half-frozen sea %d, lake %d, river %d don't" % shore_codes.slice(1))
 	var river := {"water_body": "river", "elevation": 0.1, "temperature": -0.9}
-	check(codes[0] == world.WATER_CODE and codes[1] > world.WATER_CODE_ICE and codes[1] < world.WATER_CODE and codes[2] == 255
-		and roundi(world._terrain_color(river, open_water.x, open_water.y).a * 255.0) == world.WATER_CODE,
+	check(codes[0] == TerrainCodes.WATER_CODE and codes[1] > TerrainCodes.WATER_CODE_ICE and codes[1] < TerrainCodes.WATER_CODE and codes[2] == 255
+		and roundi(world._builder.terrain_color(river, open_water.x, open_water.y).a * 255.0) == TerrainCodes.WATER_CODE,
 		"water codes follow how liquid it is: open %d, half-frozen %d, ice %d (no code); rivers stay liquid" % codes)
 	world.set_view_mode(CM.ViewMode.TEMPERATURE)
 	world.flush_chunk_work()
-	var s0: Dictionary = world._world_gen.sample(0, 0)
-	check(world._color_for(s0, 0, 0).a == 1.0 and world._loaded_chunks.values()[0].texture.get_image().get_format() == Image.FORMAT_RGB8,
+	var s0: Dictionary = world._ctx.world_gen.sample(0, 0)
+	check(world._builder.color_for(s0, 0, 0).a == 1.0 and world._presenter.loaded_chunks.values()[0].texture.get_image().get_format() == Image.FORMAT_RGB8,
 		"data views bake plain opaque images (no codes)")
 	await process_frame
 	check(not world.terrain_material.get_shader_parameter("ground_detail"), "no ground noise or blending in the data views")
@@ -236,19 +237,19 @@ func _init() -> void:
 	var granite: ResourceDefinition = world.debug_resources().filter(func(d): return d.id == "granite")[0]
 	world.clock.minutes = 40 * GameClock.MINUTES_PER_DAY + 12 * 60  # summer
 	await process_frame
-	var oak_summer: Color = world.sprite_fill(oak)
-	var pine_summer: Color = world.sprite_fill(pine)
-	var rock_summer: Color = world.sprite_fill(granite)
+	var oak_summer: Color = world._presenter.sprite_fill(oak)
+	var pine_summer: Color = world._presenter.sprite_fill(pine)
+	var rock_summer: Color = world._presenter.sprite_fill(granite)
 	world.clock.minutes = 76 * GameClock.MINUTES_PER_DAY + 12 * 60
 	await process_frame
 	await process_frame
-	var oak_autumn: Color = world.sprite_fill(oak)
+	var oak_autumn: Color = world._presenter.sprite_fill(oak)
 	# The clock runs on between frames, so compare colours approximately.
 	var drawn_autumn := false
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		for f in m._fills:
 			drawn_autumn = drawn_autumn or (absf(f.r - oak_autumn.r) < 0.01 and absf(f.g - oak_autumn.g) < 0.01 and absf(f.b - oak_autumn.b) < 0.01)
-	check(oak_autumn != oak_summer and oak_autumn.r > oak_autumn.g and world.sprite_fill(pine).is_equal_approx(pine_summer) and world.sprite_fill(granite) == rock_summer and drawn_autumn,
+	check(oak_autumn != oak_summer and oak_autumn.r > oak_autumn.g and world._presenter.sprite_fill(pine).is_equal_approx(pine_summer) and world._presenter.sprite_fill(granite) == rock_summer and drawn_autumn,
 		"oaks turn orange in autumn and the World view redraws them; pines and rocks don't change")
 
 	# Particles.
@@ -277,7 +278,7 @@ func _init() -> void:
 
 
 func AmbientParticles_weights(env: Dictionary) -> Dictionary:
-	return load("res://scripts/ambient_particles.gd").weights(env)
+	return load("res://scripts/render/ambient_particles.gd").weights(env)
 
 
 func _with(env: Dictionary, changes: Dictionary) -> Dictionary:

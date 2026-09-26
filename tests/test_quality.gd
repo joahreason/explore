@@ -10,9 +10,9 @@ extends SceneTree
 ## dense, fertile, undisturbed stands; abundant berries on fertile, moist,
 ## sunny ground; rich ore on deposit-rich seams). Run via tests/run_tests.sh.
 
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const ORE_OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const TREE_AGE := preload("res://resources/quality/tree_age.tres")
 const BERRY_YIELD := preload("res://resources/quality/berry_yield.tres")
 const ORE_RICHNESS := preload("res://resources/quality/ore_richness.tres")
@@ -88,10 +88,10 @@ func _init() -> void:
 	var counted := 0
 	for c in REGIONS:
 		var rect := Rect2i(c - Vector2i(HALF, HALF), Vector2i(2 * HALF, 2 * HALF))
-		var stack: Dictionary = world._place_stack(rect, 7)
+		var stack: Dictionary = world._ctx.place_stack(rect, 7)
 		for guild in [CANOPY, SHRUBS, ORE_OUTCROPS]:
 			for inst in stack[guild]:
-				var q: float = world._instance_quality(inst)
+				var q: float = world._builder.instance_quality(inst)
 				var definition: ResourceDefinition = world._definitions_by_id()[inst["id"]]
 				if definition.quality_profile == null:
 					unprofiled_ok = unprofiled_ok and q == -1.0
@@ -121,17 +121,17 @@ func _init() -> void:
 	# and evaluated after clearing every cache, keep their quality.
 	var rect0 := Rect2i(REGIONS[0] - Vector2i(24, 24), Vector2i(48, 48))
 	var before := {}
-	for inst in world._place_stack(rect0, 3)[CANOPY]:
-		before[inst["cell"]] = world._instance_quality(inst)
-	world.clear_generation_caches()
+	for inst in world._ctx.place_stack(rect0, 3)[CANOPY]:
+		before[inst["cell"]] = world._builder.instance_quality(inst)
+	world._ctx.clear()
 	var order_ok := before.size() > 20
-	var shifted: Array = world._place_stack(rect0.grow(16), 3)[CANOPY]
+	var shifted: Array = world._ctx.place_stack(rect0.grow(16), 3)[CANOPY]
 	shifted.reverse()
 	var seen := 0
 	for inst in shifted:
 		if before.has(inst["cell"]):
 			seen += 1
-			order_ok = order_ok and world._instance_quality(inst) == before[inst["cell"]]
+			order_ok = order_ok and world._builder.instance_quality(inst) == before[inst["cell"]]
 	check(order_ok and seen == before.size(), "quality independent of placement rect, cache state and evaluation order (%d trees)" % seen)
 
 	# Tiers and drivers.

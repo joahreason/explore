@@ -12,11 +12,11 @@ extends SceneTree
 ## the existing river/deposition/fertility fields and is checked here too.
 ## Run via tests/run_tests.sh.
 
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const GROUND_COVER := preload("res://resources/ground_cover.tres")
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const WETLAND := preload("res://resources/wetland_plants.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const GROUND_COVER := preload("res://resources/guilds/ground_cover.tres")
+const DEADWOOD := preload("res://resources/guilds/deadwood.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
 const SEED := 4242
 const REGIONS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(18000, 9000), Vector2i(8000, -12000)]
 const HALF := 160
@@ -154,15 +154,15 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var chunk_ok := true
 	var compared := 0
-	for chunk in world._env_chunks:
-		var entry: Array = world._env_chunks[chunk]
+	for chunk in world._ctx._env_chunks:
+		var entry: Array = world._ctx._env_chunks[chunk]
 		for i in entry[0].size():
 			var st = entry[0][i]
 			if st == null or not st.shade_known:
 				continue
 			var x: int = chunk.x * world.CHUNK_SIZE + i % world.CHUNK_SIZE
 			var y: int = chunk.y * world.CHUNK_SIZE + i / world.CHUNK_SIZE
-			var s: Dictionary = world._world_gen.sample(x, y)
+			var s: Dictionary = world._ctx.world_gen.sample(x, y)
 			chunk_ok = chunk_ok and st.shade == ResourceManager.get_shade(EnvironmentalState.from_sample(s), SEED, x, y, BiomeClassifier.classify_full(s))
 			compared += 1
 	check(chunk_ok and compared > 500, "chunk path shade == direct get_shade() (%d tiles)" % compared)

@@ -1,7 +1,7 @@
 // Shared wind bend (sway.gdshader, cast_shadow.gdshader): how far, in sprite
 // pixels, a sprite's top leans downwind at world position `tile` (tiles) for
 // its sway (0..1). Gust waves roll across the world so neighbours move
-// together. Uniforms are set every frame from Wind (scripts/wind.gd).
+// together. Uniforms are set every frame from Wind (scripts/render/wind.gd).
 uniform float wind_phase = 0.0;
 uniform vec2 wind_dir = vec2(1.0, 0.0);
 uniform float wind_strength = 0.5;

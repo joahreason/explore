@@ -32,9 +32,9 @@ func _init() -> void:
 			if world.has_method("flush_chunk_work"):
 				world.flush_chunk_work()
 			if world.has_method("clear_generation_caches"):
-				world.clear_generation_caches()
+				world._ctx.clear()
 			else:  # before Phase 17
-				world._raw_guild_chunks.clear()
+				world._ctx._raw_guild_chunks.clear()
 			await process_frame
 			var t0 := Time.get_ticks_usec()
 			world.set_view_mode(mode)
@@ -42,5 +42,5 @@ func _init() -> void:
 				world.flush_chunk_work()
 			best = minf(best, (Time.get_ticks_usec() - t0) / 1000.0)
 			await process_frame
-		print("BENCH %s: %.0f ms (%d chunks, cold)" % [CM.ViewMode.keys()[mode], best, world._loaded_chunks.size()])
+		print("BENCH %s: %.0f ms (%d chunks, cold)" % [CM.ViewMode.keys()[mode], best, world._presenter.loaded_chunks.size()])
 	quit()

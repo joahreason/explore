@@ -1,0 +1,71 @@
+[gd_resource type="Resource" script_class="ResourceDefinition" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/resource_definition.gd" id="1_def"]
+[ext_resource type="Texture2D" path="res://assets/sprites/birch.png" id="art"]
+[ext_resource type="Resource" path="res://resources/quality/tree_age.tres" id="q_profile"]
+
+[sub_resource type="Curve" id="Curve_temperature"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.6, 0), 0.0, 0.0, 0, 0, Vector2(-0.45, 1), 0.0, 0.0, 0, 0, Vector2(-0.1, 1), 0.0, 0.0, 0, 0, Vector2(0.1, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_moisture"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.25, 0), 0.0, 0.0, 0, 0, Vector2(0.4, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[sub_resource type="Curve" id="Curve_fertility"]
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(0.5, 0.8), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[sub_resource type="Curve" id="Curve_elevation"]
+_limits = [0.0, 1.0, -1, 1]
+_data = [Vector2(-1, 0), 0.0, 0.0, 0, 0, Vector2(-0.1, 0), 0.0, 0.0, 0, 0, Vector2(-0.03, 1), 0.0, 0.0, 0, 0, Vector2(0.45, 1), 0.0, 0.0, 0, 0, Vector2(0.6, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_erosion"]
+_data = [Vector2(0, 1), 0.0, 0.0, 0, 0, Vector2(0.12, 1), 0.0, 0.0, 0, 0, Vector2(0.22, 0.35), 0.0, 0.0, 0, 0, Vector2(0.32, 0), 0.0, 0.0, 0, 0, Vector2(1, 0), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[sub_resource type="Curve" id="Curve_succession"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.45, 0), 0.0, 0.0, 0, 0, Vector2(0.6, 1), 0.0, 0.0, 0, 0, Vector2(0.85, 1), 0.0, 0.0, 0, 0, Vector2(1, 0.6), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[resource]
+script = ExtResource("1_def")
+id = "birch"
+category = "vegetation"
+temperature_curve = SubResource("Curve_temperature")
+moisture_curve = SubResource("Curve_moisture")
+fertility_curve = SubResource("Curve_fertility")
+elevation_curve = SubResource("Curve_elevation")
+erosion_curve = SubResource("Curve_erosion")
+succession_curve = SubResource("Curve_succession")
+required_curves = PackedStringArray("temperature_curve", "moisture_curve", "elevation_curve", "erosion_curve", "succession_curve")
+biome_weights = {
+"Forest": 1.0,
+"Grassland": 0.3,
+"Savanna": 0.1,
+"Swamp": 0.3,
+"Tundra": 0.6,
+"Wetland": 0.6,
+"Alpine Snow": 0.3
+}
+water_body_weights = {
+"lake": 0.0,
+"none": 1.0,
+"ocean": 0.0,
+"river": 0.0,
+"sea": 0.0,
+"swamp": 0.3
+}
+shore_affinity = -0.4
+placement_type = "scatter"
+debug_color = Color(0.78, 0.86, 0.62, 1)
+sprite_tile = Vector2i(1, 34)
+sprite_color = Color(0.78, 0.86, 0.62, 1)
+sprite_size = 1.0
+sprite_texture = ExtResource("art")
+quality_profile = ExtResource("q_profile")
+sway = 0.25
+season_class = "deciduous"
+casts_shadow = true

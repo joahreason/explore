@@ -12,6 +12,7 @@ extends SceneTree
 ## resource) never hides the new object; tests don't touch the player's
 ## save directory. Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
 const DIR := "user://test_world_changes"
 
@@ -80,15 +81,15 @@ func _init() -> void:
 	var target := _tree_in_view(world)
 	check(not target.is_empty(), "found a tree in a loaded chunk")
 	var chunk := Vector2i(((target["position"] as Vector2) / world.CHUNK_SIZE).floor())
-	var before: int = world._loaded_placements[chunk]._positions.size()
+	var before: int = world._presenter.loaded_placements[chunk]._positions.size()
 	var click: Vector2 = world.sprite_point(target) * world.TILE_SIZE
 	var harvested = world._on_harvest_clicked(click)
-	var after: int = world._loaded_placements[chunk]._positions.size()
+	var after: int = world._presenter.loaded_placements[chunk]._positions.size()
 	check(harvested != null and harvested.harvest_state == ResourceInstance.HARVESTED and harvested.health == 0.0,
 		"left-click harvest returns the record, now harvested with health 0 (%s)" % (harvested.key if harvested != null else "none"))
 	var owner := Vector2i((harvested.world_position / world.CHUNK_SIZE).floor()) if harvested != null else chunk
 	check(owner != chunk or after == before - 1, "its chunk draws exactly one marker fewer (%d -> %d)" % [before, after])
-	check(FileAccess.file_exists(world.changes_path()) and world._changes.size() == 1, "the change is saved right away")
+	check(FileAccess.file_exists(world.changes_path()) and world.session.changes.size() == 1, "the change is saved right away")
 	world._on_tile_clicked(click)
 	check(world._inspector_panel.label.text.contains("[b]State:[/b] harvested"), "right-click info on the spot reports it harvested")
 	var again = world._on_harvest_clicked(click)
@@ -100,10 +101,10 @@ func _init() -> void:
 
 	# Reload: a new world for the same seed keeps it gone.
 	var world2 := await _world(DIR)
-	check(world2._changes.is_harvested(key, rid), "a reloaded world loads the change")
+	check(world2.session.changes.is_harvested(key, rid), "a reloaded world loads the change")
 	var shown := false
-	for marker_chunk in world2._chunk_placements:
-		for entry in world2._chunk_placements[marker_chunk]:
+	for marker_chunk in world2._presenter.chunk_placements:
+		for entry in world2._presenter.chunk_placements[marker_chunk]:
 			if entry[0][0] == null:
 				continue  # landmark structure parts: not harvestable
 			for inst in world2._unchanged(entry[1]):
@@ -113,9 +114,9 @@ func _init() -> void:
 
 	# Another seed doesn't see it; coming back does.
 	world2.regenerate("777")
-	check(world2._changes.is_empty(), "a different seed starts with no changes")
+	check(world2.session.changes.is_empty(), "a different seed starts with no changes")
 	world2.regenerate(str(SEED))
-	check(world2._changes.is_harvested(key, rid), "switching back to the seed restores its changes")
+	check(world2.session.changes.is_harvested(key, rid), "switching back to the seed restores its changes")
 	world2.queue_free()
 	await process_frame
 
@@ -163,9 +164,9 @@ func _world(dir: String) -> Node2D:
 
 ## A mature tree (it has a sprite) in a chunk whose markers are loaded.
 func _tree_in_view(world: Node2D) -> Dictionary:
-	for chunk in world._chunk_placements:
-		for entry in world._chunk_placements[chunk]:
-			if entry[0][0] != world.CANOPY_TREES:
+	for chunk in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[chunk]:
+			if entry[0][0] != ViewModes.CANOPY_TREES:
 				continue
 			for inst in entry[1]:
 				if inst["id"] == "oak" or inst["id"] == "pine" or inst["id"] == "birch":
