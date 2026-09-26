@@ -21,8 +21,6 @@ const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd"
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const GameConstants := preload("res://scripts/game_constants.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
-const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
-const StructureSitesScript := preload("res://scripts/structure_sites.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
 const WindScript := preload("res://scripts/wind.gd")
 const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
@@ -34,6 +32,8 @@ const GenerationContextScript := preload("res://scripts/world/generation_context
 const ChunkBuilderScript := preload("res://scripts/world/chunk_builder.gd")
 const ChunkStreamerScript := preload("res://scripts/world/chunk_streamer.gd")
 const ChunkPresenterScript := preload("res://scripts/world/chunk_presenter.gd")
+const ResourcePickerScript := preload("res://scripts/world/resource_picker.gd")
+const WorldTravelScript := preload("res://scripts/world/world_travel.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see ChunkPresenter.marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -67,8 +67,6 @@ var FARMLAND: ResourceDefinition:
 
 const TILE_SIZE := GameConstants.TILE_SIZE  # world pixels per tile (scripts/game_constants.gd)
 const CHUNK_SIZE := 16         # tiles per chunk edge
-## Review W1: main-thread time per frame for a "Go to" search without threads.
-const TRAVEL_BUDGET_USEC := 4000
 ## Tile codes and shore shapes: scripts/world/terrain_codes.gd. Forwarded
 ## for the tests until §4.1 step 9.
 const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
@@ -139,6 +137,10 @@ var _builder: ChunkBuilderScript = ChunkBuilderScript.new(_ctx)
 ## tree is there).
 var _streamer: ChunkStreamerScript = ChunkStreamerScript.new(_builder, _ctx, _camera_view, _show_chunk, _hide_chunk)
 var _presenter: ChunkPresenterScript
+## What is under a point: scripts/world/resource_picker.gd (made in _ready()).
+var _picker: ResourcePickerScript
+## The "Go to" menu's searches: scripts/world/world_travel.gd.
+var _travel: WorldTravelScript = WorldTravelScript.new()
 ## In-game time (session.clock): DayNight tints the world by it and the
 ## clock label shows it.
 var clock:
@@ -158,7 +160,6 @@ var _debug_resource: ResourceDefinition:
 var _view_mode: ViewMode:
 	get: return _builder.view_mode
 	set(value): _builder.view_mode = value
-var _sprite_images: Dictionary = {}  # sprite_texture -> its Image, for _sprite_covers()
 ## "Go to biome" (travel_to_biome): searches run on their own thread with
 ## their own WorldGen copy, so they share nothing with chunk generation.
 signal biome_travel_finished(biome: String, found: bool, cancelled: bool)
@@ -166,17 +167,6 @@ signal biome_travel_finished(biome: String, found: bool, cancelled: bool)
 signal view_changed(mode: ViewMode)
 ## set_debug_resource() picked another resource for the Debug views.
 signal debug_resource_changed(definition: ResourceDefinition)
-var _finder_gen: WorldGen
-var _finder_thread: Thread
-var _finder_biome: String = ""
-var _finder_seed: int = 0
-var _finder_result: Variant = null  # written by the search thread, read after it finishes
-var _finder_search: RefCounted  # a search stepped from _process() where there's no thread (web)
-var _finder_cancel: bool = false
-var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
-var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
-
-
 func _ready() -> void:
 	sway_material.shader = SWAY_SHADER
 	shadow_material.shader = CAST_SHADOW_SHADER
@@ -186,6 +176,7 @@ func _ready() -> void:
 	_presenter = ChunkPresenterScript.new(
 		{"chunks": chunks_root, "overlay": overlay_root, "resources": resources_root, "shadows": shadows_root},
 		{"terrain": terrain_material, "sway": sway_material, "shadow": shadow_material}, session, _builder)
+	_picker = ResourcePickerScript.new(_ctx, _builder, _presenter, session, get_resource_instance)
 	world_seed = _resolve_world_seed()
 	if world_gen_params != null:
 		_ctx.world_gen = world_gen_params
@@ -215,10 +206,7 @@ func _ready() -> void:
 
 
 func _exit_tree() -> void:
-	if _finder_thread != null:
-		_finder_cancel = true
-		_finder_thread.wait_to_finish()
-		_finder_thread = null
+	_travel.stop()
 	_streamer.stop()
 
 
@@ -278,8 +266,7 @@ func regenerate(seed_text: String) -> void:
 	_ctx.mutex.unlock()
 
 	_streamer.unload_all()
-	_finder_cancel = true  # a running search is looking at the old world
-	_travel_visited.clear()
+	_travel.reset()  # a running search is looking at the old world
 	if _target and _target.has_method("snap_to_player"):
 		_target.snap_to_player()
 
@@ -293,12 +280,8 @@ func regenerate(seed_text: String) -> void:
 ## number of files reloaded.
 func reload_content() -> int:
 	# The "Go to" thread reads structure definitions without _ctx.mutex.
-	_finder_cancel = true
-	if _finder_thread != null:
-		_finder_thread.wait_to_finish()
-		_finder_thread = null
+	if _travel.stop_for_reload():
 		_finish_biome_travel()
-	_finder_sites = null
 
 	_ctx.mutex.lock()
 	var paths := _content_paths(CONTENT_DIR)
@@ -351,77 +334,38 @@ func _threads_available() -> bool:
 ## that biome, to the nearest other patch of it; repeated trips to the same
 ## biome hop onward (see BiomeFinder). The search can take seconds, so it
 ## runs on a thread, or without threads (web, threaded_generation off) a
-## slice per frame from _process() (TRAVEL_BUDGET_USEC); either way
+## slice per frame from _process() (WorldTravel); either way
 ## biome_travel_finished reports the outcome. Ignored while a search runs;
 ## cancel_biome_travel() stops one.
 func travel_to_biome(biome: String) -> void:
 	if is_finding_biome():
 		return
-	if _finder_gen == null:
-		_finder_gen = world_gen_params.duplicate() if world_gen_params != null else WorldGen.new()
-	_finder_gen.configure(world_seed)
-	_finder_biome = biome
-	_finder_seed = world_seed
-	_finder_cancel = false
 	var pos: Vector2 = _player.tile_center(_player.tile()) if _player else (_target.global_position if _target else Vector2.ZERO)
 	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
-	var avoid: Array = _travel_visited.get(biome, []).duplicate()
-	_finder_result = null
-	var search := _new_search(biome, start, avoid)
-	if threaded_generation and _threads_available():
-		_finder_thread = Thread.new()
-		_finder_thread.start(_run_search.bind(search))
-	else:
-		_finder_search = search
+	_travel.start(biome, start, world_gen_params, world_seed, threaded_generation and _threads_available())
 
 
 func is_finding_biome() -> bool:
-	return _finder_thread != null or _finder_search != null
+	return _travel.is_finding()
 
 
 ## Stops a running "Go to" search; biome_travel_finished then reports it
 ## cancelled.
 func cancel_biome_travel() -> void:
-	if is_finding_biome():
-		_finder_cancel = true
-
-
-## The search for a travel target, not yet run: BiomeFinder, or for a
-## structure's display name (WorldContent.structures) a StructureSites
-## search - the nearest site of that type other than one at the start or
-## already visited - instead of scanning tiles. Both step() until done.
-func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
-	for def in StructureSitesScript.CONTENT.structures:
-		if def.display_name == biome:
-			if _finder_sites == null or _finder_sites.world_seed != _finder_seed:
-				_finder_sites = StructureSitesScript.new(_finder_gen, _finder_seed)
-			return _finder_sites.search(def.id, start, avoid)
-	return BiomeFinderScript.new(_finder_gen, biome, start, avoid)
-
-
-## The search thread: runs `search` to the end unless cancelled.
-func _run_search(search: RefCounted) -> void:
-	while not search.step(Time.get_ticks_usec() + 20000):
-		if _finder_cancel:
-			return
-	_finder_result = search.result
+	_travel.cancel()
 
 
 ## Main thread, once the search is done: moves the camera there (chunks
 ## stream in around it) unless the world changed meanwhile.
 func _finish_biome_travel() -> void:
-	var cancelled := _finder_cancel or _finder_seed != world_seed
-	var found := not cancelled and _finder_result != null
-	if found:
-		var tile: Vector2i = _finder_result
+	var outcome := _travel.finish(world_seed)
+	if outcome["found"]:
+		var tile: Vector2i = outcome["tile"]
 		if _player:
 			teleport_player((Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE)
 		elif _target:
 			_target.global_position = (Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE
-		var visited: Array = _travel_visited.get(_finder_biome, [])
-		visited.append(tile)
-		_travel_visited[_finder_biome] = visited.slice(-8)
-	biome_travel_finished.emit(_finder_biome, found, cancelled)
+	biome_travel_finished.emit(outcome["biome"], outcome["found"], outcome["cancelled"])
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -476,14 +420,7 @@ func _process(delta: float) -> void:
 	_presenter.update_seasons()
 	if save_clock:
 		_save_gameplay_state()
-	if _finder_thread != null and not _finder_thread.is_alive():
-		_finder_thread.wait_to_finish()
-		_finder_thread = null
-		_finish_biome_travel()
-	if _finder_search != null and (_finder_cancel or _finder_search.step(Time.get_ticks_usec() + TRAVEL_BUDGET_USEC)):
-		if not _finder_cancel:
-			_finder_result = _finder_search.result
-		_finder_search = null
+	if _travel.poll():
 		_finish_biome_travel()
 	_streamer.process()
 
@@ -540,7 +477,7 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
 	var farming: float = ResourceManagerScript.get_suitability(state, CONTENT.farmland, classified)
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
-	var resource := _resource_at(world_pos / TILE_SIZE)
+	var resource := _picker.resource_at(world_pos / TILE_SIZE)
 	var ground := _builder.surface_at(sample, tile.x, tile.y)
 	var structure := _ctx.structures.site_at(tile)
 	var debug_lines: Array = []
@@ -569,132 +506,6 @@ func get_resource_instance(inst: Dictionary):
 ## Placement's single definition) - WorldContent.definitions_by_id().
 func _definitions_by_id() -> Dictionary:
 	return CONTENT.definitions_by_id()
-
-
-## The placed resource instance under a click (tile units), or {} if none:
-## one whose tile is the clicked tile (sprites are drawn filling their tile,
-## see resource_marker_chunk.gd), else the nearest instance whose debug
-## marker covers the point (marker radius = 0.35 x its guild's spacing).
-## In the World view (sprites) only what is drawn under the point counts:
-## the frontmost (southernmost pivot) sprite whose art covers it
-## (_sprite_covers()) - a tree's canopy reaching into the tile above picks
-## the tree, and a click on the ground beside or below a resource isn't
-## pulled onto it (instances without a sprite still go by their tile).
-## Works in any view - instances exist whether or not their markers are
-## drawn. Adds "guild_name" and "name" for display, and "entity": its
-## ResourceInstance (Phase 15: quality, size, health, harvest state).
-## include_harvested = false skips what the player harvested (Phase 16:
-## harvesting picks among what is still standing; info also finds the
-## harvested one, which reports "harvested").
-func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
-	var tile := Vector2i(floori(point.x), floori(point.y))
-	var stack := _ctx.place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
-	var candidates := []
-	for guild in CONTENT.guilds:
-		candidates.append([guild, stack[guild]])
-	var best := _pick(point, candidates, include_harvested)
-	if not best.is_empty():
-		best["name"] = String(best["id"]).capitalize()
-		best["guild_name"] = String(best["guild"]).capitalize()
-		best["entity"] = get_resource_instance(best)
-	return best
-
-
-## The pick rule of _resource_at() over `candidates`, [[source (a guild or
-## ResourceDefinition), instances], ...]; a copy of the picked instance, or {}.
-func _pick(point: Vector2, candidates: Array, include_harvested: bool) -> Dictionary:
-	var tile := Vector2i(floori(point.x), floori(point.y))
-	var best := {}
-	var best_dist := INF
-	var sprites := _view_mode == ViewMode.RESOURCES
-	for layer in candidates:
-		var reach := maxf(layer[0].minimum_spacing * 0.35, 0.5)
-		for inst in layer[1]:
-			if not include_harvested and session.is_harvested(inst):
-				continue
-			var pos: Vector2 = inst["position"]
-			var in_tile := Vector2i(pos.floor()) == tile
-			# An instance in the clicked tile always beats one merely in reach.
-			var dist := point.distance_to(pos) - (1000.0 if in_tile else 0.0)
-			var near := dist <= reach
-			if sprites and not sprite_drawn(inst).is_empty():
-				# Only covering art counts; the frontmost wins.
-				in_tile = false
-				near = _sprite_covers(inst, point)
-				dist = -ResourceMarkerChunkScript.pivot(inst).y - 2000.0
-			if (in_tile or near) and dist < best_dist:
-				best = inst.duplicate()
-				best_dist = dist
-	return best
-
-
-## The shown instances standing within 2 tiles of `tile` (the rect
-## _resource_at() places), as _pick() candidates: what the current view
-## draws, nothing where it draws no markers (heatmap and terrain views,
-## zoomed out past ChunkBuilder.MAX_PLACEMENT_LOD_STEP). Main thread; no generation.
-func _drawn_near(tile: Vector2i) -> Array:
-	var rect := Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5))
-	var result := []
-	var center := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
-	for dy in range(-1, 2):
-		for dx in range(-1, 2):
-			for entry in _presenter.chunk_placements.get(center + Vector2i(dx, dy), []):
-				if entry[0][0] == null:  # skip the structure-parts layer
-					continue
-				var near := (entry[1] as Array).filter(func(inst): return rect.has_point(Vector2i((inst["position"] as Vector2).floor())))
-				if not near.is_empty():
-					result.append([entry[0][0], near])
-	return result
-
-
-## Whether the World view draws an opaque pixel of `inst`'s sprite at
-## `point` (tile units).
-func _sprite_covers(inst: Dictionary, point: Vector2) -> bool:
-	var drawn := sprite_drawn(inst)
-	if drawn.is_empty():
-		return false
-	var rect: Rect2 = drawn[1]
-	var image: Image = sprite_image(drawn[0])
-	var px := Vector2i(((point * TILE_SIZE - rect.position) * Vector2(image.get_size()) / rect.size).floor())
-	return Rect2i(Vector2i.ZERO, image.get_size()).has_point(px) and image.get_pixelv(px).a > 0.5
-
-
-## A point (tile units) on a placed resource's drawn sprite - its opaque
-## pixel nearest its pivot - where a click picks it in the World view
-## (unless something drawn in front covers it); its position if it has no
-## sprite.
-func sprite_point(inst: Dictionary) -> Vector2:
-	var drawn := sprite_drawn(inst)
-	if drawn.is_empty():
-		return inst["position"]
-	var rect: Rect2 = drawn[1]
-	var image := sprite_image(drawn[0])
-	var pivot := (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()
-	var best := Vector2.INF
-	for y in image.get_height():
-		for x in image.get_width():
-			var p := rect.position + Vector2(x + 0.5, y + 0.5)
-			if image.get_pixel(x, y).a > 0.5 and p.distance_squared_to(pivot) < best.distance_squared_to(pivot):
-				best = p
-	return best / TILE_SIZE
-
-
-## How the World view draws a placed resource's sprite:
-## [texture, rect in world px, draw alpha carrying its sway (sway_alpha())],
-## as ResourceMarkerChunk draws it; [] if it has no sprite.
-func sprite_drawn(inst: Dictionary) -> Array:
-	var definition: ResourceDefinition = _definitions_by_id().get(inst.get("id", ""))
-	if definition == null or definition.sprite_tile.x < 0:
-		return []
-	var sprite := {"tile": definition.sprite_tile, "size": definition.sprite_size, "texture": definition.sprite_texture}
-	return ResourceMarkerChunkScript.sprite_draw(sprite, (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()) + [ChunkPresenterScript.sway_alpha(definition.sway)]
-
-
-## A sprite texture's pixels (cached), for hit tests and outlines.
-func sprite_image(texture: Texture2D) -> Image:
-	if not _sprite_images.has(texture):
-		_sprite_images[texture] = texture.get_image()
-	return _sprite_images[texture]
 
 
 ## Phase 16: the instances of a placement list the player hasn't harvested.
@@ -1029,15 +840,6 @@ func find_path(from: Vector2i, to: Vector2i, near: bool = false) -> Array[Vector
 	return path
 
 
-## Polish (HoverHighlight): the resource a left click at `point` (tile
-## units) would harvest, or {}: _resource_at()'s pick among what is drawn
-## there (_drawn_near()) and not harvested. It never generates or waits on
-## the worker, so hovering can't stall a frame; where the view draws no
-## markers there's nothing to pick. No "entity" or display names.
-func hover_target(point: Vector2) -> Dictionary:
-	return _pick(point, _drawn_near(Vector2i(point.floor())), false)
-
-
 ## Polish pass 2 (AmbientParticles): the environment at a tile for the
 ## particle rules - {} when generation holds the lock this instant (the
 ## caller just tries elsewhere later; the main thread never waits on it).
@@ -1061,6 +863,25 @@ func ambient_env(tile: Vector2i) -> Dictionary:
 	}
 	_ctx.mutex.unlock()
 	return result
+
+## Polish (HoverHighlight): the resource a left click at `point` (tile
+## units) would harvest, or {} (ResourcePicker.hover_target()).
+func hover_target(point: Vector2) -> Dictionary:
+	return _picker.hover_target(point)
+
+
+## Where a placed resource's sprite is drawn and clicked (ResourcePicker).
+func sprite_point(inst: Dictionary) -> Vector2:
+	return _picker.sprite_point(inst)
+
+
+func sprite_drawn(inst: Dictionary) -> Array:
+	return _picker.sprite_drawn(inst)
+
+
+func sprite_image(texture: Texture2D) -> Image:
+	return _picker.sprite_image(texture)
+
 
 ## Forwarded for the tests until §4.1 step 9 (GenerationContext).
 const WALKABLE_CHUNKS := GenerationContextScript.WALKABLE_CHUNKS
@@ -1211,3 +1032,26 @@ static func sway_alpha(sway: float) -> float:
 
 func _redraw_markers(chunk_coord: Vector2i) -> void:
 	_presenter.redraw_markers(chunk_coord)
+
+
+## Forwarded for the tests until §4.1 step 9 (ResourcePicker, WorldTravel).
+var _finder_gen: WorldGen:
+	get: return _travel._finder_gen
+	set(value): _travel._finder_gen = value
+var _finder_seed: int:
+	get: return _travel._finder_seed
+	set(value): _travel._finder_seed = value
+var _finder_result: Variant:
+	get: return _travel._finder_result
+
+
+func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
+	return _travel._new_search(biome, start, avoid)
+
+
+func _run_search(search: RefCounted) -> void:
+	_travel._run_search(search)
+
+
+func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
+	return _picker.resource_at(point, include_harvested)
