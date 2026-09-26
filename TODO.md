@@ -13,8 +13,8 @@ Keep this list actionable and current.
 Works through `docs/reviews/2026-09-26-code-review.md`, one batch per session. Each batch PR merges into the `review-followup` branch; one PR from it to `main` at the end.
 
 - [x] 1. Safety net: X1, T5, T3, D1 + T2's order test, T1 - PR #41 (merged into review-followup)
-- [x] 2. Web stalls: W2, W1 - PR (see review-followup history)
-- [ ] 3. Small fixes: D2, W6, W5, C1, C2, C5, X4, W3, unused PNG from O1
+- [x] 2. Web stalls: W2, W1 - PR #42 (merged into review-followup)
+- [x] 3. Small fixes: D2, W6, W5, C1, C2, C5, X4, W3, unused PNG from O1 - merged into review-followup
 - [ ] 4. Before feature work: C3, C4, X3, W4
 - [ ] 5. chunk_manager.gd split, §4.1 steps 1-9, one per session (A2 in view modes, A3 in content, A4 and T4 throughout, O1 folders in step 9). Steps done: none
 - [ ] 6. Docs restructure: X2, per §4.2
