@@ -20,6 +20,7 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	material = ShaderMaterial.new()
 	material.shader = preload("res://shaders/cloud_shadows.gdshader")
+	preload("res://scripts/game_constants.gd").apply_to(material)
 
 
 func _process(delta: float) -> void:

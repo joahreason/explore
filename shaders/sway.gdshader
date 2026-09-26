@@ -7,13 +7,14 @@
 // uniforms from the in-game clock.
 shader_type canvas_item;
 
+#include "res://shaders/game_constants.gdshaderinc"
 #include "res://shaders/wind_bend.gdshaderinc"
 
 void vertex() {
 	float sway = decode_sway(COLOR.a);
 	COLOR.a = 1.0;
 	if (sway > 0.0 && UV.y < 0.5) {
-		vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 16.0;
+		vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / tile_px;
 		VERTEX += wind_dir * round(wind_bend(sway, tile));
 	}
 }

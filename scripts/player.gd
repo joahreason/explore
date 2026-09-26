@@ -16,9 +16,10 @@ extends Node2D
 ## tools/generate_sfx.gd), its pitch and volume varied per step - never
 ## close to the previous step's pitch - so the repetition doesn't grate.
 
+const GameConstants := preload("res://scripts/game_constants.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 
-const TILE_SIZE := 16
+const TILE_SIZE := GameConstants.TILE_SIZE
 const SPRITE := preload("res://assets/sprites/player.png")
 const COLOR := Color(1.0, 0.86, 0.6)
 ## Hop height (world px) at the middle of each step.

@@ -33,6 +33,7 @@ extends Node2D
 
 enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND, HEXAGON, SPRITE }
 
+const GameConstants := preload("res://scripts/game_constants.gd")
 const SPRITE_SHEET := preload("res://urizen_onebit_tileset__v2d0.png")
 ## Sheet layout, as in tileset.tres: 12 px tiles, 1 px margin and separation.
 const SPRITE_SIZE := 12
@@ -42,9 +43,6 @@ const SPRITE_STRIDE := 13
 
 const DEFAULT_FILL := Color(0.10, 0.32, 0.10)
 const OUTLINE := Color(0.02, 0.06, 0.02)
-## Cast shadows get their sprite's drawn height (px) through the red channel
-## of their draw colour, divided by this (shaders/cast_shadow.gdshader).
-const SHADOW_HEIGHT_SCALE := 64.0
 ## How far (share of a tile, in all) a sprite's pivot may sit from its tile
 ## centre: 0.75 = up to 6 px each way in a 16 px tile.
 const PIVOT_SPREAD := 0.75
@@ -216,7 +214,7 @@ static func pivot_rect(pivot: Vector2, size: Vector2) -> Rect2:
 ## The draw colour of a cast shadow for a sprite `height` px tall, whose
 ## sprite's draw alpha (its sway) is `alpha`.
 static func shadow_color(height: float, alpha: float) -> Color:
-	return Color(height / SHADOW_HEIGHT_SCALE, 0, 0, alpha)
+	return Color(height / GameConstants.SHADOW_HEIGHT_SCALE, 0, 0, alpha)
 
 
 ## Draws instance i on `canvas` (its _Row, transformed to chunk-local).

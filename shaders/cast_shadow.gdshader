@@ -8,21 +8,22 @@
 // pixels so the pixel art stays crisp.
 shader_type canvas_item;
 
+#include "res://shaders/game_constants.gdshaderinc"
 #include "res://shaders/wind_bend.gdshaderinc"
 
 uniform vec2 cast_dir = vec2(0.0, 0.3);
 uniform float darkness = 0.3;
 // Drawn sprite height in pixels (12 px sheet art + the 1 px outline ring
 // each side), unless the draw colour's red channel carries it
-// (ResourceMarkerChunk.shadow_color(): height / 64).
+// (ResourceMarkerChunk.shadow_color(): height / shadow_height_scale).
 uniform float sprite_px = 14.0;
 
 void vertex() {
 	float sway = decode_sway(COLOR.a);
-	float px = COLOR.r > 0.0 ? COLOR.r * 64.0 : sprite_px;
+	float px = COLOR.r > 0.0 ? COLOR.r * shadow_height_scale : sprite_px;
 	// Height of this vertex above the sprite's base: 0 at the bottom edge.
 	float h = (1.0 - UV.y) * px;
-	vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 16.0;
+	vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / tile_px;
 	// Flatten onto the ground from the base (top ends up furthest away),
 	// then lean with the wind like the sprite does.
 	vec2 base = VERTEX + vec2(0.0, h);

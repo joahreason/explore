@@ -9,6 +9,8 @@ extends Node2D
 ## (the sped-up game clock would make it frantic); pure visuals.
 
 ## Seconds per bounce, and how far the tent stretches (share of its height).
+const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
+
 const BOUNCE_PERIOD := 1.6
 const BOUNCE_STRETCH := 0.08
 ## A new Z every Z_INTERVAL seconds, each living Z_LIFE seconds while it
@@ -83,7 +85,7 @@ func _draw() -> void:
 	var sy := 1.0 if is_waking() else stretch()
 	if not is_waking():
 		draw_set_transform(Vector2(0, _size * 0.5), 0.0, Vector2(2.0 - sy, sy))
-		draw_texture_rect(_texture, Rect2(Vector2(-_size * 0.5, -_size), Vector2.ONE * _size).grow(_size / 12.0), false, _color)
+		draw_texture_rect(_texture, Rect2(Vector2(-_size * 0.5, -_size), Vector2.ONE * _size).grow(_size / ResourceMarkerChunkScript.SPRITE_SIZE), false, _color)
 		draw_set_transform(Vector2.ZERO)
 	var top := Vector2(0, _size * 0.5 - _size * sy)
 	for z in zs():

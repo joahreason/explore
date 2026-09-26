@@ -18,9 +18,9 @@ extends SceneTree
 ## the idle sleep between headless frames, which on Windows can round up to
 ## the ~15.6 ms default timer tick - compare "work" across machines and runs.
 
-const STARTS := {
+const STARTS := {  # tiles
 	"forest": Vector2(0, 0),
-	"coast": Vector2(19946, 20042) * 12,
+	"coast": Vector2(19946, 20042),
 }
 const PAN_CHUNKS := 6
 
@@ -48,7 +48,7 @@ func _init() -> void:
 			for dir in [Vector2(1, 0), Vector2(1, 1).normalized()]:
 				# Fresh ground for every run, so no run reuses another's caches.
 				offset += 40.0 * chunk_px
-				cam.global_position = STARTS[start_name] + Vector2(0, offset)
+				cam.global_position = STARTS[start_name] * world.TILE_SIZE + Vector2(0, offset)
 				await _settle(world)
 				var frames := PackedFloat64Array()
 				var work := PackedFloat64Array()

@@ -3,6 +3,8 @@
 // put on the map and only move by `offset`, which the wind advances).
 shader_type canvas_item;
 
+#include "res://shaders/game_constants.gdshaderinc"
+
 uniform vec2 offset = vec2(0.0);     // tiles the cloud field has drifted
 uniform float scale = 28.0;          // tiles per noise unit (cloud size)
 uniform float coverage = 0.42;       // share of the sky covered
@@ -35,7 +37,7 @@ float fbm(vec2 p) {
 }
 
 void vertex() {
-	world_tiles = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 16.0;
+	world_tiles = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / tile_px;
 }
 
 void fragment() {

@@ -8,6 +8,8 @@ extends Node2D
 ## visuals, no game state. The specks' directions come from the object's key
 ## so each harvest looks a little different but deterministic.
 
+const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
+
 const DURATION := 0.35
 const SPECKS := 8
 const GRAVITY := 90.0
@@ -58,7 +60,7 @@ func _draw() -> void:
 			draw_texture_rect(_texture, Rect2(-Vector2(art.x * 0.5, art.y), art), false, _color * fade)
 		else:
 			var s := _size * grow
-			draw_texture_rect(_texture, Rect2(-Vector2(s * 0.5, s), Vector2.ONE * s).grow(s / 12.0), false, _color * fade)
+			draw_texture_rect(_texture, Rect2(-Vector2(s * 0.5, s), Vector2.ONE * s).grow(s / ResourceMarkerChunkScript.SPRITE_SIZE), false, _color * fade)
 	var elapsed := t * DURATION
 	for v in _velocities:
 		var p := v * elapsed + Vector2(0, 0.5 * GRAVITY * elapsed * elapsed)

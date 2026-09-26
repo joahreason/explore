@@ -19,15 +19,20 @@
 // ground and foam specks at its front, and drains - the first row always
 // stays washed, so water and ground meet in white instead of a hard edge.
 // Grass ground takes the season's grass tint (Seasons). With ground_detail
-// (the gameplay views), plain ground (grass and GRASS_CODE-less ground, 253
-// / 255) blends into a different neighbouring ground tile over BLEND_PX by
-// dithering - near an edge a pixel may show the neighbour instead, 50/50
-// at the edge - and ground (and swashed ground) gets a subtle grain and
-// mottle. The chunk image has a 1-texel border holding the neighbouring
-// chunks' edge tiles (ChunkManager._share_borders()), so blending crosses
-// chunk borders. The output is always opaque. Other views bake plain opaque RGB images, which pass
+// (the gameplay views), ground (plain - grass and GRASS_CODE-less ground,
+// 253 / 255 - or sea-washed) meets a different neighbouring ground tile
+// along a hard but wavy edge: every tile edge line bends into a smooth
+// curve up to EDGE_PX
+// off the grid (edge_curve(), the same for the tiles on both sides), and a
+// pixel past the curve takes the neighbour's ground - one clean border,
+// no dithering, islands or notches - and ground (and swashed
+// ground) gets a subtle grain and mottle. The chunk image has a 1-texel
+// border holding the neighbouring chunks' edge tiles
+// (ChunkManager._share_borders()), so edges cross chunk borders. The output is always opaque. Other views bake plain opaque RGB images, which pass
 // through unchanged.
 shader_type canvas_item;
+
+#include "res://shaders/game_constants.gdshaderinc"
 
 const float FOAM_CODE = 50.0;
 const float WASH_CODE = 100.0;
@@ -37,7 +42,6 @@ const float WATER_CODE = 220.0;
 const float SHALLOW_CODE = 240.0;
 const float GRASS_CODE = 253.0;
 const int SHORE_SHAPES[46] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 24, 26, 32, 33, 40, 41, 48, 56, 64, 66, 68, 70, 80, 82, 96, 112, 128, 129, 132, 133, 144, 160, 161, 176, 192, 196, 208, 224, 240};
-const float TILE = 12.0;
 // Share of water tiles with a glint, and its strength.
 const float GLINT_CHANCE = 0.1;
 const float GLINT_STRENGTH = 0.3;
@@ -49,8 +53,19 @@ uniform float water_phase = 0.0;
 uniform vec4 grass_tint = vec4(0.0);  // rgb target, a = strength
 uniform vec2 wave_dir = vec2(1.0, 0.0);
 uniform bool ground_detail = false;
-// Pixels over which neighbouring ground tiles dither into each other.
-const float BLEND_PX = 4.0;
+// How far (pixels) ground edges wander from the tile grid (under half a
+// tile, so only direct neighbours meet), and the length (pixels) of one
+// wiggle along an edge.
+const float EDGE_PX = 4.0;
+const float EDGE_WAVE = 18.0;
+// Splotches along ground borders (edge_pick()): one per BLOB_SLOT px of
+// edge at most, with this chance; radius range (px); and how far from the
+// edge line they can reach (EDGE_PX + largest radius + gap), which must
+// stay under half a tile.
+const float BLOB_SLOT = 7.0;
+const float BLOB_CHANCE = 0.3;
+const vec2 BLOB_RADIUS = vec2(1.4, 2.6);
+const float BLOB_REACH = 7.0 + 2.6;
 
 varying vec2 world_px;
 
@@ -72,8 +87,8 @@ float vnoise(vec2 p) {
 // the neighbouring tiles' edge bands).
 float shore_dist(float shape, vec2 in_tile) {
 	int mask = SHORE_SHAPES[int(shape) - 1];
-	vec2 far = TILE - 1.0 - in_tile;
-	float d = TILE;
+	vec2 far = tile_px - 1.0 - in_tile;
+	float d = tile_px;
 	if ((mask & 1) != 0) d = min(d, in_tile.x);
 	if ((mask & 2) != 0) d = min(d, far.x);
 	if ((mask & 4) != 0) d = min(d, in_tile.y);
@@ -91,7 +106,7 @@ float shore_dist(float shape, vec2 in_tile) {
 float wave_at(vec2 p, float t) {
 	float warp = vnoise(p / 60.0 + vec2(t * 0.05, -t * 0.03)) * 4.0;
 	float surge = 1.5 * sin(t * 0.13);
-	float along = dot(p, wave_dir) / TILE;
+	float along = dot(p, wave_dir) / tile_px;
 	return sin(along * 1.1 - t - surge + warp + p.y * 0.04) * 0.5 + 0.5;
 }
 
@@ -118,7 +133,7 @@ vec3 whitecaps(vec3 rgb, vec2 p, float shallow) {
 vec3 glint(vec3 rgb, vec2 tile, vec2 in_tile, float liquid) {
 	float h = hash(tile);
 	if (h < GLINT_CHANCE) {
-		vec2 spot = floor(vec2(hash(tile + 17.3), hash(tile + 41.9)) * (TILE - 1.0));
+		vec2 spot = floor(vec2(hash(tile + 17.3), hash(tile + 41.9)) * (tile_px - 1.0));
 		float hit = (in_tile == spot || (h < GLINT_CHANCE * 0.4 && in_tile == spot + vec2(1.0, 0.0))) ? 1.0 : 0.0;
 		float strength = GLINT_STRENGTH * (0.6 + 0.4 * hash(tile + 5.1));
 		rgb = mix(rgb, vec3(0.9, 0.97, 1.0), hit * strength * liquid);
@@ -170,14 +185,69 @@ bool plain_ground(float code) {
 	return code >= GRASS_CODE;
 }
 
-// Near a tile edge, a pixel may show the neighbouring tile instead (hash
-// dither: half the pixels at the edge, none BLEND_PX in) - the chance for
-// the x and the y neighbour. `f` is the position within the tile (0..1).
-vec2 blend_chance(vec2 f, vec2 p) {
-	vec2 d = min(f, 1.0 - f) * TILE;
-	vec2 roll = vec2(hash(p + 3.7), hash(p + 9.1));
-	return vec2(roll.x < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.x)) ? 1.0 : 0.0,
-		roll.y < 0.5 * (1.0 - smoothstep(0.0, BLEND_PX, d.y)) ? 1.0 : 0.0);
+// Any ground: plain, or washed by the sea (WASH_CODE / WASH_GRASS_CODE +
+// shape) - what ground borders bend between.
+bool is_ground(float code) {
+	return plain_ground(code) || (code > WASH_CODE && code <= WASH_GRASS_CODE + 46.0);
+}
+
+// Ground that takes the season's grass tint.
+bool is_grass(float code) {
+	return code == GRASS_CODE || (code > WASH_GRASS_CODE && code <= WASH_GRASS_CODE + 46.0);
+}
+
+// How far (pixels, either way) the ground border along the tile edge line
+// at world coordinate `line` sits off it, `along` pixels along the line: a
+// sine whose phase drifts with slow noise, so it always wiggles (never
+// runs straight on the grid) without repeating, smooth enough to step in
+// clean runs of whole pixels (no single-pixel nubs). Depends only on the
+// line, so the tiles on both sides draw the same border.
+float edge_curve(float line, float along) {
+	float drift = vnoise(vec2(along / (EDGE_WAVE * 2.5), line * 0.173 + 11.0));
+	return round(EDGE_PX * sin(along * 6.2832 / EDGE_WAVE + drift * 9.0 + line * 0.71));
+}
+
+// Which side of the tile edge line at world coordinate `line` (`key` tells
+// x and y lines apart) a pixel centre `across` / `along` it takes its
+// ground from: +1 the tile past the line, -1 the one before. Past the
+// border curve (edge_curve()) is +1 - except inside a splotch: now and then
+// (BLOB_CHANCE per BLOB_SLOT px of edge) a small round blob sits just off
+// the curve on one side and shows the other side's ground. Everything
+// depends only on the line, so the tiles on both sides agree.
+float edge_pick(float line, float key, float across, float along) {
+	float pick = across > line + edge_curve(key, along) ? 1.0 : -1.0;
+	if (abs(across - line) > BLOB_REACH)
+		return pick;
+	float slot = floor(along / BLOB_SLOT);
+	for (float k = -1.0; k <= 1.0; k += 1.0) {
+		vec2 id = vec2(key * 0.37 + 3.3, slot + k);
+		if (hash(id) >= BLOB_CHANCE)
+			continue;
+		float r = mix(BLOB_RADIUS.x, BLOB_RADIUS.y, hash(id + 1.7));
+		float b_along = (slot + k + hash(id + 2.9)) * BLOB_SLOT;
+		float dir = hash(id + 4.1) < 0.5 ? -1.0 : 1.0;
+		float b_across = line + edge_curve(key, b_along) + dir * (r + 1.0 + 2.0 * hash(id + 6.3));
+		// A little longer along the edge than across it.
+		vec2 d = vec2(across - b_across, (along - b_along) / 1.3);
+		if (dot(d, d) <= r * r)
+			pick = -dir;
+	}
+	return pick;
+}
+
+// Which tile's ground pixel `p` shows, relative to its own (-1..1 each
+// axis), by the borders (edge_pick()) of its tile's edges whose neighbour
+// is a different ground (`active`: -x, +x, -y, +y) - the rest are skipped.
+vec2 edge_side(vec2 p, bvec4 active) {
+	vec2 c = p + 0.5;  // pixel centre
+	vec2 lo = floor(p / tile_px) * tile_px;  // this tile's top-left edge lines
+	vec2 hi = lo + tile_px;
+	vec2 side = vec2(0.0);
+	if (active.x && edge_pick(lo.x, lo.x, c.x, c.y) < 0.0) side.x = -1.0;
+	else if (active.y && edge_pick(hi.x, hi.x, c.x, c.y) > 0.0) side.x = 1.0;
+	if (active.z && edge_pick(lo.y, lo.y + 0.5, c.y, c.x) < 0.0) side.y = -1.0;
+	else if (active.w && edge_pick(hi.y, hi.y + 0.5, c.y, c.x) > 0.0) side.y = 1.0;
+	return side;
 }
 
 // Subtle ground texture: per-pixel grain and a soft mottle.
@@ -192,29 +262,47 @@ void vertex() {
 }
 
 void fragment() {
-	// Whole-pixel steps (TILE per tile) keep it in the pixel-art grid.
+	// Whole-pixel steps (tile_px per tile) keep it in the pixel-art grid.
 	vec2 p = floor(world_px);
 	vec4 c = texture(TEXTURE, UV);
 	float code = code_of(c);
-	if (ground_detail && plain_ground(code)) {
-		// Dither into a different plain-ground neighbour near the edges
-		// (TEXTURE can only be sampled here, not in a helper).
-		vec2 f = fract(UV / TEXTURE_PIXEL_SIZE);
-		vec2 side = vec2(f.x < 0.5 ? -1.0 : 1.0, f.y < 0.5 ? -1.0 : 1.0);
-		vec2 take = blend_chance(f, p);
-		vec4 nx = texture(TEXTURE, UV + vec2(side.x, 0.0) * TEXTURE_PIXEL_SIZE);
-		vec4 ny = texture(TEXTURE, UV + vec2(0.0, side.y) * TEXTURE_PIXEL_SIZE);
-		if (take.x > 0.5 && plain_ground(code_of(nx)))
-			c = nx;
-		else if (take.y > 0.5 && plain_ground(code_of(ny)))
-			c = ny;
-		code = code_of(c);
+	// The ground this pixel shows (colour, grass tint, grain): past a wavy
+	// border it is the neighbour's - washed shore ground included. What
+	// happens on top (swash, waves, foam) stays its own tile's, so the surf
+	// follows the real shoreline.
+	vec4 g = c;
+	if (ground_detail && is_ground(code)) {
+		// Take the ground neighbour the pixel's border puts it in (TEXTURE
+		// can only be sampled here, not in a helper); diagonal first, else
+		// along one axis. Only edges to a different ground have a border.
+		vec2 px = TEXTURE_PIXEL_SIZE;
+		vec4 w = texture(TEXTURE, UV - vec2(px.x, 0.0));
+		vec4 e = texture(TEXTURE, UV + vec2(px.x, 0.0));
+		vec4 n = texture(TEXTURE, UV - vec2(0.0, px.y));
+		vec4 s = texture(TEXTURE, UV + vec2(0.0, px.y));
+		bvec4 active = bvec4(is_ground(code_of(w)) && w != c, is_ground(code_of(e)) && e != c,
+			is_ground(code_of(n)) && n != c, is_ground(code_of(s)) && s != c);
+		vec2 side = any(active) ? edge_side(p, active) : vec2(0.0);
+		if (side != vec2(0.0)) {
+			vec4 nd = texture(TEXTURE, UV + side * TEXTURE_PIXEL_SIZE);
+			vec4 nx = texture(TEXTURE, UV + vec2(side.x, 0.0) * TEXTURE_PIXEL_SIZE);
+			vec4 ny = texture(TEXTURE, UV + vec2(0.0, side.y) * TEXTURE_PIXEL_SIZE);
+			if (is_ground(code_of(nd)))
+				g = nd;
+			else if (side.x != 0.0 && is_ground(code_of(nx)))
+				g = nx;
+			else if (side.y != 0.0 && is_ground(code_of(ny)))
+				g = ny;
+		}
 	}
-	vec3 rgb = c.rgb;
-	if (ground_detail && (plain_ground(code) || (code > WASH_CODE && code <= WASH_GRASS_CODE + 46.0)))
+	float ground = code_of(g);
+	vec3 rgb = g.rgb;
+	if (ground_detail && is_ground(ground))
 		rgb = ground_noise(rgb, p);
-	vec2 tile = floor(p / TILE);
-	vec2 in_tile = p - tile * TILE;
+	if (is_grass(ground))
+		rgb = mix(rgb, grass_tint.rgb, grass_tint.a);
+	vec2 tile = floor(p / tile_px);
+	vec2 in_tile = p - tile * tile_px;
 	if (code >= WATER_CODE_ICE && code <= WATER_CODE) {
 		float liquid = (code - WATER_CODE_ICE) / (WATER_CODE - WATER_CODE_ICE);
 		rgb = glint(waves(rgb, p, liquid), tile, in_tile, liquid);
@@ -226,10 +314,7 @@ void fragment() {
 	} else if (code > WASH_CODE && code <= WASH_CODE + 46.0) {
 		rgb = swash(rgb, p, shore_dist(code - WASH_CODE, in_tile));
 	} else if (code > WASH_GRASS_CODE && code <= WASH_GRASS_CODE + 46.0) {
-		rgb = mix(rgb, grass_tint.rgb, grass_tint.a);
 		rgb = swash(rgb, p, shore_dist(code - WASH_GRASS_CODE, in_tile));
-	} else if (code == GRASS_CODE) {
-		rgb = mix(rgb, grass_tint.rgb, grass_tint.a);
 	}
 	COLOR = vec4(rgb, 1.0);
 }

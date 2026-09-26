@@ -26,6 +26,7 @@ const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
 const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
+const GameConstants := preload("res://scripts/game_constants.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const StructureSitesScript := preload("res://scripts/structure_sites.gd")
@@ -81,7 +82,7 @@ const FARMLAND := preload("res://resources/farmland.tres")
 ## 12) on what open ground remains.
 const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, DESERT_PLANTS, PIONEER_PLANTS, GROUND_COVER]
 
-const TILE_SIZE := 16          # screen pixels per tile
+const TILE_SIZE := GameConstants.TILE_SIZE  # world pixels per tile (scripts/game_constants.gd)
 const CHUNK_SIZE := 16         # tiles per chunk edge
 const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
 const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
@@ -328,6 +329,8 @@ func _ready() -> void:
 	sway_material.shader = SWAY_SHADER
 	shadow_material.shader = CAST_SHADOW_SHADER
 	terrain_material.shader = TERRAIN_SHADER
+	for material in [sway_material, shadow_material, terrain_material]:
+		GameConstants.apply_to(material)
 	world_seed = _resolve_world_seed()
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
