@@ -133,6 +133,9 @@ could look cleaner. Keep behavior unless changing it is part of the task.
   word (e.g. `clock touch world_scene`). A suite fails on a FAIL line, a
   missing RESULT line (crash or hang; each suite has a 900 s timeout), or
   any script / engine error line (review T5).
+- A suite `extends "res://tests/harness.gd"`: `check(cond, msg)` for each
+  expectation, then `finish()`, which prints the RESULT line and sets the
+  exit code (review T6).
 - Timings: the full suite takes ~15-18 minutes (23 suites, 412 checks, 18 min
   18 s in the cloud container at 2c97bf0) because most suites boot the full
   `world.tscn` (81 chunks). The fast suites CI runs on every PR and before

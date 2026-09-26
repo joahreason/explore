@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 8 guild invariants: species shares, one shared placement grid per
 ## guild (spacing holds across species, chunk seams), deterministic species
@@ -14,18 +14,6 @@ const ROCKS := preload("res://resources/guilds/surface_rocks.tres")
 const SHRUBS := preload("res://resources/guilds/shrubs.tres")
 const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
 const CHUNK := 16
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func const_density(v: float) -> Callable:
@@ -353,8 +341,7 @@ func _init() -> void:
 	check(is_equal_approx(before, 0.5) and is_equal_approx(required, 0.25) and is_equal_approx(reassigned, 1.0),
 		"suitability follows curve / required_curves reassignment after first use (%.3f, %.3f, %.3f)" % [before, required, reassigned])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func cross_min_dist(a: Array, b: Array) -> float:

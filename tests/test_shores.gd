@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 10 steps 3-4 (river mouths, shores): WorldGen's shore_salinity tells
 ## sea shores (1) from lake shores (0) and is 0 away from any shore; sea-only
@@ -15,18 +15,6 @@ const SEA_ONLY := ["shells", "salt", "mangrove", "saltmarsh_grass"]
 const SEED := 4242
 ## The last one holds a lake (its shores and a river running into it).
 const CENTERS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(20000, 20000), Vector2i(-600, 80)]
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -169,5 +157,4 @@ func _init() -> void:
 			"seed %d: %s is %s asked first, %s after ocean at %s; %d of %d tiles in its cell differ scanned in reverse" % [
 				seed, tile, alone, after_ocean, first_ocean, differ, tiles.size()])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Wind sway: resource sprites bend in the wind by their data `sway` (grass
 ## most, shrubs less, trees a little, rocks / ore / logs not at all); the
@@ -10,18 +10,6 @@ extends SceneTree
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -106,5 +94,4 @@ func _init() -> void:
 	var p3: float = world.wind.phase
 	check(p1 > p0 and p2 == p3, "the world's wind runs with the game and holds while paused (%.3f -> %.3f, paused %.3f = %.3f)" % [p0, p1, p2, p3])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

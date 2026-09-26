@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 18 (developer tooling): the Debug views and the factor breakdown.
 ## Checks: ResourceManager.explain_suitability() rebuilds exactly the real
@@ -15,18 +15,6 @@ extends SceneTree
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -221,5 +209,4 @@ func _init() -> void:
 	perf._unhandled_input(f3)
 	check(idle["longest_step_usec"] == 0 and idle["queued"] == 0 and not perf.visible, "the longest step resets once read; F3 hides the overlay again")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

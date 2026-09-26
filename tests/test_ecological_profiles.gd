@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 12 (ecological resource profiles): every category the plan lists
 ## exists as a data-driven definition, and the new ones land where their
@@ -26,18 +26,6 @@ const WOODED := ["Forest", "Rainforest"]
 ## Seed/center pairs that between them hold every geology (geology cells
 ## are larger than a region; the last two are sedimentary).
 const REGIONS := [[4242, Vector2i(0, 0)], [4242, Vector2i(12000, -7000)], [1337, Vector2i(-9000, 15000)], [7, Vector2i(20000, 20000)], [4242, Vector2i(8000, -12000)], [4242, Vector2i(-16000, -8000)]]
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -171,5 +159,4 @@ func _init() -> void:
 		and desert_temps[desert_temps.size() / 10] >= 0.05,
 		"Desert warm (min %.2f, p10 %.2f, %d tiles), Barrens cool (max %.2f, %d tiles)" % [desert_temps[0], desert_temps[desert_temps.size() / 10], desert_temps.size(), cold_temps[-1], cold_temps.size()])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

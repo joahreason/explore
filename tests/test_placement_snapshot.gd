@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 17 guard: performance work must not change what gets generated.
 ## Places the full GUILD_STACK (every guild's instances: guild, species id,
@@ -29,14 +29,6 @@ const GOLDEN := "res://tests/placement_snapshot.txt"
 const AREAS := [Vector2i(0, 0), Vector2i(18000, 8820), Vector2i(-540, -2060), Vector2i(1760, -870), Vector2i(8000, -12000), Vector2i(19946, 20042), Vector2i(-1920, -2280)]
 const AREA_CHUNKS := 3
 const ORDER_AREAS := [Vector2i(-1052, -1212)]
-
-var _fails := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if not cond:
-		_fails += 1
 
 
 func _init() -> void:
@@ -151,8 +143,7 @@ func _init() -> void:
 		check(summary[i] == want, "%s: %s instances/images identical to golden" % [parts[0], parts[1]] if summary[i] == want else "%s: got '%s', golden '%s'" % [parts[0], summary[i], want])
 	check(total > 1000, "snapshot covers %d instances/images" % total)
 
-	print("RESULT %s (%d failures)" % ["PASS" if _fails == 0 else "FAIL", _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## Positions are written as integer micro-tiles, not "%.6f": far from the

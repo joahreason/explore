@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## The player (user request, before Phase 19): taps walk it along A* paths
 ## that go round water and never cut a corner past it; a tap it can't reach
@@ -11,17 +11,6 @@ extends SceneTree
 const MarkerChunk := preload("res://scripts/render/resource_marker_chunk.gd")
 const SEED := 4242
 const DIR := "user://test_player"
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if cond:
-		_passes += 1
-	else:
-		_fails += 1
 
 
 func _init() -> void:
@@ -303,8 +292,7 @@ func _init() -> void:
 	await process_frame
 
 	_clean()
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _world() -> Node2D:

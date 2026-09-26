@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Polish pass 2: seasonal colours (Seasons), water shimmer, shore foam /
 ## swash and grass tint on
@@ -10,18 +10,6 @@ extends SceneTree
 
 const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -288,8 +276,7 @@ func _init() -> void:
 	await process_frame
 	check(spawned > 0 and frozen and particles.count() == 0, "particles spawn in the World view (%d: %s), freeze when paused, and clear in data views" % [spawned, particles.kinds_alive()])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func AmbientParticles_weights(env: Dictionary) -> Dictionary:

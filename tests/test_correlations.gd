@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 13 (correlated ecosystems): resources influence each other only
 ## through shared environmental causes. Canopy shade is ONE derived value
@@ -24,18 +24,6 @@ const HALF := 160
 ## depend on shade (mushrooms replaced their Forest/Rainforest biome weights,
 ## a label proxy for shade, with it).
 const SHADE_DEPENDENT := ["mushrooms"]
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -167,8 +155,7 @@ func _init() -> void:
 			compared += 1
 	check(chunk_ok and compared > 500, "chunk path shade == direct get_shade() (%d tiles)" % compared)
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## Floodplain chain (plan Phase 13's second example): flat river-side ground

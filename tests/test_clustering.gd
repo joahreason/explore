@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 14 clustering amendment (spatial pattern of trees, rocks and ore):
 ## trees in dense clumps with clear gaps, rocks in formations, ore outcrops
@@ -34,18 +34,6 @@ const BEFORE := {
 	"surface_rocks": [6032, 1.115, 1.10, 0.28],
 	"ore_outcrops": [351, 0.443, 8.17, 0.11],
 }
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -126,8 +114,7 @@ func _init() -> void:
 	check(monotone, "stand membership in [0, 1] and never shrinks as the area share grows")
 	check(calibrated, "share of ground in stands tracks the area share (%s)" % ", ".join(shares))
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## Points bucketed by 4-tile cell, for neighbour queries.

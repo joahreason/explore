@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## WorldSession (scripts/world/world_session.gd, §4.1 step 3) without the
 ## world scene: a new seed starts at START_MINUTES with no position; a
@@ -11,18 +11,6 @@ const Session := preload("res://scripts/world/world_session.gd")
 const GameClockScript := preload("res://scripts/world/game_clock.gd")
 const DIR := "user://test_world_session"
 const SEED := 77
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _clean() -> void:
@@ -77,5 +65,4 @@ func _init() -> void:
 	check(not asleep and sleeper.woke_in_tent(), "a sleeper in a tent is noticed once the clock wakes them")
 
 	_clean()
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

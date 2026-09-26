@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Navigation (scripts/world/navigation.gd, §4.1 step 2) on small made-up
 ## grids, without the world scene: A* paths step between neighbours over
@@ -9,18 +9,6 @@ extends SceneTree
 
 const Nav := preload("res://scripts/world/navigation.gd")
 const TILE := 16.0
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 ## Every step moves to a walkable neighbour, and a diagonal step has both
@@ -83,5 +71,4 @@ func _init() -> void:
 		and Nav.nearest_walkable(Vector2i(1, 1), func(_t): return false) == Vector2i(1, 1),
 		"nearest walkable tile: itself, a neighbour off the wall, or the tile itself when nothing is walkable")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

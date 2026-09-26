@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const ChunkStreamer := preload("res://scripts/world/chunk_streamer.gd")
@@ -12,14 +12,6 @@ const ResourceMarkerChunk := preload("res://scripts/render/resource_marker_chunk
 ## for visual inspection - OUT_TILES tiles wide, centered on OUT_CENTER="x,y"
 ## (default the origin), OUT_PX pixels per tile (default 5; 12 = native
 ## sprite size). Run via tests/run_tests.sh.
-
-var _fails := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if not cond:
-		_fails += 1
 
 
 func _init() -> void:
@@ -481,8 +473,7 @@ func _init() -> void:
 	check(still and outcomes == [["Frozen Sea", false, true]] and not inline_world.is_finding_biome() and menu.get_item_text(0) == "Go to..." and menu.selected == 0,
 		"no threads: a long search can be cancelled from the menu (%s)" % [outcomes])
 
-	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## How many loaded chunks show content built for the current view and LOD.

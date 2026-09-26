@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 13.5 terrain surface layer (TerrainSurface / SurfaceMaterial):
 ## data loads cleanly, choice is deterministic, per-biome mixtures are
@@ -11,18 +11,8 @@ const SEED := 4242
 const TS := preload("res://scripts/gen/terrain_surface.gd")
 const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
 
-var _fails := 0
-var _passes := 0
 var _wg: WorldGen
 var _shade_cache := {}
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if cond:
-		_passes += 1
-	else:
-		_fails += 1
 
 
 ## Exact shade at a lattice corner (what chunk_manager._corner_shade() does
@@ -187,8 +177,7 @@ func _init() -> void:
 	check(path_ok and checked > 400, "chunk path: material and colour match direct evaluation (%d tiles)" % checked)
 	check(water_ok, "water tiles: no ground material, water colour")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## "" if material `id` fits the tile's conditions, else what's wrong -

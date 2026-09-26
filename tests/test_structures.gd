@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Landmark layer (camps, standing stones, ruins): StructureSites places at
 ## most one site per CELL_SIZE cell from hashes of (seed, cell); the type
@@ -15,18 +15,6 @@ extends SceneTree
 const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
 const SEED := 4242
 const CELL := StructureSites.CELL_SIZE
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -158,8 +146,7 @@ func _init() -> void:
 
 	await _check_scene(found)
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _check_scene(found: Array) -> void:
