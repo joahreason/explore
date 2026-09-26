@@ -1,0 +1,105 @@
+[gd_resource type="Resource" script_class="WorldContent" format=3]
+
+[ext_resource type="Script" path="res://scripts/world/world_content.gd" id="s_content"]
+[ext_resource type="Script" path="res://scripts/world/world_layer.gd" id="s_layer"]
+[ext_resource type="Script" path="res://scripts/resource_guild.gd" id="s_guild"]
+[ext_resource type="Script" path="res://scripts/resource_definition.gd" id="s_def"]
+[ext_resource type="Script" path="res://scripts/surface_material.gd" id="s_mat"]
+[ext_resource type="Script" path="res://scripts/structure_definition.gd" id="s_struct"]
+[ext_resource type="Resource" path="res://resources/ore_outcrops.tres" id="g_ore_outcrops"]
+[ext_resource type="Resource" path="res://resources/surface_rocks.tres" id="g_surface_rocks"]
+[ext_resource type="Resource" path="res://resources/canopy_trees.tres" id="g_canopy_trees"]
+[ext_resource type="Resource" path="res://resources/wetland_plants.tres" id="g_wetland_plants"]
+[ext_resource type="Resource" path="res://resources/shore_features.tres" id="g_shore_features"]
+[ext_resource type="Resource" path="res://resources/deadwood.tres" id="g_deadwood"]
+[ext_resource type="Resource" path="res://resources/shrubs.tres" id="g_shrubs"]
+[ext_resource type="Resource" path="res://resources/desert_plants.tres" id="g_desert_plants"]
+[ext_resource type="Resource" path="res://resources/pioneer_plants.tres" id="g_pioneer_plants"]
+[ext_resource type="Resource" path="res://resources/ground_cover.tres" id="g_ground_cover"]
+[ext_resource type="Resource" path="res://resources/iron.tres" id="d_iron"]
+[ext_resource type="Resource" path="res://resources/copper.tres" id="d_copper"]
+[ext_resource type="Resource" path="res://resources/coal.tres" id="d_coal"]
+[ext_resource type="Resource" path="res://resources/clay.tres" id="d_clay"]
+[ext_resource type="Resource" path="res://resources/salt.tres" id="d_salt"]
+[ext_resource type="Resource" path="res://resources/farmland.tres" id="farmland"]
+[ext_resource type="Resource" path="res://resources/oak.tres" id="oak"]
+[ext_resource type="Resource" path="res://resources/terrain/grass.tres" id="m_grass"]
+[ext_resource type="Resource" path="res://resources/terrain/dry_grass.tres" id="m_dry_grass"]
+[ext_resource type="Resource" path="res://resources/terrain/dirt.tres" id="m_dirt"]
+[ext_resource type="Resource" path="res://resources/terrain/forest_floor.tres" id="m_forest_floor"]
+[ext_resource type="Resource" path="res://resources/terrain/mud.tres" id="m_mud"]
+[ext_resource type="Resource" path="res://resources/terrain/marsh.tres" id="m_marsh"]
+[ext_resource type="Resource" path="res://resources/terrain/sand.tres" id="m_sand"]
+[ext_resource type="Resource" path="res://resources/terrain/beach_sand.tres" id="m_beach_sand"]
+[ext_resource type="Resource" path="res://resources/terrain/gravel.tres" id="m_gravel"]
+[ext_resource type="Resource" path="res://resources/terrain/rock.tres" id="m_rock"]
+[ext_resource type="Resource" path="res://resources/terrain/snow.tres" id="m_snow"]
+[ext_resource type="Resource" path="res://resources/terrain/burnt_ground.tres" id="m_burnt_ground"]
+[ext_resource type="Resource" path="res://resources/structures/camp.tres" id="s_camp"]
+[ext_resource type="Resource" path="res://resources/structures/standing_stones.tres" id="s_standing_stones"]
+[ext_resource type="Resource" path="res://resources/structures/ruins.tres" id="s_ruins"]
+
+[sub_resource type="Resource" id="layer_ore_outcrops"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_ore_outcrops")
+shape = 5
+fallback = 4
+
+[sub_resource type="Resource" id="layer_surface_rocks"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_surface_rocks")
+shape = 5
+
+[sub_resource type="Resource" id="layer_wetland_plants"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_wetland_plants")
+shape = 5
+fallback = 3
+
+[sub_resource type="Resource" id="layer_shore_features"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_shore_features")
+shape = 5
+fallback = 0
+
+[sub_resource type="Resource" id="layer_ground_cover"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_ground_cover")
+shape = 5
+
+[sub_resource type="Resource" id="layer_pioneer_plants"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_pioneer_plants")
+shape = 5
+
+[sub_resource type="Resource" id="layer_deadwood"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_deadwood")
+shape = 5
+
+[sub_resource type="Resource" id="layer_desert_plants"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_desert_plants")
+shape = 5
+
+[sub_resource type="Resource" id="layer_shrubs"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_shrubs")
+shape = 5
+fallback = 0
+
+[sub_resource type="Resource" id="layer_canopy_trees"]
+script = ExtResource("s_layer")
+guild = ExtResource("g_canopy_trees")
+shape = 5
+
+[resource]
+script = ExtResource("s_content")
+guilds = Array[ExtResource("s_guild")]([ExtResource("g_ore_outcrops"), ExtResource("g_surface_rocks"), ExtResource("g_canopy_trees"), ExtResource("g_wetland_plants"), ExtResource("g_shore_features"), ExtResource("g_deadwood"), ExtResource("g_shrubs"), ExtResource("g_desert_plants"), ExtResource("g_pioneer_plants"), ExtResource("g_ground_cover")])
+world_view_layers = Array[ExtResource("s_layer")]([SubResource("layer_ore_outcrops"), SubResource("layer_surface_rocks"), SubResource("layer_wetland_plants"), SubResource("layer_shore_features"), SubResource("layer_ground_cover"), SubResource("layer_pioneer_plants"), SubResource("layer_deadwood"), SubResource("layer_desert_plants"), SubResource("layer_shrubs"), SubResource("layer_canopy_trees")])
+deposits = Array[ExtResource("s_def")]([ExtResource("d_iron"), ExtResource("d_copper"), ExtResource("d_coal"), ExtResource("d_clay"), ExtResource("d_salt")])
+farmland = ExtResource("farmland")
+oak = ExtResource("oak")
+terrain_materials = Array[ExtResource("s_mat")]([ExtResource("m_grass"), ExtResource("m_dry_grass"), ExtResource("m_dirt"), ExtResource("m_forest_floor"), ExtResource("m_mud"), ExtResource("m_marsh"), ExtResource("m_sand"), ExtResource("m_beach_sand"), ExtResource("m_gravel"), ExtResource("m_rock"), ExtResource("m_snow"), ExtResource("m_burnt_ground")])
+terrain_fallback = ExtResource("m_dirt")
+structures = Array[ExtResource("s_struct")]([ExtResource("s_camp"), ExtResource("s_standing_stones"), ExtResource("s_ruins")])

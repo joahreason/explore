@@ -30,7 +30,7 @@ func check(cond: bool, msg: String) -> void:
 
 
 func _init() -> void:
-	for def in StructureSitesScript.DEFINITIONS:
+	for def in StructureSitesScript.CONTENT.structures:
 		check(def.get_curve_domain_warnings().is_empty(), "%s: data valid %s" % [def.id, def.get_curve_domain_warnings()])
 		check(def.radius < StructureSitesScript.new(WorldGen.new(), SEED).margin, "%s: radius %d fits inside the cell margin" % [def.id, def.radius])
 
@@ -116,7 +116,7 @@ func _init() -> void:
 			camp_kinds.append(kinds)
 	check(stones_ok, "standing stones: 5-9 stones in every ring")
 	check(camp_ok, "camps: a campfire and one or two tents %s" % ("" if camp_ok else str(camp_kinds)))
-	var ruins: StructureDefinition = StructureSitesScript.DEFINITIONS[2]
+	var ruins: StructureDefinition = StructureSitesScript.CONTENT.structures[2]
 	var growth := Vector2i.ZERO  # (low vegetation, high vegetation) plant counts
 	var walls_young := 0
 	var walls_old := 0
@@ -167,7 +167,7 @@ func _check_scene(found: Array) -> void:
 	# thread asks first: the "Go to" thread reads these same definitions
 	# (review C5).
 	await process_frame  # the tree is running, so add_child() runs _ready() at once
-	var lazy: Array = StructureSitesScript.DEFINITIONS + TerrainSurface.MATERIALS
+	var lazy: Array = StructureSitesScript.CONTENT.structures + TerrainSurface.CONTENT.terrain_materials
 	for def in lazy:
 		def.curve_plan = null
 	var eager: Node2D = load("res://world.tscn").instantiate()

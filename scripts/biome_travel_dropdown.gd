@@ -29,7 +29,7 @@ func _ready() -> void:
 	for biome in BiomeClassifierScript.BIOME_COLORS:
 		add_item(biome)
 	add_separator()
-	for def in StructureSitesScript.DEFINITIONS:
+	for def in StructureSitesScript.CONTENT.structures:
 		add_item(def.display_name)
 	item_selected.connect(_on_item_selected)
 	_world.biome_travel_finished.connect(_on_travel_finished)

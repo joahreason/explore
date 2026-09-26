@@ -20,7 +20,7 @@ func _ready() -> void:
 		offset_bottom = offset_top + height
 	_resources = _world.debug_resources()
 	var guild_names := {}
-	for guild in _world.GUILD_STACK:
+	for guild in _world.CONTENT.guilds:
 		for member in guild.members:
 			guild_names[member.id] = String(guild.id).capitalize()
 	for definition in _resources:
