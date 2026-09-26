@@ -64,6 +64,14 @@ func _init() -> void:
 	var path := DIR + "/unit.json"
 	check(c.save(path, SEED) and back.load_file(path, SEED) and back.is_harvested("canopy_trees:3,4", "oak"), "save -> load_file round trip")
 	check(not back.load_file(DIR + "/missing.json", SEED) and back.is_empty(), "missing file -> empty")
+	# A save interrupted mid-write leaves invalid JSON; the previous save
+	# (.bak) is read instead of silently starting empty (review C4).
+	c.save(path, SEED)
+	var torn := FileAccess.open(path, FileAccess.WRITE)
+	torn.store_string("{\"version\": 1, \"see")
+	torn.close()
+	check(back.load_file(path, SEED) and back.is_harvested("canopy_trees:3,4", "oak") and not FileAccess.file_exists(path + ".tmp"),
+		"a torn save file falls back to the previous save (.bak); no .tmp left behind")
 	check(not c.save("", SEED) and not back.load_file("", SEED), "path '' -> nothing written or read")
 
 	# The real scene.

@@ -114,24 +114,40 @@ func from_dict(data: Dictionary, world_seed: int) -> bool:
 	return true
 
 
-## Writes to_dict() as JSON; "" = not persisted (nothing written).
+## Writes to_dict() as JSON; "" = not persisted (nothing written). Never
+## in place (review C4): the JSON goes to "<path>.tmp", the previous file
+## becomes "<path>.bak", then the new one takes its name, so an interrupted
+## write leaves the last good save readable.
 func save(path: String, world_seed: int) -> bool:
 	if path == "":
 		return false
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	var file := FileAccess.open(path, FileAccess.WRITE)
+	var tmp := path + ".tmp"
+	var file := FileAccess.open(tmp, FileAccess.WRITE)
 	if file == null:
 		return false
 	file.store_string(JSON.stringify(to_dict(world_seed)))
 	file.close()
-	return true
+	if file.get_error() != OK:
+		return false
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(path + ".bak")
+		DirAccess.rename_absolute(path, path + ".bak")
+	return DirAccess.rename_absolute(tmp, path) == OK
 
 
 ## Replaces this state with the file's (empty if path is "", there is no
-## file, or it is unreadable or for another seed).
+## file, or it is unreadable or for another seed). A file that isn't valid
+## JSON (a torn write), or is missing while "<path>.bak" exists, is read
+## from the previous save instead.
 func load_file(path: String, world_seed: int) -> bool:
 	clear()
-	if path == "" or not FileAccess.file_exists(path):
+	if path == "":
 		return false
-	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
-	return data is Dictionary and from_dict(data, world_seed)
+	for candidate in [path, path + ".bak"]:
+		if not FileAccess.file_exists(candidate):
+			continue
+		var json := JSON.new()  # parse() reports a torn file quietly; parse_string() logs an error
+		if json.parse(FileAccess.get_file_as_string(candidate)) == OK and json.data is Dictionary:
+			return from_dict(json.data, world_seed)
+	return false
