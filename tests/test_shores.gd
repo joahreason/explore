@@ -123,5 +123,43 @@ func _init() -> void:
 			same = same and wg.sample(x, y)["shore_salinity"] == wg2.sample(x, y)["shore_salinity"]
 	check(same, "shore_salinity identical from a fresh WorldGen")
 
+	# 4. Water body labels don't depend on the order tiles are asked in
+	# (review D1): an enclosed sea sharing a 64x64 cell with open ocean once
+	# read as ocean if an ocean tile of that cell was asked first. Each case
+	# is a sea tile that did; each 64x64 cell is scanned both ways as well.
+	for case in [[4242, Vector2i(-1052, -1212)], [1337, Vector2i(-1912, -2112)]]:
+		var seed: int = case[0]
+		var tile: Vector2i = case[1]
+		var cell := Vector2i(floori(tile.x / 64.0), floori(tile.y / 64.0)) * 64
+		var tiles: Array[Vector2i] = []
+		for y in range(cell.y, cell.y + 64, 2):
+			for x in range(cell.x, cell.x + 64, 2):
+				tiles.append(Vector2i(x, y))
+		var fresh := func() -> WorldGen:
+			var g := WorldGen.new()
+			g.configure(seed)
+			return g
+		var alone: String = fresh.call().sample(tile.x, tile.y)["water_body"]
+		var forward: WorldGen = fresh.call()
+		var first_ocean := Vector2i.MAX
+		var labels := {}
+		for t in tiles:
+			var s := forward.sample(t.x, t.y)
+			labels[t] = [s["water_body"], s["shore_salinity"]]
+			if first_ocean == Vector2i.MAX and s["water_body"] == "ocean":
+				first_ocean = t
+		var ocean_first: WorldGen = fresh.call()
+		ocean_first.sample(first_ocean.x, first_ocean.y)
+		var after_ocean: String = ocean_first.sample(tile.x, tile.y)["water_body"]
+		var backward: WorldGen = fresh.call()
+		var differ := 0
+		for i in range(tiles.size() - 1, -1, -1):
+			var s := backward.sample(tiles[i].x, tiles[i].y)
+			if [s["water_body"], s["shore_salinity"]] != labels[tiles[i]]:
+				differ += 1
+		check(alone == "sea" and after_ocean == "sea" and differ == 0,
+			"seed %d: %s is %s asked first, %s after ocean at %s; %d of %d tiles in its cell differ scanned in reverse" % [
+				seed, tile, alone, after_ocean, first_ocean, differ, tiles.size()])
+
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

@@ -381,11 +381,17 @@ func _init() -> void:
 
 	# The main-thread fallback builds a chunk in small steps over several
 	# frames (Phase 17 step 6); the markers must match placing it in one go.
+	# Frames only prove the stepping (the first chunks show, not all of
+	# them); the rest is flushed, so a slow machine can't fail a correct build.
 	inline_world.set_view_mode(CM.ViewMode.RESOURCES)
 	var step_frames := 0
-	while inline_world.has_pending_chunks() and step_frames < 5000:
+	while _current_count(inline_world) == 0 and step_frames < 2000:
 		await process_frame
 		step_frames += 1
+	var stepped: int = _current_count(inline_world)
+	inline_world.flush_chunk_work()
+	check(stepped > 0 and stepped < 81 and _all_current(inline_world),
+		"no worker: Resources view steps in (%d of 81 chunks after %d frames), all current once flushed" % [stepped, step_frames])
 	var same: bool = inline_world._loaded_placements.size() == 81
 	var markers_total := 0
 	for c in inline_world._loaded_placements:
@@ -404,10 +410,19 @@ func _init() -> void:
 		var shown: PackedVector2Array = node._positions
 		markers_total += shown.size()
 		same = same and shown == one_go
-	check(same and markers_total > 0, "no worker: Resources built in steps over %d frames - all %d markers match one-go placement" % [step_frames, markers_total])
+	check(same and markers_total > 0, "no worker: Resources built in steps - all %d markers match one-go placement" % markers_total)
 
 	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
 	quit(1 if _fails > 0 else 0)
+
+
+## How many loaded chunks show content built for the current view and LOD.
+func _current_count(world: Node2D) -> int:
+	var n := 0
+	for c in world._loaded_chunks:
+		if world._shown_epoch.get(c, -1) == world._epoch:
+			n += 1
+	return n
 
 
 ## Every loaded chunk shows content built for the current view and LOD.
