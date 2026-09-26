@@ -807,7 +807,10 @@ func _take_job() -> Array:
 ## by the steps) and step list (planned by the first _step_job(); fine =
 ## the main-thread fallback's finer steps, see _chunk_job_steps).
 func _new_job_state(job: Array, fine: bool) -> Dictionary:
-	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": _new_chunk_image(job[2])}
+	_gen_mutex.lock()  # the image format follows _view_mode (review C2)
+	var image := _new_chunk_image(job[2])
+	_gen_mutex.unlock()
+	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image}
 	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
 
 
@@ -2139,13 +2142,20 @@ func _walkable_line(a: Vector2, b: Vector2) -> bool:
 
 ## Whether a camp tent stands on `tile` (a "tent" part of the site there).
 func is_tent(tile: Vector2i) -> bool:
-	_gen_mutex.lock()  # site_at() may build the site, sampling the world
+	return not _tent_site(tile).is_empty()
+
+
+## The camp site whose tent stands on `tile`, or {}. Looked up under
+## _gen_mutex: site_at() may build the site (sampling the world) and the
+## worker writes the same StructureSites cache (review C2).
+func _tent_site(tile: Vector2i) -> Dictionary:
+	_gen_mutex.lock()
 	var site := _structures.site_at(tile)
 	_gen_mutex.unlock()
 	for part in site.get("parts", []):
 		if part["tile"] == tile and part["kind"] == "tent":
-			return true
-	return false
+			return site
+	return {}
 
 
 ## How the World view draws the camp tent on `tile`: [texture, rect in
@@ -2167,14 +2177,15 @@ func tent_drawn(tile: Vector2i) -> Array:
 ## (GameClock.sleep()); _process() brings the player out when the clock
 ## wakes. Nothing happens if there's no tent there.
 func enter_tent(tile: Vector2i) -> void:
-	if _player == null or not is_tent(tile):
+	var site := _tent_site(tile) if _player != null else {}
+	if site.is_empty():
 		return
 	_leave_tent()
 	_tent_tile = tile
 	_player.visible = false
 	var chunk := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
 	_redraw_markers(chunk)
-	var def: StructureDefinition = _structures.site_at(tile)["definition"]
+	var def: StructureDefinition = site["definition"]
 	var tent_sheet := Vector2i.ZERO
 	for part in def.parts:
 		if part["kind"] == "tent":
