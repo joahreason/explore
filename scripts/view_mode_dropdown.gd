@@ -41,6 +41,8 @@ const ITEMS := [
 	{"label": "Cave Potential", "mode": ChunkManagerScript.ViewMode.CAVE_POTENTIAL},
 	{"label": "Cliff Tendency", "mode": ChunkManagerScript.ViewMode.CLIFF_TENDENCY},
 	{"label": "Rock Exposure", "mode": ChunkManagerScript.ViewMode.ROCK_EXPOSURE},
+	{"label": "Ley", "mode": ChunkManagerScript.ViewMode.LEY},
+	{"label": "Void", "mode": ChunkManagerScript.ViewMode.VOID},
 ]
 
 

@@ -207,6 +207,8 @@ enum ViewMode {
 	DEBUG_DENSITY,
 	DEBUG_PATCH,
 	DEBUG_PLACEMENT,
+	LEY,
+	VOID,
 }
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
@@ -960,6 +962,10 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 			return HeatmapColorizerScript.cave_potential(sample)
 		ViewMode.CLIFF_TENDENCY:
 			return HeatmapColorizerScript.cliff_tendency(sample)
+		ViewMode.LEY:
+			return HeatmapColorizerScript.ley(sample)
+		ViewMode.VOID:
+			return HeatmapColorizerScript.void_taint(sample)
 		ViewMode.RESOURCE_SUITABILITY_OAK:
 			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
 		ViewMode.RESOURCE_DENSITY_OAK, ViewMode.RESOURCE_PLACEMENT_OAK:

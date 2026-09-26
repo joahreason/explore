@@ -56,6 +56,12 @@ const BARE_ROCK := Color(0.9, 0.88, 0.85)
 
 const NO_DEPOSIT := Color(0.45, 0.45, 0.45)
 
+const NO_LEY := Color(0.1, 0.12, 0.16)
+const STRONG_LEY := Color(0.4, 0.95, 0.88)
+
+const NO_VOID := Color(0.75, 0.72, 0.7)
+const DEEP_VOID := Color(0.2, 0.05, 0.28)
+
 const SUNLIT := Color(0.95, 0.9, 0.55)
 const DEEP_SHADE := Color(0.05, 0.2, 0.15)
 
@@ -182,3 +188,13 @@ static func quality(value: float) -> Color:
 	if v < 0.5:
 		return POOR_QUALITY.lerp(MID_QUALITY, v * 2.0)
 	return MID_QUALITY.lerp(GOOD_QUALITY, (v - 0.5) * 2.0)
+
+
+## Magic overlay: ley strength, dark (none) -> glowing teal (line / nexus).
+static func ley(s: Dictionary) -> Color:
+	return NO_LEY.lerp(STRONG_LEY, clampf(float(s["ley"]), 0.0, 1.0))
+
+
+## Magic overlay: void taint, pale (none) -> deep violet (a pocket's core).
+static func void_taint(s: Dictionary) -> Color:
+	return NO_VOID.lerp(DEEP_VOID, clampf(float(s["void_taint"]), 0.0, 1.0))
