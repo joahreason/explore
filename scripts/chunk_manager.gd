@@ -101,6 +101,7 @@ const LOD_THRESHOLDS := [
 	{"zoom": 0.25, "step": 4},
 	{"zoom": 0.0, "step": 8},
 ]
+const LOD_HYSTERESIS := 0.05
 
 ## Phase 17: how many chunks of per-tile EnvironmentalState + classify_full()
 ## results _tile_env() keeps (FIFO). Placing one chunk's guild stack reads
@@ -663,7 +664,21 @@ func _current_load_radius() -> int:
 
 
 func _current_lod_step() -> int:
-	var zoom := _current_zoom()
+	return _lod_step_for(_current_zoom(), _last_lod_step)
+
+
+## The LOD step for `zoom`, coming from step `current` (-1: none yet). A
+## threshold must be passed by LOD_HYSTERESIS (5 %) before the step changes,
+## so a pinch hovering at a threshold doesn't rebuild every loaded chunk on
+## each crossing (review W5).
+static func _lod_step_for(zoom: float, current: int) -> int:
+	var plain := _lod_step_at(zoom)
+	if current < 0 or plain == current:
+		return plain
+	return _lod_step_at(zoom / (1.0 + LOD_HYSTERESIS) if plain < current else zoom / (1.0 - LOD_HYSTERESIS))
+
+
+static func _lod_step_at(zoom: float) -> int:
 	for entry in LOD_THRESHOLDS:
 		if zoom >= entry["zoom"]:
 			return entry["step"]
