@@ -19,9 +19,11 @@
 [ext_resource type="Script" path="res://scripts/render/ambient_particles.gd" id="17"]
 [ext_resource type="Script" path="res://scripts/world/player.gd" id="18"]
 [ext_resource type="Script" path="res://scripts/ui/perf_overlay.gd" id="19"]
+[ext_resource type="Resource" path="res://resources/default_world_gen.tres" id="20"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
+world_gen_params = ExtResource("20")
 target_path = NodePath("CameraRig")
 player_path = NodePath("Resources/Player")
 

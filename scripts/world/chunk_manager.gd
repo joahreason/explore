@@ -55,8 +55,11 @@ const SeasonsScript := preload("res://scripts/render/seasons.gd")
 ## scripts/world/view_modes.gd (review A2).
 const ViewMode := ViewModesScript.ViewMode
 
-## Assign a saved WorldGen.tres preset here to tune generation in the
-## Inspector; if left empty a default-tuned WorldGen is created at runtime.
+## The WorldGen tuning, editable in the Inspector: world.tscn assigns
+## resources/default_world_gen.tres, which holds only the values changed from
+## WorldGen's code defaults (review Q3). Each world uses its own copy, so
+## worlds never share generation state. If left empty a default-tuned
+## WorldGen is created at runtime.
 @export var world_gen_params: WorldGen
 @export var world_seed: int = 1337
 @export var target_path: NodePath
@@ -142,7 +145,7 @@ func _ready() -> void:
 	_picker = ResourcePickerScript.new(_ctx, _builder, _presenter, session, get_resource_instance)
 	world_seed = _resolve_world_seed()
 	if world_gen_params != null:
-		_ctx.world_gen = world_gen_params
+		_ctx.world_gen = world_gen_params.duplicate()
 	_ctx.configure(world_seed)
 	if player_path != NodePath():
 		_player = get_node(player_path)

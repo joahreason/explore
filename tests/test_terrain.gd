@@ -162,6 +162,10 @@ func _init() -> void:
 	root.add_child(world)
 	await process_frame
 	world.flush_chunk_work()
+	# The scene's WorldGen tuning is the editable default resource, and the
+	# world generates from its own copy (review Q3).
+	var params: WorldGen = world.world_gen_params
+	check(params != null and params.resource_path == "res://resources/default_world_gen.tres" and world._ctx.world_gen != params and world._ctx.world_gen.sea_level == WorldGen.new().sea_level, "world.tscn tunes WorldGen through default_world_gen.tres, used as a copy")
 	var path_ok := true
 	var water_ok := true
 	var checked := 0
