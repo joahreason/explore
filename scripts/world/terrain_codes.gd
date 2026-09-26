@@ -18,7 +18,8 @@ extends RefCounted
 ## SHORE_SHAPES of the mask of neighbours across the shoreline: edges 1 -x,
 ## 2 +x, 4 -y, 8 +y and diagonal corners 16 (-x,-y), 32 (+x,-y), 64 (-x,+y),
 ## 128 (+x,+y), a corner only when neither edge beside it is set (it would
-## be covered) - 46 shapes, mirrored in shaders/terrain.gdshader.
+## be covered) - 46 shapes, mirrored in shaders/terrain_codes.gdshaderinc
+## (test_terrain checks both sides agree).
 const FOAM_CODE := 50
 const WASH_CODE := 100
 const WASH_GRASS_CODE := 150

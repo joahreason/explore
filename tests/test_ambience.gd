@@ -124,7 +124,7 @@ func _init() -> void:
 	# where neither edge beside them is set); tiles off the shoreline get
 	# neither. Shallow open sea off the shoreline carries
 	# SHALLOW_CODE + 0..7, higher the shallower.
-	var shape_text := FileAccess.get_file_as_string("res://shaders/terrain.gdshader")
+	var shape_text := FileAccess.get_file_as_string("res://shaders/terrain_codes.gdshaderinc")
 	var shader_shapes := shape_text.substr(shape_text.find("SHORE_SHAPES[46] = {") + 20).get_slice("}", 0).split(",")
 	var shapes_ok: bool = shader_shapes.size() == TerrainCodes.SHORE_SHAPES.size()
 	for i in mini(shader_shapes.size(), TerrainCodes.SHORE_SHAPES.size()):

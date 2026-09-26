@@ -9,6 +9,7 @@ extends SceneTree
 
 const SEED := 4242
 const TS := preload("res://scripts/gen/terrain_surface.gd")
+const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
 
 var _fails := 0
 var _passes := 0
@@ -44,6 +45,27 @@ func _state(s: Dictionary, x: int, y: int) -> EnvironmentalState:
 func _init() -> void:
 	_wg = WorldGen.new()
 	_wg.configure(SEED)
+
+	# 0. Review Q2: the shader's tile codes and shore shapes match
+	# TerrainCodes, which bakes them.
+	var shader_src := FileAccess.get_file_as_string("res://shaders/terrain_codes.gdshaderinc")
+	var mismatched := []
+	var codes := {"FOAM_CODE": TerrainCodes.FOAM_CODE, "WASH_CODE": TerrainCodes.WASH_CODE, "WASH_GRASS_CODE": TerrainCodes.WASH_GRASS_CODE,
+		"WATER_CODE_ICE": TerrainCodes.WATER_CODE_ICE, "WATER_CODE": TerrainCodes.WATER_CODE, "SHALLOW_CODE": TerrainCodes.SHALLOW_CODE, "GRASS_CODE": TerrainCodes.GRASS_CODE}
+	for code in codes:
+		var m := RegEx.create_from_string("const float %s = ([0-9.]+);" % code).search(shader_src)
+		if m == null or float(m.get_string(1)) != float(codes[code]):
+			mismatched.append(code)
+	var shapes_match := RegEx.create_from_string("const int SHORE_SHAPES\\[(\\d+)\\] = \\{([^}]*)\\};").search(shader_src)
+	var shader_shapes := []
+	if shapes_match != null:
+		for v in shapes_match.get_string(2).split(","):
+			shader_shapes.append(int(v))
+	if shader_shapes != TerrainCodes.SHORE_SHAPES or shapes_match == null or int(shapes_match.get_string(1)) != TerrainCodes.SHORE_SHAPES.size():
+		mismatched.append("SHORE_SHAPES")
+	var terrain_shader := FileAccess.get_file_as_string("res://shaders/terrain.gdshader")
+	check(mismatched.is_empty() and terrain_shader.contains('#include "res://shaders/terrain_codes.gdshaderinc"') and not terrain_shader.contains("const float GRASS_CODE"),
+		"the terrain shader's codes and shore shapes come from terrain_codes.gdshaderinc and match TerrainCodes %s" % [mismatched])
 
 	# 1. Data.
 	var ids := {}
