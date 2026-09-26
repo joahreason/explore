@@ -29,7 +29,7 @@ jobs:
           key: godot-${{ env.GODOT_VERSION }}
 
       - name: Run fast test suites
-        run: tests/run_tests.sh snapshot resource_placement world_changes game_clock structures shores
+        run: tests/run_tests.sh snapshot resource_placement world_changes game_clock structures shores navigation
 
   export-web:
     needs: test
