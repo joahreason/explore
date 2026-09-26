@@ -163,7 +163,7 @@ const SHALLOW_DEPTH := 0.008
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
-## Seconds a newly streamed-in chunk takes to fade in.
+## Seconds a newly streamed-in chunk's label overlay takes to fade in.
 const FADE_IN_SEC := 0.2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
@@ -1298,15 +1298,16 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		var markers := _marker_node(base, data["placements"])
 		resources_root.add_child(markers)
 		_loaded_placements[chunk_coord] = markers
-	# Polish: a chunk that newly streams in fades in (FADE_IN_SEC) instead of
-	# popping; rebuilding one already on screen (view change) swaps in place.
-	if fresh:
-		var markers_node = _loaded_placements.get(chunk_coord)
-		var shadow_node = markers_node.shadow_layer() if markers_node != null else null
-		for node in [sprite, _loaded_overlays.get(chunk_coord), markers_node, shadow_node]:
-			if node != null:
-				node.modulate.a = 0.0
-				node.create_tween().tween_property(node, "modulate:a", 1.0, FADE_IN_SEC)
+	# Polish: a label overlay that newly streams in fades in (FADE_IN_SEC)
+	# instead of popping; rebuilding one already on screen (view change)
+	# swaps in place. Only overlays: the terrain, sway and shadow shaders
+	# replace COLOR (so modulate never shows), and sway.gdshader and
+	# cast_shadow.gdshader read data packed into the vertex colour, which
+	# modulate would scale - sprites bent like grass mid-fade (review C1).
+	var overlay_node = _loaded_overlays.get(chunk_coord)
+	if fresh and overlay_node != null:
+		overlay_node.modulate.a = 0.0
+		overlay_node.create_tween().tween_property(overlay_node, "modulate:a", 1.0, FADE_IN_SEC)
 
 
 ## A chunk image with a 1-texel border, its edge tiles repeated there until
