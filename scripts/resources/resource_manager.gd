@@ -58,25 +58,6 @@ const PATCH_AREA_THRESHOLDS: Array[float] = [1.1, 0.903, 0.826, 0.723, 0.640, 0.
 ## the leading biome dominant while staying continuous.
 const BIOME_MEMBERSHIP_SHARPNESS := 4.0
 
-## ResourceDefinition curve -> the EnvironmentalState field it samples.
-const CURVE_STATE_FIELDS := {
-	"temperature_curve": "temperature",
-	"moisture_curve": "moisture",
-	"fertility_curve": "soil_fertility",
-	"elevation_curve": "elevation",
-	"slope_curve": "slope",
-	"drainage_curve": "drainage",
-	"erosion_curve": "erosion",
-	"river_curve": "river",
-	"shore_curve": "shore_proximity",
-	"deposition_curve": "deposition",
-	"salinity_curve": "shore_salinity",
-	"succession_curve": "succession",
-	"rock_exposure_curve": "rock_exposure",
-	"shade_curve": "shade",
-	"vegetation_curve": "vegetation",
-	"wind_exposure_curve": "exposure",
-}
 
 ## Phase 13 (correlated ecosystems): the guild whose density IS canopy
 ## shade - see get_shade(). Named once here so every shade-reading resource
@@ -144,17 +125,17 @@ static func get_suitability(
 
 
 ## [curve, EnvironmentalState field, required] for each non-null curve of
-## the definition, in CURVE_STATE_FIELDS order - cached on the definition
+## the definition, in ResourceDefinition.CURVES order - cached on the definition
 ## (ResourceDefinition.curve_plan, reset when a curve is reassigned), which
 ## saves looking up all 13 curve properties by name on every call.
 static func _curve_plan(definition: ResourceDefinition) -> Array:
 	if definition.curve_plan != null:
 		return definition.curve_plan
 	var plan := []
-	for curve_name in CURVE_STATE_FIELDS:
+	for curve_name in ResourceDefinition.CURVES:
 		var curve: Curve = definition.get(curve_name)
 		if curve != null:
-			plan.append([curve, StringName(CURVE_STATE_FIELDS[curve_name]), definition.required_curves.has(curve_name)])
+			plan.append([curve, StringName(ResourceDefinition.CURVES[curve_name][0]), definition.required_curves.has(curve_name)])
 	definition.curve_plan = plan
 	return plan
 
