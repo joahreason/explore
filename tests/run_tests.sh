@@ -23,9 +23,11 @@ if [[ -z "${GODOT:-}" ]]; then
   fi
 fi
 
-# class_name lookups in --script runs need .godot/global_script_class_cache.cfg,
-# which only the editor (re)builds - a short headless editor run does it.
-"$GODOT" --headless --path . --editor --quit-after 30 >/dev/null 2>&1 || true
+# A fresh clone or worktree has no .godot/: --import imports every asset and
+# builds the class cache (.godot/global_script_class_cache.cfg, which
+# class_name lookups in --script runs need), then quits. A timed editor run
+# (--editor --quit-after N) stops before its first scan finishes.
+"$GODOT" --headless --path . --import >/dev/null 2>&1 || true
 
 filters=()
 for a in "$@"; do [[ "$a" != --* ]] && filters+=("$a"); done
