@@ -1,5 +1,5 @@
 // Chunk terrain images (one pixel per tile, scaled up). In the gameplay
-// views ChunkManager marks tiles in the image's alpha (see _terrain_color()):
+// views ChunkBuilder marks tiles in the image's alpha (see ChunkBuilder.terrain_color()):
 // WATER_CODE_ICE..WATER_CODE for water, by how liquid it is (0..1; solid ice
 // has no code and stays still), SHALLOW_CODE + 0..7 for shallow open sea
 // near the coast, FOAM_CODE + shape for open sea on the shoreline,

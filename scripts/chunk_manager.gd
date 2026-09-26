@@ -13,19 +13,17 @@ extends Node2D
 ## unavailable (the web export has thread_support off) they run on the main
 ## thread, a few small steps per frame (INLINE_BUDGET_USEC). Threading rule: everything
 ## generation touches - _world_gen (and its water topology cache), the
-## generation caches, _view_mode, ResourceManager's static noise caches,
+## generation caches, the view mode, ResourceManager's static noise caches,
 ## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex
 ## (held per job step), and the scene tree only on the main
 ## thread. Tests that call generation functions directly do it after
 ## flush_chunk_work(), which leaves the worker idle.
 
 const TerrainSurfaceScript := preload("res://scripts/terrain_surface.gd")
-const HeatmapColorizerScript := preload("res://scripts/heatmap_colorizer.gd")
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
 const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
 const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
-const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 const GameConstants := preload("res://scripts/game_constants.gd")
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
@@ -38,6 +36,7 @@ const WorldSessionScript := preload("res://scripts/world/world_session.gd")
 const NavigationScript := preload("res://scripts/world/navigation.gd")
 const ViewModesScript := preload("res://scripts/world/view_modes.gd")
 const GenerationContextScript := preload("res://scripts/world/generation_context.gd")
+const ChunkBuilderScript := preload("res://scripts/world/chunk_builder.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -90,20 +89,11 @@ const LOD_THRESHOLDS := [
 ]
 const LOD_HYSTERESIS := 0.05
 
-## Placed-instance markers are skipped at coarser LOD steps than this: a
-## marker would be a pixel or two wide, and zoomed out is exactly when the
-## most chunks are loaded (placement costs ~7ms/chunk for oak).
-const MAX_PLACEMENT_LOD_STEP := 2
-
 ## Without a worker thread: time per frame spent on chunk job steps on the
 ## main thread (at least one step per frame while any are queued).
 const INLINE_BUDGET_USEC := 5000
 ## Review W1: main-thread time per frame for a "Go to" search without threads.
 const TRAVEL_BUDGET_USEC := 4000
-## Pixel rows a chunk job bakes per step (see _chunk_job_steps). 2 since
-## Phase 13.5: choosing each tile's ground costs ~50 us, so a 4-row band was
-## ~4.5 ms on desktop - too big a step for the web fallback.
-const IMAGE_BAND_ROWS := 2
 ## Tile codes and shore shapes: scripts/world/terrain_codes.gd. Forwarded
 ## for the tests until §4.1 step 9.
 const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
@@ -178,6 +168,9 @@ var session = WorldSessionScript.new()
 ## Generation's WorldGen, landmark sites, caches and lock (review C2):
 ## scripts/world/generation_context.gd.
 var _ctx: GenerationContextScript = GenerationContextScript.new()
+## Builds each chunk job's image, label grids and placements as plain data:
+## scripts/world/chunk_builder.gd.
+var _builder: ChunkBuilderScript = ChunkBuilderScript.new(_ctx)
 ## In-game time (session.clock): DayNight tints the world by it and the
 ## clock label shows it.
 var clock:
@@ -192,13 +185,15 @@ var terrain_material := ShaderMaterial.new()
 ## Polish pass 2: the in-game day the sprites' season colours were last
 ## drawn for; markers are redrawn when it changes (_update_seasons()).
 var _season_day: int = -1
-var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
-## Phase 18: the resource the Debug views show (a guild member; read by
-## generation under _ctx.mutex).
-var _debug_resource: ResourceDefinition = OAK_RESOURCE
-## Phase 13.5: the default "live game" view is the terrain with every placed
-## resource on it (RESOURCES); MATERIAL is the bare terrain.
-var _view_mode: ViewMode = ViewMode.RESOURCES
+var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown ChunkBuilder.placement_chunk() data, to redraw markers after a change
+## The view and the Debug views' resource live on the chunk builder, which
+## generation reads them from; set them under _ctx.mutex.
+var _debug_resource: ResourceDefinition:
+	get: return _builder.debug_resource
+	set(value): _builder.debug_resource = value
+var _view_mode: ViewMode:
+	get: return _builder.view_mode
+	set(value): _builder.view_mode = value
 var _sprite_images: Dictionary = {}  # sprite_texture -> its Image, for _sprite_covers()
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
@@ -685,7 +680,7 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var farming: float = ResourceManagerScript.get_suitability(state, CONTENT.farmland, classified)
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
-	var ground := _surface_at(sample, tile.x, tile.y)
+	var ground := _builder.surface_at(sample, tile.x, tile.y)
 	var structure := _ctx.structures.site_at(tile)
 	var debug_lines: Array = []
 	if is_debug_view():
@@ -786,7 +781,7 @@ func _take_job() -> Array:
 ## the main-thread fallback's finer steps, see _chunk_job_steps).
 func _new_job_state(job: Array, fine: bool) -> Dictionary:
 	_ctx.mutex.lock()  # the image format follows _view_mode (review C2)
-	var image := _new_chunk_image(job[2])
+	var image := _builder.new_image(job[2])
 	_ctx.mutex.unlock()
 	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image}
 	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
@@ -804,7 +799,7 @@ func _step_job(state: Dictionary) -> bool:
 		_ctx.mutex.lock()
 		_ctx.gen_area = data["area"]
 		if not state["planned"]:
-			state["steps"] = _chunk_job_steps(data, state["fine"])
+			state["steps"] = _builder.job_steps(data, state["fine"])
 			state["planned"] = true
 		var steps: Array = state["steps"]
 		if state["next"] < steps.size():
@@ -867,219 +862,6 @@ func _apply_results(budget_usec: int) -> void:
 		if budget_usec >= 0 and Time.get_ticks_usec() >= deadline:
 			break
 	_ready_results = _ready_results.slice(i)
-
-
-## Heatmap views are blended on top of the terrain (Phase 13.5) rather than
-## replacing it outright, so the terrain stays visible as context for how
-## each field actually affects generation (e.g. you can still see the
-## coastline/vegetation under a temperature heatmap instead of losing it).
-const HEATMAP_OVERLAY_STRENGTH := 0.65
-
-## Picks the color function for the current view mode. BASE_BIOME has no
-## dedicated per-tile color of its own - it keeps the terrain as its base
-## image and relies entirely on the drawn label overlay on top.
-func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
-	var heatmap_color: Variant = _heatmap_color_for(sample, wx, wy)
-	if heatmap_color == null:
-		return _terrain_color(sample, wx, wy)
-	var blended := _terrain_color(sample, wx, wy).lerp(heatmap_color, HEATMAP_OVERLAY_STRENGTH)
-	blended.a = 1.0
-	return blended
-
-
-## Phase 13.5: a tile's terrain colour - its water body, or its ground
-## material (TerrainSurface) coloured by its fields.
-func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
-	var coded := is_time_tinted_view()
-	var water: Variant = TerrainSurfaceScript.water_color(sample)
-	if water != null:
-		var w: Color = water
-		var liquid := TerrainSurfaceScript.water_liquid(sample)
-		# Frozen water gets no code: no waves, no glints.
-		if coded and liquid > 0.0:
-			w.a = (TerrainCodes.WATER_CODE_ICE + roundf(liquid * (TerrainCodes.WATER_CODE - TerrainCodes.WATER_CODE_ICE))) / 255.0
-			var depth: float = _ctx.world_gen.sea_level - sample["elevation"]
-			if liquid >= 1.0 and depth < TerrainCodes.SHORE_ELEVATION_MARGIN and TerrainCodes.SEA_BODIES.has(sample["water_body"]):
-				var shape := TerrainCodes.shore_shape(_ctx.world_gen, wx, wy, true)
-				if shape > 0:
-					w.a = (TerrainCodes.FOAM_CODE + shape) / 255.0
-				elif depth < TerrainCodes.SHALLOW_DEPTH:
-					w.a = (TerrainCodes.SHALLOW_CODE + roundi(7.0 * (1.0 - depth / TerrainCodes.SHALLOW_DEPTH))) / 255.0
-		return w
-	var state := _surface_state(sample, wx, wy)
-	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)
-	var color := TerrainSurfaceScript.color_for(material, state, world_seed, wx, wy)
-	if not coded:
-		return color
-	var grass := TerrainCodes.GRASS_GROUND.has(material.id)
-	if grass:
-		color.a = TerrainCodes.GRASS_CODE / 255.0
-	# A sea shore: near sea level, facing salt water (not a lake), not frozen.
-	if sample["elevation"] < _ctx.world_gen.sea_level + TerrainCodes.SHORE_ELEVATION_MARGIN and sample["shore_salinity"] > 0.0 and TerrainSurfaceScript.shore_liquid(sample) >= 1.0:
-		var shape := TerrainCodes.shore_shape(_ctx.world_gen, wx, wy, false)
-		if shape > 0:
-			color.a = ((TerrainCodes.WASH_GRASS_CODE if grass else TerrainCodes.WASH_CODE) + shape) / 255.0
-	return color
-
-
-## The ground material of a tile, or null on a water body (inspector, tests).
-func _surface_at(sample: Dictionary, wx: int, wy: int) -> SurfaceMaterial:
-	if TerrainSurfaceScript.water_color(sample) != null:
-		return null
-	return TerrainSurfaceScript.material_at(_surface_state(sample, wx, wy), world_seed, wx, wy)
-
-
-## A fresh EnvironmentalState for choosing ground, its shade taken from the
-## SHADE_LATTICE corners (TerrainSurface.lattice_shade()) - fresh, so the
-## interpolated shade never replaces the exact per-tile value placement
-## reads from _ctx.tile_env()'s cached states.
-func _surface_state(sample: Dictionary, wx: int, wy: int) -> EnvironmentalState:
-	var state: EnvironmentalState = EnvironmentalStateScript.from_sample(sample)
-	state.shade = TerrainSurfaceScript.lattice_shade(wx, wy, _corner_shade)
-	state.shade_known = true
-	return state
-
-
-## Exact shade at a lattice tile, through the per-tile env cache (the
-## state keeps it once computed).
-func _corner_shade(cx: int, cy: int) -> float:
-	var env := _ctx.tile_env(cx, cy)
-	return ResourceManagerScript.get_shade(env[0], world_seed, cx, cy, env[1])
-
-
-## The current view's colour (ViewModes' "color") for a tile. Returns null
-## (not a heatmap view, or a label view, which uses the plain Material look
-## as its overlay base) so _color_for can
-## fall back to pure Material with no blending cost. wx/wy are only needed by
-## views that depend on position beyond the sample itself (resource density's
-## patch noise).
-func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
-	var color := ViewModesScript.color(_view_mode)
-	if color.is_empty():
-		return null
-	match color[0]:
-		"heat":
-			var colorizer: Script = HeatmapColorizerScript  # its static functions, by name
-			return colorizer.call(color[1], sample)
-		"suitability":
-			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, color[1]))
-		"resource_density":
-			return HeatmapColorizerScript.resource_density(_ctx.resource_density(color[1], wx, wy, sample))
-		"guild_density":
-			return HeatmapColorizerScript.resource_density(_ctx.guild_density(color[1], wx, wy, sample))
-		"shade":
-			return HeatmapColorizerScript.shade(_ctx.guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample))
-		"deposits":
-			return _deposit_color(sample, wx, wy)
-		"debug":
-			var value: float = _debug_values(wx, wy, sample)[color[1]]
-			if color[1] == "score":
-				return HeatmapColorizerScript.resource_suitability(value)
-			return HeatmapColorizerScript.resource_density(value)
-	return null
-
-
-## Phase 4 of docs/resource-generation-plan.md: full sample -> EnvironmentalState
-## -> classify_full() -> ResourceManager.get_suitability(), so the debug view
-## reflects biome/subtype weighting too, not just the raw curve factors.
-func _resource_suitability(sample: Dictionary, definition: ResourceDefinition) -> float:
-	var state = EnvironmentalStateScript.from_sample(sample)
-	var classified: Dictionary = BiomeClassifierScript.classify_full(sample)
-	return ResourceManagerScript.get_suitability(state, definition, classified)
-
-
-## Deposits view: the strongest ore at the tile (ores rarely overlap -
-## they favor different geology and have their own seams).
-func _deposit_color(sample: Dictionary, wx: int, wy: int) -> Color:
-	var best: ResourceDefinition = null
-	var best_potential := 0.0
-	var potentials := _ctx.deposit_potentials(sample, wx, wy)
-	for ore in potentials:
-		if potentials[ore] > best_potential:
-			best = ore
-			best_potential = potentials[ore]
-	if best == null:
-		return HeatmapColorizerScript.NO_DEPOSIT
-	var exposure: float = ResourceManagerScript.get_exposure(EnvironmentalStateScript.from_sample(sample), best)
-	return HeatmapColorizerScript.deposit(best.debug_color, best_potential, exposure)
-
-
-## lod_step tiles collapse into one sample (taken at the block's center);
-## the returned image is (CHUNK_SIZE/lod_step)^2, and the caller scales the
-## Sprite2D back up to compensate, so a chunk's world-space footprint never
-## changes - only how much per-tile detail it actually shows.
-func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
-	var img := _new_chunk_image(lod_step)
-	_bake_rows(img, chunk_coord, lod_step, 0, img.get_height())
-	return img
-
-
-func _new_chunk_image(lod_step: int) -> Image:
-	var cells := CHUNK_SIZE / lod_step
-	# The gameplay views carry water / grass codes in alpha (terrain.gdshader).
-	return Image.create(cells, cells, false, Image.FORMAT_RGBA8 if is_time_tinted_view() else Image.FORMAT_RGB8)
-
-
-## Pixel rows y0..y1-1 of a chunk image (a job step bakes one band).
-func _bake_rows(img: Image, chunk_coord: Vector2i, lod_step: int, y0: int, y1: int) -> void:
-	var base := chunk_coord * CHUNK_SIZE
-	for ly in range(y0, y1):
-		for lx in range(img.get_width()):
-			var wx := base.x + lx * lod_step + lod_step / 2
-			var wy := base.y + ly * lod_step + lod_step / 2
-			var sample := _ctx.world_gen.sample(wx, wy)
-			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
-			if lod_step == 1:
-				_ctx.set_walkable(Vector2i(wx, wy), GenerationContextScript.walkable_sample(sample))
-
-
-## Fills _ctx.tile_env() for tile rows y0..y1-1 of a chunk (a warm-up job step).
-func _warm_env_rows(chunk: Vector2i, y0: int, y1: int) -> void:
-	var base := chunk * CHUNK_SIZE
-	for y in range(y0, y1):
-		for x in CHUNK_SIZE:
-			_ctx.tile_env(base.x + x, base.y + y)
-
-
-## Phase 17 step 6: a chunk job's work as small steps, so the main-thread
-## fallback (no worker) can spread one chunk over several frames - a whole
-## Resources chunk is ~42 ms on desktop, several frames' worth on web. Each
-## step is a Callable run holding _ctx.mutex; together they fill `data` with
-## the chunk's content for the current view (plain data, no nodes). In
-## order: the image in bands of IMAGE_BAND_ROWS pixel rows, the label grids,
-## one step per (guild, chunk) placement the stack filter will read - the
-## guilds this view draws, in the chunk and the neighbors their margins reach
-## (cached ones return at once) - then the assembly, which by then only reads
-## caches. Same result as building it in one go. `fine` (the main-thread
-## fallback) also warms _ctx.tile_env() for those chunks in IMAGE_BAND_ROWS bands
-## first: a guild's first placement in a fresh chunk otherwise samples and
-## classifies every candidate tile in one step (up to ~20 ms on desktop). The
-## worker skips that - it would compute tiles no candidate needs.
-func _chunk_job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
-	var chunk: Vector2i = data["chunk"]
-	var lod_step: int = data["lod"]
-	var img: Image = data["image"]
-	var steps: Array[Callable] = []
-	for y0 in range(0, img.get_height(), IMAGE_BAND_ROWS):
-		steps.append(_bake_rows.bind(img, chunk, lod_step, y0, mini(y0 + IMAGE_BAND_ROWS, img.get_height())))
-	if _is_label_view(_view_mode):
-		steps.append(func() -> void: data["overlay"] = _overlay_grids(chunk))
-	if _placements_visible_at(lod_step):
-		var depth := _stack_depth(_placement_layers())
-		var margins: Array = ResourcePlacementScript.stack_margins(CONTENT.guilds.slice(0, depth))
-		var rect := Rect2i(chunk * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
-		if fine and depth > 0:
-			for c in GenerationContextScript.chunks_in_rect(rect.grow(margins.max())):
-				for y0 in range(0, CHUNK_SIZE, IMAGE_BAND_ROWS):
-					steps.append(_warm_env_rows.bind(c, y0, y0 + IMAGE_BAND_ROWS))
-		for i in depth:
-			for c in GenerationContextScript.chunks_in_rect(rect.grow(margins[i])):
-				if fine:
-					for y0 in range(0, CHUNK_SIZE, GenerationContextScript.WARM_DENSITY_ROWS):
-						steps.append(_ctx.warm_guild_density.bind(CONTENT.guilds[i], c, y0))
-				steps.append(_ctx.raw_guild_chunk.bind(CONTENT.guilds[i], c))
-		steps.append(func() -> void: data["placements"] = _placement_chunk(chunk))
-	return steps
 
 
 ## Main thread: shows one finished job - creates the chunk's Sprite2D or
@@ -1186,45 +968,6 @@ func _free_chunk_node(nodes: Dictionary, chunk_coord: Vector2i) -> void:
 		nodes.erase(chunk_coord)
 
 
-## Biome labels are derived from the same WorldGen fields but sampled on a
-## (chunk_size+1)^2 grid so boundary outlines line up with tiles one step
-## into the neighboring chunk, without that chunk needing to be loaded.
-## Fill/outlines always key on base biome; SUBTYPE/MODIFIERS views only
-## change the drawn label text ("Forest (Montane)", "Cold, Windy" etc.), not
-## the region shapes. -> [biome grid, label grid] for the overlay node.
-func _overlay_grids(chunk_coord: Vector2i) -> Array:
-	var base := chunk_coord * CHUNK_SIZE
-	var stride := CHUNK_SIZE + 1
-	var show_subtype := _view_mode == ViewMode.SUBTYPE
-	var show_modifiers := _view_mode == ViewMode.MODIFIERS
-	var biome_grid := []
-	var label_grid := []
-	biome_grid.resize(stride * stride)
-	label_grid.resize(stride * stride)
-
-	for ly in range(stride):
-		for lx in range(stride):
-			var sample := _ctx.world_gen.sample(base.x + lx, base.y + ly)
-			var i := ly * stride + lx
-			if show_subtype:
-				var full: Dictionary = BiomeClassifierScript.classify_full(sample)
-				var base_biome: String = full["base_biome"]
-				var subtype: String = full["subtype"]
-				biome_grid[i] = base_biome
-				label_grid[i] = "%s (%s)" % [base_biome, subtype] if subtype != "" else base_biome
-			elif show_modifiers:
-				var full: Dictionary = BiomeClassifierScript.classify_full(sample)
-				var base_biome: String = full["base_biome"]
-				var tags: Array = full["modifiers"]
-				biome_grid[i] = base_biome
-				label_grid[i] = "%s: %s" % [base_biome, ", ".join(tags)] if not tags.is_empty() else base_biome
-			else:
-				var base_biome: String = BiomeClassifierScript.classify(sample)
-				biome_grid[i] = base_biome
-				label_grid[i] = base_biome
-	return [biome_grid, label_grid]
-
-
 func _unload_chunk(chunk_coord: Vector2i) -> void:
 	_free_chunk_node(_loaded_chunks, chunk_coord)
 	_chunk_images.erase(chunk_coord)
@@ -1232,66 +975,6 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 	_free_chunk_node(_loaded_overlays, chunk_coord)
 	_free_chunk_node(_loaded_placements, chunk_coord)
 	_chunk_placements.erase(chunk_coord)
-
-
-## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
-## instances of, as [source, marker shape(, shape for members without a
-## sprite when drawing SPRITE)] in draw order (empty = no placement markers
-## in this view) - ViewModes' "layers"; the World view draws every guild
-## over the Material image, trees last (as tinted sheet sprites) so they
-## sit on top.
-func _placement_layers() -> Array:
-	var layers: Variant = ViewModesScript.layers(_view_mode)
-	if layers is Array:
-		return layers
-	if layers == "world":
-		return CONTENT.world_view_placement_layers()
-	return [[debug_guild(), ResourceMarkerChunkScript.Shape.CIRCLE]]
-
-
-func _placements_visible_at(lod_step: int) -> bool:
-	return not _placement_layers().is_empty() and lod_step <= MAX_PLACEMENT_LOD_STEP
-
-
-## ResourcePlacement decides instances purely from world coordinates, so
-## each chunk is placed on its own and neighbors agree at shared edges.
-## -> [[layer (a _placement_layers() entry), instances], ...] in draw order.
-func _placement_chunk(chunk_coord: Vector2i) -> Array:
-	var base := chunk_coord * CHUNK_SIZE
-	var layers := _placement_layers()
-	var depth := _stack_depth(layers)
-	var stack := _ctx.place_stack_chunk(base, depth) if depth > 0 else {}
-	var result := []
-	for layer in layers:
-		var source: Resource = layer[0]
-		var instances: Array = stack[source] if source is ResourceGuild else _ctx.place_definition_chunk(source, base)
-		if _view_mode == ViewMode.QUALITY:
-			instances = _quality_markers(instances)
-		elif _view_mode == ViewMode.DEBUG_PLACEMENT:
-			instances = instances.filter(func(inst): return inst["id"] == _debug_resource.id)
-		result.append([layer, instances])
-	# Landmark layer: the World view draws structure stamps first, under the
-	# resources (which the structure_mask keeps off the footprint anyway).
-	# Its layer has no source Resource (null), so it's not in
-	# _placement_layers() and the guild stack never sees it.
-	if _view_mode == ViewMode.RESOURCES:
-		var parts := _ctx.structures.parts_in_rect(Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)))
-		result.push_front([[null, ResourceMarkerChunkScript.Shape.SPRITE], parts])
-	return result
-
-
-## Phase 14 Quality view: only the instances that have a quality, each a
-## copy (the placement caches stay untouched) filled by its quality. Quality
-## is computed here, for shown instances only, never during placement.
-func _quality_markers(instances: Array) -> Array:
-	var result := []
-	for inst in instances:
-		var entity = get_resource_instance(inst)
-		if entity != null and entity.quality >= 0.0:
-			var marker: Dictionary = inst.duplicate()
-			marker["fill"] = HeatmapColorizerScript.quality(entity.quality)
-			result.append(marker)
-	return result
 
 
 ## Phase 15: the gameplay record (ResourceInstance) of a placed instance -
@@ -1304,23 +987,9 @@ func get_resource_instance(inst: Dictionary):
 	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
 	if definition == null:
 		return null
-	var record = ResourceInstanceScript.create(inst, definition, _instance_quality(inst))
+	var record = ResourceInstanceScript.create(inst, definition, _builder.instance_quality(inst))
 	session.changes.apply(record)
 	return record
-
-
-## Phase 14: ResourceManager.get_quality() for a placed instance (-1.0 = its
-## resource has no quality), from the cached state of the tile it stands on.
-func _instance_quality(inst: Dictionary) -> float:
-	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
-	if definition == null or definition.quality_profile == null:
-		return -1.0
-	var pos: Vector2 = inst["position"]
-	var wx := floori(pos.x)
-	var wy := floori(pos.y)
-	var env := _ctx.tile_env(wx, wy)
-	var roll := ResourcePlacementScript.instance_roll(inst, world_seed)
-	return ResourceManagerScript.get_quality(env[0], definition, world_seed, wx, wy, roll, env[1])
 
 
 ## Instance id -> ResourceDefinition for every guild member (and Oak
@@ -1329,18 +998,7 @@ func _definitions_by_id() -> Dictionary:
 	return CONTENT.definitions_by_id()
 
 
-## A guild's instances depend only on the guilds above it in the stack, so
-## a view places the stack only down to the lowest guild it draws: that many
-## guilds (0 = none, e.g. Oak Placement's single definition).
-func _stack_depth(layers: Array) -> int:
-	var depth := 0
-	for layer in layers:
-		if layer[0] is ResourceGuild:  # not a lone definition (Oak Placement)
-			depth = maxi(depth, CONTENT.guilds.find(layer[0]) + 1)
-	return depth
-
-
-## Main thread: one marker node drawing a chunk's _placement_chunk() layers,
+## Main thread: one marker node drawing a chunk's ChunkBuilder.placement_chunk() layers,
 ## minus the instances the player harvested (Phase 16) - filtered here, when
 ## the node is built, so a job generated before a harvest can't show it.
 func _marker_node(base: Vector2i, placements: Array) -> Node2D:
@@ -1349,7 +1007,7 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 	for entry in placements:
 		var layer: Array = entry[0]
 		var source: Resource = layer[0]
-		if source == null:  # structure parts (_placement_chunk()): each carries its sheet tile and tint
+		if source == null:  # structure parts (ChunkBuilder.placement_chunk()): each carries its sheet tile and tint
 			var sprites := {}
 			for inst in entry[1]:
 				sprites[inst["id"]] = {"tile": inst["sheet"], "size": 1.0}
@@ -1444,7 +1102,7 @@ func _pick(point: Vector2, candidates: Array, include_harvested: bool) -> Dictio
 ## The shown instances standing within 2 tiles of `tile` (the rect
 ## _resource_at() places), as _pick() candidates: what the current view
 ## draws, nothing where it draws no markers (heatmap and terrain views,
-## zoomed out past MAX_PLACEMENT_LOD_STEP). Main thread; no generation.
+## zoomed out past ChunkBuilder.MAX_PLACEMENT_LOD_STEP). Main thread; no generation.
 func _drawn_near(tile: Vector2i) -> Array:
 	var rect := Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5))
 	var result := []
@@ -1642,7 +1300,7 @@ func debug_resource() -> ResourceDefinition:
 
 ## The guild the debug resource is placed with.
 func debug_guild() -> ResourceGuild:
-	return CONTENT.guild_of(_debug_resource)
+	return _builder.debug_guild()
 
 
 ## Picks the resource the Debug views show; rebuilds them if one is showing.
@@ -1657,39 +1315,12 @@ func set_debug_resource(definition: ResourceDefinition) -> void:
 	debug_resource_changed.emit(definition)
 
 
-## The debug resource at a tile, as the guild sees it:
-##   score   - its member score (suitability; exposed deposit for an ore),
-##   cover   - the guild's cover (environment: how much can grow),
-##   patch   - the guild's patch factor: stand membership at full suitability
-##             for a stand-mode guild (Phase 14), else its patch modifier,
-##   best    - the best member's score (caps the guild),
-##   share   - this resource's species share of the guild,
-##   density - guild density x share (its expected instances per cell).
-func _debug_values(wx: int, wy: int, sample: Dictionary = {}) -> Dictionary:
-	var guild := debug_guild()
-	var env := _ctx.tile_env(wx, wy, sample)
-	if not env[0].shade_known and guild.reads_shade():
-		env[0].shade = _ctx.guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample)
-		env[0].shade_known = true
-	var scores: PackedFloat32Array = ResourceManagerScript.get_member_scores(env[0], guild, world_seed, wx, wy, env[1])
-	var index := guild.members.find(_debug_resource)
-	var best := 0.0
-	for s in scores:
-		best = maxf(best, s)
-	var cover := ResourceManagerScript.get_guild_cover(env[0], guild)
-	var patch := ResourceManagerScript.get_stand_membership(guild, cover, world_seed, wx, wy) if guild.cover_sets_area \
-		else ResourceManagerScript.get_guild_patch_modifier(guild, world_seed, wx, wy)
-	var share: float = ResourceManagerScript.get_species_shares(scores, guild.species_sharpness)[index]
-	return {"score": scores[index], "cover": cover, "patch": patch, "best": best, "share": share,
-		"density": _ctx.guild_density(guild, wx, wy, sample) * share}
-
-
 ## Phase 18: the inspector's breakdown of the debug resource at a tile - its
 ## suitability factor by factor (ResourceManager.explain_suitability()), then
 ## how the guild turns that into density. Call with _ctx.mutex held.
 func debug_breakdown(wx: int, wy: int) -> Array[String]:
 	var guild := debug_guild()
-	var v := _debug_values(wx, wy)
+	var v := _builder.debug_values(wx, wy)
 	var env := _ctx.tile_env(wx, wy)
 	var lines: Array[String] = ["[b]%s[/b] (%s)" % [String(_debug_resource.id).capitalize(), String(guild.id).capitalize()]]
 	lines.append_array(ResourceManagerScript.explain_suitability(env[0], _debug_resource, env[1])["lines"])
@@ -2018,3 +1649,43 @@ func _place_stack_chunk(base: Vector2i, depth: int = CONTENT.guilds.size()) -> D
 
 func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> Array:
 	return _ctx.place_definition_chunk(definition, base)
+
+## Forwarded for the tests until §4.1 step 9 (ChunkBuilder).
+const MAX_PLACEMENT_LOD_STEP := ChunkBuilderScript.MAX_PLACEMENT_LOD_STEP
+const HEATMAP_OVERLAY_STRENGTH := ChunkBuilderScript.HEATMAP_OVERLAY_STRENGTH
+
+
+func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
+	return _builder.color_for(sample, wx, wy)
+
+
+func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
+	return _builder.terrain_color(sample, wx, wy)
+
+
+func _surface_at(sample: Dictionary, wx: int, wy: int) -> SurfaceMaterial:
+	return _builder.surface_at(sample, wx, wy)
+
+
+func _corner_shade(cx: int, cy: int) -> float:
+	return _builder.corner_shade(cx, cy)
+
+
+func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
+	return _builder.build_chunk_image(chunk_coord, lod_step)
+
+
+func _placement_layers() -> Array:
+	return _builder.placement_layers()
+
+
+func _placement_chunk(chunk_coord: Vector2i) -> Array:
+	return _builder.placement_chunk(chunk_coord)
+
+
+func _instance_quality(inst: Dictionary) -> float:
+	return _builder.instance_quality(inst)
+
+
+func _debug_values(wx: int, wy: int, sample: Dictionary = {}) -> Dictionary:
+	return _builder.debug_values(wx, wy, sample)
