@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## First polish pass: cast shadows (silhouettes thrown by the sun / moon
 ## under trees, rocks, ore, shrubs, deadwood - not grass), chunk fade-in, the harvest pop effect, drifting
@@ -6,19 +6,8 @@ extends SceneTree
 ## real renderer by hand; this checks the wiring. Momentum and eased zoom
 ## are in test_camera_touch. Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -27,22 +16,45 @@ func _init() -> void:
 	root.add_child(world)
 	await process_frame
 
-	# Fade-in: a freshly streamed chunk starts transparent and fades in.
-	var faded := 0
+	# Fade-in (review C1): only label overlays fade. Terrain, markers and
+	# shadows are never modulated - their shaders drop modulate, and it
+	# would scale the sway and shadow data packed into their vertex colour.
 	var seen := {}
+	var modulated := 0
 	var deadline := Time.get_ticks_msec() + 20000
 	while seen.size() < 20 and Time.get_ticks_msec() < deadline:
 		await process_frame
-		for c in world._loaded_chunks:
+		for c in world._presenter.loaded_chunks:
 			if not seen.has(c):
 				seen[c] = true
-				faded += int(world._loaded_chunks[c].modulate.a < 1.0)
+				var markers = world._presenter.loaded_placements.get(c)
+				for node in [world._presenter.loaded_chunks[c], markers, markers.shadow_layer() if markers != null else null]:
+					modulated += int(node != null and node.modulate.a < 1.0)
 	world.flush_chunk_work()
-	await create_timer(world.FADE_IN_SEC + 0.2).timeout
+	world.set_view_mode(world.get_script().ViewMode.BASE_BIOME)
+	world.flush_chunk_work()
+	var spawn: Vector2 = world._player.position
+	world.teleport_player(Vector2(4000, 4000) * world.TILE_SIZE)
+	var fresh_overlays := 0
+	var faded := 0
+	deadline = Time.get_ticks_msec() + 20000
+	while fresh_overlays < 10 and Time.get_ticks_msec() < deadline:
+		await process_frame
+		for c in world._presenter.loaded_overlays:
+			if not seen.has(c):
+				seen[c] = true
+				fresh_overlays += 1
+				faded += int(world._presenter.loaded_overlays[c].modulate.a < 1.0)
+	world.flush_chunk_work()
+	await create_timer(world._presenter.FADE_IN_SEC + 0.2).timeout
 	var all_opaque := true
-	for c in world._loaded_chunks:
-		all_opaque = all_opaque and world._loaded_chunks[c].modulate.a == 1.0 and world._loaded_placements.get(c, world._loaded_chunks[c]).modulate.a == 1.0
-	check(faded == seen.size() and faded > 0 and all_opaque, "new chunks fade in (%d of %d caught mid-fade on arrival), all fully shown after %.1f s" % [faded, seen.size(), world.FADE_IN_SEC])
+	for c in world._presenter.loaded_overlays:
+		all_opaque = all_opaque and world._presenter.loaded_overlays[c].modulate.a == 1.0
+	check(modulated == 0 and seen.size() > 20 and faded == fresh_overlays and faded > 0 and all_opaque,
+		"new label overlays fade in (%d of %d caught mid-fade), fully shown after %.1f s; terrain, markers and shadows never modulated (%d)" % [faded, fresh_overlays, world._presenter.FADE_IN_SEC, modulated])
+	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
+	world.teleport_player(spawn)
+	world.flush_chunk_work()
 
 	# Shadows: per-resource data, and drawn only for resources that cast them.
 	var defs: Dictionary = world._definitions_by_id()
@@ -53,20 +65,20 @@ func _init() -> void:
 		"shadows under trees, shrubs, grass, flowers, cacti and sagebrush; none under rocks, ore, logs or mushrooms")
 	var shadows := 0
 	var casters := 0
-	for c in world._chunk_placements:
-		for entry in world._chunk_placements[c]:
+	for c in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[c]:
 			if entry[0][0] is ResourceGuild and entry[0][1] == world.ResourceMarkerChunkScript.Shape.SPRITE:
 				for inst in world._unchanged(entry[1]):
 					casters += 1 if defs[inst["id"]].casts_shadow else 0
-		shadows += world._loaded_placements[c].shadow_count()
+		shadows += world._presenter.loaded_placements[c].shadow_count()
 	var layer_ok := true
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		var layer: Node2D = m.shadow_layer()
 		layer_ok = layer_ok and (layer == null or (layer.get_parent() == world.shadows_root and layer.material == world.shadow_material and layer.position == m.position))
 	check(shadows == casters and casters > 100 and layer_ok,
 		"one silhouette shadow per casting sprite (%d), all on one layer under every sprite, with the cast-shadow material" % shadows)
-	var old_layer: Node2D = world._loaded_placements.values()[0].shadow_layer()
-	world._redraw_markers(world._loaded_placements.keys()[0])
+	var old_layer: Node2D = world._presenter.loaded_placements.values()[0].shadow_layer()
+	world._presenter.redraw_markers(world._presenter.loaded_placements.keys()[0])
 	await process_frame
 	check(old_layer == null or not is_instance_valid(old_layer), "a chunk's shadows go away with its markers (redraw)")
 
@@ -91,9 +103,9 @@ func _init() -> void:
 
 	# Harvest effect: spawned at the object, frees itself.
 	var target := {}
-	for c in world._chunk_placements:
-		for entry in world._chunk_placements[c]:
-			if entry[0][0] == world.CANOPY_TREES and not entry[1].is_empty():
+	for c in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[c]:
+			if entry[0][0] == ViewModes.CANOPY_TREES and not entry[1].is_empty():
 				target = entry[1][0]
 				break
 		if not target.is_empty():
@@ -135,10 +147,10 @@ func _init() -> void:
 	# Hover highlight: follows the harvest pick for a real mouse, hides after touch.
 	var hover: Node2D = world.get_node("HoverHighlight")
 	var next := {}
-	for c in world._chunk_placements:
-		for entry in world._chunk_placements[c]:
+	for c in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[c]:
 			for inst in world._unchanged(entry[1]):
-				if entry[0][0] == world.SURFACE_ROCKS:
+				if entry[0][0] == ViewModes.SURFACE_ROCKS:
 					next = inst
 					break
 			if not next.is_empty():
@@ -163,5 +175,18 @@ func _init() -> void:
 	await process_frame
 	check(shown and not hover.has_target(), "hover highlight outlines the sprite of the object a click would harvest, and hides after a touch")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	# Picks come from what is drawn (review W2): no placing on the main
+	# thread, and nothing to pick where the view draws no markers.
+	world._ctx._raw_guild_chunks.clear()
+	var drawn_pick: Dictionary = world.hover_target(on_art)
+	var placed_nothing: bool = world._ctx._raw_guild_chunks.is_empty()
+	world.set_view_mode(world.get_script().ViewMode.MATERIAL)
+	world.flush_chunk_work()
+	world._ctx._raw_guild_chunks.clear()
+	var terrain_pick: Dictionary = world.hover_target(on_art)
+	check(not drawn_pick.is_empty() and drawn_pick["position"] == want["position"] and placed_nothing and terrain_pick.is_empty() and world._ctx._raw_guild_chunks.is_empty(),
+		"hover picks the drawn object without placing anything; nothing in Terrain Only")
+	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
+	world.flush_chunk_work()
+
+	finish()

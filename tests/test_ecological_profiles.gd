@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 12 (ecological resource profiles): every category the plan lists
 ## exists as a data-driven definition, and the new ones land where their
@@ -9,11 +9,11 @@ extends SceneTree
 ## banks, and none of it on open water. Also: cacti only in (warm) Desert,
 ## and cool dry land is Barrens. Run via tests/run_tests.sh.
 
-const GROUND_COVER := preload("res://resources/ground_cover.tres")
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const ROCKS := preload("res://resources/surface_rocks.tres")
-const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
+const GROUND_COVER := preload("res://resources/guilds/ground_cover.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const DEADWOOD := preload("res://resources/guilds/deadwood.tres")
+const ROCKS := preload("res://resources/guilds/surface_rocks.tres")
+const DESERT_PLANTS := preload("res://resources/guilds/desert_plants.tres")
 ## Plan Phase 12's list -> the ids that cover it ("shrubs" = berry_bush,
 ## "grass" = meadow_grass/pioneer_grass, "fallen trees" = fallen_log).
 const PLAN_IDS := [
@@ -27,23 +27,14 @@ const WOODED := ["Forest", "Rainforest"]
 ## are larger than a region; the last two are sedimentary).
 const REGIONS := [[4242, Vector2i(0, 0)], [4242, Vector2i(12000, -7000)], [1337, Vector2i(-9000, 15000)], [7, Vector2i(20000, 20000)], [4242, Vector2i(8000, -12000)], [4242, Vector2i(-16000, -8000)]]
 
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
-
 
 func _init() -> void:
 	var missing := []
 	for id in PLAN_IDS:
-		if not ResourceLoader.exists("res://resources/%s.tres" % id) or load("res://resources/%s.tres" % id).id != id:
+		var path := "res://resources/species/%s.tres" % id
+		if not ResourceLoader.exists(path):
+			path = "res://resources/deposits/%s.tres" % id
+		if not ResourceLoader.exists(path) or load(path).id != id:
 			missing.append(id)
 	check(missing.is_empty(), "every plan Phase 12 category has a definition (missing: %s)" % [missing])
 	for guild in [GROUND_COVER, CANOPY, DEADWOOD, ROCKS]:
@@ -168,5 +159,4 @@ func _init() -> void:
 		and desert_temps[desert_temps.size() / 10] >= 0.05,
 		"Desert warm (min %.2f, p10 %.2f, %d tiles), Barrens cool (max %.2f, %d tiles)" % [desert_temps[0], desert_temps[desert_temps.size() / 10], desert_temps.size(), cold_temps[-1], cold_temps.size()])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

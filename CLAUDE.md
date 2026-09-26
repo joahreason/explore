@@ -184,9 +184,15 @@ Important project knowledge should live in files, not only in chat.
 
 Use:
 - `PROJECT_STATE.md` for current state
-- `TODO.md` for actionable work
+- `TODO.md` for actionable work (the only backlog)
 - `CHANGELOG_DEV.md` for important development history
-- `docs/` for stable architectural knowledge
+- `docs/architecture.md` for how the systems work today
+- `docs/decisions.md` for decisions: date, decision, why, when to revisit
+- `docs/dev-workflow.md` for setup, tests, deploys and gotchas
+- `docs/tuning-log.md` for measurements and benchmark numbers
+- `docs/` for other stable knowledge (the plan, reviews)
+
+PROJECT_STATE.md is a snapshot under 10 KB; history goes to CHANGELOG_DEV.md, decisions to docs/decisions.md, workflow and gotchas to docs/dev-workflow.md, measurements to docs/tuning-log.md.
 
 When starting a fresh session, read the relevant state files before asking
 the user to repeat context.

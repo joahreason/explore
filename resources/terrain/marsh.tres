@@ -1,6 +1,6 @@
 [gd_resource type="Resource" script_class="SurfaceMaterial" format=3]
 
-[ext_resource type="Script" path="res://scripts/surface_material.gd" id="1_mat"]
+[ext_resource type="Script" path="res://scripts/gen/surface_material.gd" id="1_mat"]
 
 [sub_resource type="Curve" id="Curve_moisture"]
 _data = [Vector2(0,0), 0.0, 0.0, 0, 0, Vector2(0.6,0), 0.0, 0.0, 0, 0, Vector2(0.8,1), 0.0, 0.0, 0, 0, Vector2(1,1), 0.0, 0.0, 0, 0]

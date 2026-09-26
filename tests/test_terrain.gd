@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 13.5 terrain surface layer (TerrainSurface / SurfaceMaterial):
 ## data loads cleanly, choice is deterministic, per-biome mixtures are
@@ -8,20 +8,11 @@ extends SceneTree
 ## tests/run_tests.sh.
 
 const SEED := 4242
-const TS := preload("res://scripts/terrain_surface.gd")
+const TS := preload("res://scripts/gen/terrain_surface.gd")
+const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
 
-var _fails := 0
-var _passes := 0
 var _wg: WorldGen
 var _shade_cache := {}
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if cond:
-		_passes += 1
-	else:
-		_fails += 1
 
 
 ## Exact shade at a lattice corner (what chunk_manager._corner_shade() does
@@ -45,13 +36,34 @@ func _init() -> void:
 	_wg = WorldGen.new()
 	_wg.configure(SEED)
 
+	# 0. Review Q2: the shader's tile codes and shore shapes match
+	# TerrainCodes, which bakes them.
+	var shader_src := FileAccess.get_file_as_string("res://shaders/terrain_codes.gdshaderinc")
+	var mismatched := []
+	var codes := {"FOAM_CODE": TerrainCodes.FOAM_CODE, "WASH_CODE": TerrainCodes.WASH_CODE, "WASH_GRASS_CODE": TerrainCodes.WASH_GRASS_CODE,
+		"WATER_CODE_ICE": TerrainCodes.WATER_CODE_ICE, "WATER_CODE": TerrainCodes.WATER_CODE, "SHALLOW_CODE": TerrainCodes.SHALLOW_CODE, "GRASS_CODE": TerrainCodes.GRASS_CODE}
+	for code in codes:
+		var m := RegEx.create_from_string("const float %s = ([0-9.]+);" % code).search(shader_src)
+		if m == null or float(m.get_string(1)) != float(codes[code]):
+			mismatched.append(code)
+	var shapes_match := RegEx.create_from_string("const int SHORE_SHAPES\\[(\\d+)\\] = \\{([^}]*)\\};").search(shader_src)
+	var shader_shapes := []
+	if shapes_match != null:
+		for v in shapes_match.get_string(2).split(","):
+			shader_shapes.append(int(v))
+	if shader_shapes != TerrainCodes.SHORE_SHAPES or shapes_match == null or int(shapes_match.get_string(1)) != TerrainCodes.SHORE_SHAPES.size():
+		mismatched.append("SHORE_SHAPES")
+	var terrain_shader := FileAccess.get_file_as_string("res://shaders/terrain.gdshader")
+	check(mismatched.is_empty() and terrain_shader.contains('#include "res://shaders/terrain_codes.gdshaderinc"') and not terrain_shader.contains("const float GRASS_CODE"),
+		"the terrain shader's codes and shore shapes come from terrain_codes.gdshaderinc and match TerrainCodes %s" % [mismatched])
+
 	# 1. Data.
 	var ids := {}
 	var warnings := PackedStringArray()
-	for m in TS.MATERIALS:
+	for m in TS.CONTENT.terrain_materials:
 		ids[m.id] = true
 		warnings.append_array(m.get_curve_domain_warnings())
-	check(ids.size() == TS.MATERIALS.size() and TS.MATERIALS.all(func(m): return m.display_name != ""), "%d materials, unique ids, all named" % ids.size())
+	check(ids.size() == TS.CONTENT.terrain_materials.size() and TS.CONTENT.terrain_materials.all(func(m): return m.display_name != ""), "%d materials, unique ids, all named" % ids.size())
 	check(warnings.is_empty(), "no curve-domain warnings %s" % warnings)
 
 	# 2. Sample blocks across the world: mixture per biome, coherence, causes.
@@ -69,7 +81,7 @@ func _init() -> void:
 				var prev := ""
 				for x in range(ox, ox + 20):
 					var s := _wg.sample(x, y)
-					if TS.water_color(s) != null:
+					if TS.water_color(s, _wg.sea_level) != null:
 						prev = ""
 						continue
 					var st := _state(s, x, y)
@@ -119,7 +131,7 @@ func _init() -> void:
 		var y := i * 53 - 3000
 		var a := _wg.sample(x, y)
 		var b := other.sample(x, y)
-		if TS.water_color(a) != null:
+		if TS.water_color(a, _wg.sea_level) != null:
 			continue
 		var sa := _state(a, x, y)
 		var sb := _state(b, x, y)
@@ -127,6 +139,14 @@ func _init() -> void:
 		var mb: SurfaceMaterial = TS.material_at(sb, SEED, x, y)
 		same = same and ma == mb and TS.color_for(ma, sa, SEED, x, y) == TS.color_for(mb, sb, SEED, x, y)
 	check(same, "deterministic: same material and colour from a fresh WorldGen")
+	# The jitter's cell-hash id is reserved (review Q4).
+	TS.CONTENT.prepare()
+	var taken := TS.CONTENT.definitions_by_id().has(TS.JITTER_SEED_ID) or TS.CONTENT.guilds.any(func(g): return g.id == TS.JITTER_SEED_ID)
+	check(not taken, "no resource or guild uses the terrain jitter's id \"%s\"" % TS.JITTER_SEED_ID)
+	# Water depth is measured from the WorldGen's sea level (review Q3).
+	var at_surface := {"water_body": "ocean", "elevation": 0.2, "temperature": 0.5}
+	var deep_below := {"water_body": "ocean", "elevation": -0.4, "temperature": 0.5}
+	check(TS.water_color(at_surface, 0.2).is_equal_approx(TS.OCEAN_SHALLOW) and TS.water_color(deep_below, 0.2).is_equal_approx(TS.OCEAN_DEEP), "water depth follows the sea level passed in")
 
 	# 4. The world's render path matches a direct evaluation.
 	var world: Node2D = load("res://world.tscn").instantiate()
@@ -136,25 +156,28 @@ func _init() -> void:
 	root.add_child(world)
 	await process_frame
 	world.flush_chunk_work()
+	# The scene's WorldGen tuning is the editable default resource, and the
+	# world generates from its own copy (review Q3).
+	var params: WorldGen = world.world_gen_params
+	check(params != null and params.resource_path == "res://resources/default_world_gen.tres" and world._ctx.world_gen != params and world._ctx.world_gen.sea_level == WorldGen.new().sea_level, "world.tscn tunes WorldGen through default_world_gen.tres, used as a copy")
 	var path_ok := true
 	var water_ok := true
 	var checked := 0
 	for y in range(-40, 40, 3):
 		for x in range(-40, 40, 3):
 			var s := _wg.sample(x, y)
-			var water: Variant = TS.water_color(s)
+			var water: Variant = TS.water_color(s, _wg.sea_level)
 			if water != null:
-				water_ok = water_ok and world._surface_at(s, x, y) == null and _rgb(world._terrain_color(s, x, y)) == _rgb(water)
+				water_ok = water_ok and world._builder.surface_at(s, x, y) == null and _rgb(world._builder.terrain_color(s, x, y)) == _rgb(water)
 				continue
 			var st := _state(s, x, y)
 			var m: SurfaceMaterial = TS.material_at(st, SEED, x, y)
-			path_ok = path_ok and world._surface_at(s, x, y) == m and _rgb(world._terrain_color(s, x, y)) == _rgb(TS.color_for(m, st, SEED, x, y))
+			path_ok = path_ok and world._builder.surface_at(s, x, y) == m and _rgb(world._builder.terrain_color(s, x, y)) == _rgb(TS.color_for(m, st, SEED, x, y))
 			checked += 1
 	check(path_ok and checked > 400, "chunk path: material and colour match direct evaluation (%d tiles)" % checked)
 	check(water_ok, "water tiles: no ground material, water colour")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## "" if material `id` fits the tile's conditions, else what's wrong -

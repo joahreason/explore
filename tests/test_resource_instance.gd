@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 15 (gameplay entities): every placed instance can be turned into a
 ## ResourceInstance record - stable key, resource id, position, quality and
@@ -14,18 +14,6 @@ const SEED := 4242
 const REGIONS := [Vector2i(0, 0), Vector2i(8000, -12000)]
 const HALF := 48
 
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
-
 
 func _init() -> void:
 	var world: Node2D = load("res://world.tscn").instantiate()
@@ -38,7 +26,7 @@ func _init() -> void:
 	# profile a sane size range.
 	var data_ok := true
 	var profiles := {}
-	for guild in world.GUILD_STACK:
+	for guild in world.CONTENT.guilds:
 		for member in guild.members:
 			data_ok = data_ok and member.base_size > 0.0 and member.max_health > 0.0
 			if member.quality_profile != null:
@@ -58,8 +46,8 @@ func _init() -> void:
 	var by_tier := {}  # tree tier -> [size sum, count]
 	for c in REGIONS:
 		var rect := Rect2i(c - Vector2i(HALF, HALF), Vector2i(2 * HALF, 2 * HALF))
-		var stack: Dictionary = world._place_stack(rect)
-		for guild in world.GUILD_STACK:
+		var stack: Dictionary = world._ctx.place_stack(rect)
+		for guild in world.CONTENT.guilds:
 			for inst in stack[guild]:
 				var e = world.get_resource_instance(inst)
 				var definition: ResourceDefinition = world._definitions_by_id()[inst["id"]]
@@ -67,7 +55,7 @@ func _init() -> void:
 				if e == null:
 					fields_ok = false
 					continue
-				var q: float = world._instance_quality(inst)
+				var q: float = world._builder.instance_quality(inst)
 				var profile = definition.quality_profile
 				var expect_size := definition.base_size
 				if profile != null:
@@ -88,7 +76,7 @@ func _init() -> void:
 					t[0] += e.size
 					t[1] += 1
 					by_tier[e.tier] = t
-	check(total > 1000, "records built for every placed instance of all %d guilds (%d)" % [world.GUILD_STACK.size(), total])
+	check(total > 1000, "records built for every placed instance of all %d guilds (%d)" % [world.CONTENT.guilds.size(), total])
 	check(fields_ok, "every field matches its source: key, guild, cell, resource id, position, quality + tier, size, health = max_health = max_health x size, available")
 	check(unprofiled_ok, "resources without a quality profile: quality -1, no tier, size = base_size")
 	check(duplicates == 0, "keys unique across %d instances" % keys.size())
@@ -100,12 +88,12 @@ func _init() -> void:
 
 	# Same records after dropping every cache and placing a different rect,
 	# visited in reverse.
-	world.clear_generation_caches()
+	world._ctx.clear()
 	var rect0 := Rect2i(REGIONS[0] - Vector2i(HALF + 16, HALF + 16), Vector2i(2 * HALF + 32, 2 * HALF + 32))
-	var stack0: Dictionary = world._place_stack(rect0)
+	var stack0: Dictionary = world._ctx.place_stack(rect0)
 	var same := true
 	var compared := 0
-	var guilds: Array = world.GUILD_STACK.duplicate()
+	var guilds: Array = world.CONTENT.guilds.duplicate()
 	guilds.reverse()
 	for guild in guilds:
 		var list: Array = stack0[guild].duplicate()
@@ -123,5 +111,4 @@ func _init() -> void:
 	var unknown = world.get_resource_instance({"id": "no_such_resource", "cell": Vector2i.ZERO, "position": Vector2.ZERO})
 	check(unknown == null, "unknown resource id -> no record")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

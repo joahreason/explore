@@ -1,11 +1,11 @@
 // Chunk terrain images (one pixel per tile, scaled up). In the gameplay
-// views ChunkManager marks tiles in the image's alpha (see _terrain_color()):
+// views ChunkBuilder marks tiles in the image's alpha (see ChunkBuilder.terrain_color()):
 // WATER_CODE_ICE..WATER_CODE for water, by how liquid it is (0..1; solid ice
 // has no code and stays still), SHALLOW_CODE + 0..7 for shallow open sea
 // near the coast, FOAM_CODE + shape for open sea on the shoreline,
 // WASH_CODE + shape for ground on a sea shore (WASH_GRASS_CODE + shape
 // for grass, tinted first), GRASS_CODE for grass ground; anything else is
-// opaque 255. A shape is 1 + an index into SHORE_SHAPES (ChunkManager's
+// opaque 255. A shape is 1 + an index into SHORE_SHAPES (TerrainCodes'
 // list): a mask of the neighbours across the shoreline - edges 1 -x, 2 +x,
 // 4 -y, 8 +y, diagonal corners 16 (-x,-y), 32 (+x,-y), 64 (-x,+y), 128
 // (+x,+y) - so bands follow the shore round corners instead of stepping.
@@ -33,14 +33,7 @@ shader_type canvas_item;
 
 #include "res://shaders/game_constants.gdshaderinc"
 
-const float FOAM_CODE = 50.0;
-const float WASH_CODE = 100.0;
-const float WASH_GRASS_CODE = 150.0;
-const float WATER_CODE_ICE = 200.0;
-const float WATER_CODE = 220.0;
-const float SHALLOW_CODE = 240.0;
-const float GRASS_CODE = 253.0;
-const int SHORE_SHAPES[46] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 24, 26, 32, 33, 40, 41, 48, 56, 64, 66, 68, 70, 80, 82, 96, 112, 128, 129, 132, 133, 144, 160, 161, 176, 192, 196, 208, 224, 240};
+#include "res://shaders/terrain_codes.gdshaderinc"
 // Share of water tiles with a glint, and its strength.
 const float GLINT_CHANCE = 0.1;
 const float GLINT_STRENGTH = 0.3;

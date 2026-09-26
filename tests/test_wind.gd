@@ -1,26 +1,15 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Wind sway: resource sprites bend in the wind by their data `sway` (grass
 ## most, shrubs less, trees a little, rocks / ore / logs not at all); the
 ## sway reaches the shader (shaders/sway.gdshader) through the sprite draw
-## colour's alpha; Wind (scripts/wind.gd) drives direction, strength and
+## colour's alpha; Wind (scripts/render/wind.gd) drives direction, strength and
 ## the animation from the in-game clock (paused = still, fast-forward capped,
 ## rewind backwards). The shader itself is checked on a real renderer by
 ## hand (headless has none). Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -32,7 +21,7 @@ func _init() -> void:
 
 	# Data.
 	var by_guild := {}
-	for guild in world.GUILD_STACK:
+	for guild in world.CONTENT.guilds:
 		for member in guild.members:
 			by_guild[member.id] = member.sway
 	var rigid := ["granite", "sandstone", "basalt", "limestone", "shale", "gravel", "exposed_stone", "iron", "copper", "coal", "clay", "salt", "dead_tree", "fallen_log", "mushrooms", "shells", "mud"]
@@ -46,16 +35,16 @@ func _init() -> void:
 	# Encoding: draw alpha <-> sway, as the shader decodes it.
 	var enc_ok := true
 	for s in [0.0, 0.25, 0.5, 1.0]:
-		var a: float = world.sway_alpha(s)
+		var a: float = world._presenter.sway_alpha(s)
 		enc_ok = enc_ok and is_equal_approx(clampf((1.0 - a) * 2.0, 0.0, 1.0), s)
-	check(enc_ok and world.sway_alpha(0.0) == 1.0, "sway rides in the sprite colour's alpha (opaque = rigid) and decodes back exactly")
-	var rock_c: Dictionary = world._marker_colors(world.SURFACE_ROCKS, true)
-	var grass_c: Dictionary = world._marker_colors(world.GROUND_COVER, true)
-	var debug_c: Dictionary = world._marker_colors(world.GROUND_COVER, false)
-	check(rock_c["granite"].a == 1.0 and is_equal_approx(grass_c["meadow_grass"].a, world.sway_alpha(by_guild["meadow_grass"])) and debug_c["meadow_grass"].a == 1.0,
+	check(enc_ok and world._presenter.sway_alpha(0.0) == 1.0, "sway rides in the sprite colour's alpha (opaque = rigid) and decodes back exactly")
+	var rock_c: Dictionary = world._presenter.marker_colors(ViewModes.SURFACE_ROCKS, true)
+	var grass_c: Dictionary = world._presenter.marker_colors(ViewModes.GROUND_COVER, true)
+	var debug_c: Dictionary = world._presenter.marker_colors(ViewModes.GROUND_COVER, false)
+	check(rock_c["granite"].a == 1.0 and is_equal_approx(grass_c["meadow_grass"].a, world._presenter.sway_alpha(by_guild["meadow_grass"])) and debug_c["meadow_grass"].a == 1.0,
 		"World-view sprite colours carry sway; debug markers stay opaque")
-	var mat_ok: bool = not world._loaded_placements.is_empty()
-	for m in world._loaded_placements.values():
+	var mat_ok: bool = not world._presenter.loaded_placements.is_empty()
+	for m in world._presenter.loaded_placements.values():
 		mat_ok = mat_ok and m.material == world.sway_material
 	check(mat_ok and world.sway_material.shader == world.SWAY_SHADER, "every marker node uses the shared sway material")
 
@@ -105,5 +94,4 @@ func _init() -> void:
 	var p3: float = world.wind.phase
 	check(p1 > p0 and p2 == p3, "the world's wind runs with the game and holds while paused (%.3f -> %.3f, paused %.3f = %.3f)" % [p0, p1, p2, p3])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

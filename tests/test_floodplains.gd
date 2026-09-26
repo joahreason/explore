@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 10 step 2 (floodplains): farming potential is a field that is 0 on
 ## water and steep ground and higher on flat river banks than on flat ground
@@ -7,22 +7,10 @@ extends SceneTree
 ## "river"), while bedrock ores keep rock_exposure. Run via tests/run_tests.sh.
 
 const FARMLAND := preload("res://resources/farmland.tres")
-const CLAY := preload("res://resources/clay.tres")
-const IRON := preload("res://resources/iron.tres")
-const OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const CLAY := preload("res://resources/deposits/clay.tres")
+const IRON := preload("res://resources/deposits/iron.tres")
+const OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -100,5 +88,4 @@ func _init() -> void:
 				clay_off_bank += 1
 	check(clay_n > 0 and clay_off_bank == 0, "clay outcrops: %d, all on river banks (%d off)" % [clay_n, clay_off_bank])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

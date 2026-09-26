@@ -1,26 +1,29 @@
 [gd_scene format=3 uid="uid://dqbsdk5e0xlcg"]
 
-[ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/chunk_manager.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/camera_rig.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/reload_button.gd" id="3"]
-[ext_resource type="Script" path="res://scripts/view_mode_dropdown.gd" id="4"]
-[ext_resource type="Script" path="res://scripts/seed_input.gd" id="5"]
-[ext_resource type="Script" path="res://scripts/randomize_seed_button.gd" id="6"]
-[ext_resource type="Script" path="res://scripts/tile_inspector_panel.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/touch_scroll_container.gd" id="8"]
-[ext_resource type="Script" path="res://scripts/biome_travel_dropdown.gd" id="9"]
-[ext_resource type="Script" path="res://scripts/position_label.gd" id="10"]
-[ext_resource type="Script" path="res://scripts/debug_resource_dropdown.gd" id="11"]
-[ext_resource type="Script" path="res://scripts/day_night.gd" id="12"]
-[ext_resource type="Script" path="res://scripts/clock_label.gd" id="13"]
-[ext_resource type="Script" path="res://scripts/time_controls.gd" id="14"]
-[ext_resource type="Script" path="res://scripts/cloud_shadows.gd" id="15"]
-[ext_resource type="Script" path="res://scripts/hover_highlight.gd" id="16"]
-[ext_resource type="Script" path="res://scripts/ambient_particles.gd" id="17"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="18"]
+[ext_resource type="Script" uid="uid://hx4p5eruo1tv" path="res://scripts/world/chunk_manager.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/world/camera_rig.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/ui/reload_button.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/ui/view_mode_dropdown.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/ui/seed_input.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/ui/randomize_seed_button.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/ui/tile_inspector_panel.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/ui/touch_scroll_container.gd" id="8"]
+[ext_resource type="Script" path="res://scripts/ui/biome_travel_dropdown.gd" id="9"]
+[ext_resource type="Script" path="res://scripts/ui/position_label.gd" id="10"]
+[ext_resource type="Script" path="res://scripts/ui/debug_resource_dropdown.gd" id="11"]
+[ext_resource type="Script" path="res://scripts/render/day_night.gd" id="12"]
+[ext_resource type="Script" path="res://scripts/ui/clock_label.gd" id="13"]
+[ext_resource type="Script" path="res://scripts/ui/time_controls.gd" id="14"]
+[ext_resource type="Script" path="res://scripts/render/cloud_shadows.gd" id="15"]
+[ext_resource type="Script" path="res://scripts/render/hover_highlight.gd" id="16"]
+[ext_resource type="Script" path="res://scripts/render/ambient_particles.gd" id="17"]
+[ext_resource type="Script" path="res://scripts/world/player.gd" id="18"]
+[ext_resource type="Script" path="res://scripts/ui/perf_overlay.gd" id="19"]
+[ext_resource type="Resource" path="res://resources/default_world_gen.tres" id="20"]
 
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
+world_gen_params = ExtResource("20")
 target_path = NodePath("CameraRig")
 player_path = NodePath("Resources/Player")
 
@@ -60,69 +63,57 @@ current = true
 
 [node name="UI" type="CanvasLayer" parent="."]
 
-[node name="SeedInput" type="LineEdit" parent="UI"]
+[node name="Menu" type="VBoxContainer" parent="UI"]
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -196.0
 offset_top = 12.0
 offset_right = -12.0
-offset_bottom = 48.0
+offset_bottom = 12.0
+mouse_filter = 2
+theme_override_constants/separation = 8
+
+[node name="SeedInput" type="LineEdit" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
 theme_override_font_sizes/font_size = 18
 placeholder_text = "Seed"
 max_length = 40
 script = ExtResource("5")
 
-[node name="RandomizeButton" type="Button" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -196.0
-offset_top = 56.0
-offset_right = -12.0
-offset_bottom = 92.0
+[node name="RandomizeButton" type="Button" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "Randomize"
 script = ExtResource("6")
 
-[node name="ReloadButton" type="Button" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -196.0
-offset_top = 100.0
-offset_right = -12.0
-offset_bottom = 136.0
+[node name="ReloadButton" type="Button" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "Reload"
 script = ExtResource("3")
 
-[node name="ViewModeDropdown" type="OptionButton" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -196.0
-offset_top = 144.0
-offset_right = -12.0
-offset_bottom = 180.0
+[node name="ViewModeDropdown" type="OptionButton" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
 clip_text = true
 theme_override_font_sizes/font_size = 18
 fit_to_longest_item = false
 script = ExtResource("4")
 
-[node name="BiomeTravelDropdown" type="OptionButton" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -196.0
-offset_top = 188.0
-offset_right = -12.0
-offset_bottom = 224.0
+[node name="BiomeTravelDropdown" type="OptionButton" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
+clip_text = true
 theme_override_font_sizes/font_size = 18
+fit_to_longest_item = false
 script = ExtResource("9")
 
-[node name="DebugResourceDropdown" type="OptionButton" parent="UI"]
-anchor_left = 1.0
-anchor_right = 1.0
-offset_left = -196.0
-offset_top = 232.0
-offset_right = -12.0
-offset_bottom = 268.0
+[node name="DebugResourceDropdown" type="OptionButton" parent="UI/Menu"]
+custom_minimum_size = Vector2(0, 36)
+layout_mode = 2
 clip_text = true
 theme_override_font_sizes/font_size = 18
 fit_to_longest_item = false
@@ -181,6 +172,18 @@ theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
 theme_override_constants/outline_size = 4
 theme_override_font_sizes/font_size = 16
 script = ExtResource("10")
+
+[node name="PerfOverlay" type="Label" parent="UI"]
+visible = false
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 412.0
+offset_bottom = 104.0
+mouse_filter = 2
+theme_override_colors/font_outline_color = Color(0, 0, 0, 1)
+theme_override_constants/outline_size = 4
+theme_override_font_sizes/font_size = 14
+script = ExtResource("19")
 
 [node name="TileInspector" type="PanelContainer" parent="UI"]
 offset_left = 12.0

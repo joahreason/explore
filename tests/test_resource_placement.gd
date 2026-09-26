@@ -1,23 +1,11 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 7 invariants for ResourcePlacement: determinism, chunk-seam safety,
 ## minimum spacing, density response, seed/id decorrelation, and (with the
 ## real oak + WorldGen) no instances on water. Run via tests/run_tests.sh.
 
-const OAK := preload("res://resources/oak.tres")
+const OAK := preload("res://resources/species/oak.tres")
 const CHUNK := 16
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func const_fn(v: float) -> Callable:
@@ -137,5 +125,4 @@ func _init() -> void:
 	check(key_set(oak_fresh) == key_set(oaks), "real oak: identical from a fresh WorldGen instance")
 	print("INFO real-oak placement cost: %.2f ms/chunk" % per_chunk_ms)
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

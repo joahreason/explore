@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 16 (world persistence): the player's changes to generated objects
 ## (harvested ones) are stored apart from the procedural state, keyed by the
@@ -12,20 +12,10 @@ extends SceneTree
 ## resource) never hides the new object; tests don't touch the player's
 ## save directory. Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
+const ChunkManagerScript := preload("res://scripts/world/chunk_manager.gd")
 const SEED := 4242
 const DIR := "user://test_world_changes"
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -64,6 +54,14 @@ func _init() -> void:
 	var path := DIR + "/unit.json"
 	check(c.save(path, SEED) and back.load_file(path, SEED) and back.is_harvested("canopy_trees:3,4", "oak"), "save -> load_file round trip")
 	check(not back.load_file(DIR + "/missing.json", SEED) and back.is_empty(), "missing file -> empty")
+	# A save interrupted mid-write leaves invalid JSON; the previous save
+	# (.bak) is read instead of silently starting empty (review C4).
+	c.save(path, SEED)
+	var torn := FileAccess.open(path, FileAccess.WRITE)
+	torn.store_string("{\"version\": 1, \"see")
+	torn.close()
+	check(back.load_file(path, SEED) and back.is_harvested("canopy_trees:3,4", "oak") and not FileAccess.file_exists(path + ".tmp"),
+		"a torn save file falls back to the previous save (.bak); no .tmp left behind")
 	check(not c.save("", SEED) and not back.load_file("", SEED), "path '' -> nothing written or read")
 
 	# The real scene.
@@ -72,15 +70,15 @@ func _init() -> void:
 	var target := _tree_in_view(world)
 	check(not target.is_empty(), "found a tree in a loaded chunk")
 	var chunk := Vector2i(((target["position"] as Vector2) / world.CHUNK_SIZE).floor())
-	var before: int = world._loaded_placements[chunk]._positions.size()
+	var before: int = world._presenter.loaded_placements[chunk]._positions.size()
 	var click: Vector2 = world.sprite_point(target) * world.TILE_SIZE
 	var harvested = world._on_harvest_clicked(click)
-	var after: int = world._loaded_placements[chunk]._positions.size()
+	var after: int = world._presenter.loaded_placements[chunk]._positions.size()
 	check(harvested != null and harvested.harvest_state == ResourceInstance.HARVESTED and harvested.health == 0.0,
 		"left-click harvest returns the record, now harvested with health 0 (%s)" % (harvested.key if harvested != null else "none"))
 	var owner := Vector2i((harvested.world_position / world.CHUNK_SIZE).floor()) if harvested != null else chunk
 	check(owner != chunk or after == before - 1, "its chunk draws exactly one marker fewer (%d -> %d)" % [before, after])
-	check(FileAccess.file_exists(world.changes_path()) and world._changes.size() == 1, "the change is saved right away")
+	check(FileAccess.file_exists(world.changes_path()) and world.session.changes.size() == 1, "the change is saved right away")
 	world._on_tile_clicked(click)
 	check(world._inspector_panel.label.text.contains("[b]State:[/b] harvested"), "right-click info on the spot reports it harvested")
 	var again = world._on_harvest_clicked(click)
@@ -92,10 +90,10 @@ func _init() -> void:
 
 	# Reload: a new world for the same seed keeps it gone.
 	var world2 := await _world(DIR)
-	check(world2._changes.is_harvested(key, rid), "a reloaded world loads the change")
+	check(world2.session.changes.is_harvested(key, rid), "a reloaded world loads the change")
 	var shown := false
-	for marker_chunk in world2._chunk_placements:
-		for entry in world2._chunk_placements[marker_chunk]:
+	for marker_chunk in world2._presenter.chunk_placements:
+		for entry in world2._presenter.chunk_placements[marker_chunk]:
 			if entry[0][0] == null:
 				continue  # landmark structure parts: not harvestable
 			for inst in world2._unchanged(entry[1]):
@@ -105,9 +103,9 @@ func _init() -> void:
 
 	# Another seed doesn't see it; coming back does.
 	world2.regenerate("777")
-	check(world2._changes.is_empty(), "a different seed starts with no changes")
+	check(world2.session.changes.is_empty(), "a different seed starts with no changes")
 	world2.regenerate(str(SEED))
-	check(world2._changes.is_harvested(key, rid), "switching back to the seed restores its changes")
+	check(world2.session.changes.is_harvested(key, rid), "switching back to the seed restores its changes")
 	world2.queue_free()
 	await process_frame
 
@@ -119,6 +117,13 @@ func _init() -> void:
 	var e = world3.get_resource_instance(target)
 	check(e.harvest_state == ResourceInstance.HARVEST_AVAILABLE and not world3._unchanged([target]).is_empty(),
 		"a stale change (key now holds another resource) never hides or harvests the new object")
+	# A closed browser tab never sends the close request (review W6): losing
+	# focus saves too.
+	world3.clock.minutes += 123.0
+	world3._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	var saved := WorldChanges.new()
+	saved.load_file(DIR + "/%d.json" % SEED, SEED)
+	check(is_equal_approx(saved.time_minutes, world3.clock.minutes), "losing focus saves the time (%.1f, clock %.1f)" % [saved.time_minutes, world3.clock.minutes])
 	world3.queue_free()
 	await process_frame
 
@@ -131,9 +136,23 @@ func _init() -> void:
 	world4.queue_free()
 	await process_frame
 
+	# Seeds from text (review D3): short numbers and words are unchanged,
+	# and a number too long for 32 bits is hashed like a word, so every seed
+	# fits the noise's 32 bits and survives the JSON save exactly.
+	var from_text := func(text: String) -> int: return ChunkManagerScript._seed_from_text(text)
+	check(from_text.call("4242") == 4242 and from_text.call("-5") == -5 and from_text.call("4294967295") == 4294967295
+		and from_text.call("hello") == "hello".hash(), "short numeric and word seeds are unchanged")
+	var long_seed: int = from_text.call("9007199254740993")
+	check(long_seed == "9007199254740993".hash() and long_seed >= -2147483648 and long_seed < 4294967296,
+		"a seed longer than 32 bits is hashed into range (%d)" % long_seed)
+	var long_changes := WorldChanges.new()
+	long_changes.harvest("canopy_trees:1,1", "oak")
+	var reloaded := WorldChanges.new()
+	check(reloaded.from_dict(JSON.parse_string(JSON.stringify(long_changes.to_dict(long_seed))), long_seed) and reloaded.size() == 1,
+		"its save round-trips through JSON")
+
 	_clean()
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _world(dir: String) -> Node2D:
@@ -148,9 +167,9 @@ func _world(dir: String) -> Node2D:
 
 ## A mature tree (it has a sprite) in a chunk whose markers are loaded.
 func _tree_in_view(world: Node2D) -> Dictionary:
-	for chunk in world._chunk_placements:
-		for entry in world._chunk_placements[chunk]:
-			if entry[0][0] != world.CANOPY_TREES:
+	for chunk in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[chunk]:
+			if entry[0][0] != ViewModes.CANOPY_TREES:
 				continue
 			for inst in entry[1]:
 				if inst["id"] == "oak" or inst["id"] == "pine" or inst["id"] == "birch":

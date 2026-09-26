@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Landmark layer (camps, standing stones, ruins): StructureSites places at
 ## most one site per CELL_SIZE cell from hashes of (seed, cell); the type
@@ -12,25 +12,13 @@ extends SceneTree
 ## is placed on a footprint, the World view draws the parts, the inspector
 ## names the site and the Go to menu finds sites. Run via tests/run_tests.sh.
 
-const StructureSitesScript := preload("res://scripts/structure_sites.gd")
+const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
 const SEED := 4242
 const CELL := StructureSites.CELL_SIZE
 
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
-
 
 func _init() -> void:
-	for def in StructureSitesScript.DEFINITIONS:
+	for def in StructureSitesScript.CONTENT.structures:
 		check(def.get_curve_domain_warnings().is_empty(), "%s: data valid %s" % [def.id, def.get_curve_domain_warnings()])
 		check(def.radius < StructureSitesScript.new(WorldGen.new(), SEED).margin, "%s: radius %d fits inside the cell margin" % [def.id, def.radius])
 
@@ -116,7 +104,7 @@ func _init() -> void:
 			camp_kinds.append(kinds)
 	check(stones_ok, "standing stones: 5-9 stones in every ring")
 	check(camp_ok, "camps: a campfire and one or two tents %s" % ("" if camp_ok else str(camp_kinds)))
-	var ruins: StructureDefinition = StructureSitesScript.DEFINITIONS[2]
+	var ruins: StructureDefinition = StructureSitesScript.CONTENT.structures[2]
 	var growth := Vector2i.ZERO  # (low vegetation, high vegetation) plant counts
 	var walls_young := 0
 	var walls_old := 0
@@ -158,11 +146,27 @@ func _init() -> void:
 
 	await _check_scene(found)
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _check_scene(found: Array) -> void:
+	# Curve plans are built when the world starts, not lazily by whichever
+	# thread asks first: the "Go to" thread reads these same definitions
+	# (review C5).
+	await process_frame  # the tree is running, so add_child() runs _ready() at once
+	var lazy: Array = StructureSitesScript.CONTENT.structures + TerrainSurface.CONTENT.terrain_materials
+	for def in lazy:
+		def.curve_plan = null
+	var eager: Node2D = load("res://world.tscn").instantiate()
+	eager.world_seed = SEED
+	eager.changes_dir = ""
+	eager.threaded_generation = false
+	root.add_child(eager)  # runs _ready(); no frame, so no chunk work yet
+	var unbuilt: Array = lazy.filter(func(def): return def.curve_plan == null).map(func(def): return def.id)
+	eager.queue_free()
+	await process_frame
+	check(unbuilt.is_empty(), "every structure and terrain curve plan is built at startup (not yet: %s)" % [unbuilt])
+
 	var world: Node2D = load("res://world.tscn").instantiate()
 	world.world_seed = SEED
 	world.changes_dir = ""
@@ -177,11 +181,11 @@ func _check_scene(found: Array) -> void:
 	for site in found.slice(0, 10):
 		var c: Vector2i = site["center"]
 		var r: int = site["definition"].radius
-		var stack: Dictionary = world._place_stack(Rect2i(c - Vector2i(r + 3, r + 3), Vector2i(2 * r + 7, 2 * r + 7)))
+		var stack: Dictionary = world._ctx.place_stack(Rect2i(c - Vector2i(r + 3, r + 3), Vector2i(2 * r + 7, 2 * r + 7)))
 		for guild in stack:
 			for inst in stack[guild]:
 				var t := Vector2i((inst["position"] as Vector2).floor())
-				if world._structures.is_masked(t):
+				if world._ctx.structures.is_masked(t):
 					clear = false
 				else:
 					near += 1
@@ -191,16 +195,16 @@ func _check_scene(found: Array) -> void:
 	var site: Dictionary = found[0]
 	var part_tile: Vector2i = site["parts"][0]["tile"]
 	var chunk := Vector2i(floori(part_tile.x / 16.0), floori(part_tile.y / 16.0))
-	world._gen_mutex.lock()
-	var layers: Array = world._placement_chunk(chunk)
-	world._gen_mutex.unlock()
+	world._ctx.mutex.lock()
+	var layers: Array = world._builder.placement_chunk(chunk)
+	world._ctx.mutex.unlock()
 	var drawn := false
 	for entry in layers:
 		if entry[0][0] == null:
 			for inst in entry[1]:
 				drawn = drawn or Vector2i((inst["position"] as Vector2).floor()) == part_tile
 	check(drawn, "World view: the chunk's marker data holds the site's parts")
-	var node: Node2D = world._marker_node(chunk * 16, layers)
+	var node: Node2D = world._presenter.marker_node(chunk * 16, layers)
 	check(node.instance_count() >= layers[0][1].size(), "marker node draws %d structure sprites" % layers[0][1].size())
 	node.free()
 
@@ -211,19 +215,19 @@ func _check_scene(found: Array) -> void:
 
 	# Go to: finds sites directly, and hops on from one already visited.
 	var start := Vector2i(0, 0)
-	world._finder_gen = WorldGen.new()
-	world._finder_gen.configure(SEED)
-	world._finder_seed = SEED
+	world._travel._finder_gen = WorldGen.new()
+	world._travel._finder_gen.configure(SEED)
+	world._travel._finder_seed = SEED
 	var t0 := Time.get_ticks_msec()
-	world._find_biome("Ruins", start, [])
-	var first = world._finder_result
-	check(first != null and world._structures.site_at(first).get("id", "") == "ruins", "Go to Ruins lands on a ruins centre (%s, %d ms)" % [first, Time.get_ticks_msec() - t0])
+	world._travel._run_search(world._travel._new_search("Ruins", start, []))
+	var first = world._travel._finder_result
+	check(first != null and world._ctx.structures.site_at(first).get("id", "") == "ruins", "Go to Ruins lands on a ruins centre (%s, %d ms)" % [first, Time.get_ticks_msec() - t0])
 	if first != null:
-		world._find_biome("Ruins", start, [first])
-		var second = world._finder_result
-		check(second != null and second != first and world._structures.site_at(second).get("id", "") == "ruins", "Go to Ruins again hops to another site (%s)" % [second])
-	world._find_biome("Grassland", start, [])
-	check(world._finder_result != null, "biomes still travel through BiomeFinder")
+		world._travel._run_search(world._travel._new_search("Ruins", start, [first]))
+		var second = world._travel._finder_result
+		check(second != null and second != first and world._ctx.structures.site_at(second).get("id", "") == "ruins", "Go to Ruins again hops to another site (%s)" % [second])
+	world._travel._run_search(world._travel._new_search("Grassland", start, []))
+	check(world._travel._finder_result != null, "biomes still travel through BiomeFinder")
 	world.queue_free()
 	await process_frame
 

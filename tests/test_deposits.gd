@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 9 geological deposit invariants: rock_exposure matches its
 ## definition and is 0 on water; deposit potential ("exists") is
@@ -9,25 +9,13 @@ extends SceneTree
 ## outcrops (the ore_outcrops guild) stand only where their own ore is
 ## exposed, never on water or buried rock. Run via tests/run_tests.sh.
 
-const IRON := preload("res://resources/iron.tres")
-const COPPER := preload("res://resources/copper.tres")
-const COAL := preload("res://resources/coal.tres")
-const OAK := preload("res://resources/oak.tres")
-const OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const IRON := preload("res://resources/deposits/iron.tres")
+const COPPER := preload("res://resources/deposits/copper.tres")
+const COAL := preload("res://resources/deposits/coal.tres")
+const OAK := preload("res://resources/species/oak.tres")
+const OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const ORES := [IRON, COPPER, COAL]
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -123,8 +111,7 @@ func _init() -> void:
 
 	_check_outcrops(wg, tiles)
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## Phase 9 step 2: member scores, the guild's density_curve, and real

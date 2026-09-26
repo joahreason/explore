@@ -1,54 +1,41 @@
-# Claude Task Template
+# Session Handoff
 
-Copy this template into a Claude Code prompt for substantial tasks.
+Use this when ending a substantial Claude development session. Then fold the
+result into the repository: `PROJECT_STATE.md` (snapshot), `CHANGELOG_DEV.md`
+(history), `docs/decisions.md` (decisions), `TODO.md` (remaining work).
 
-## Goal
+## Completed
 
-[One specific outcome]
+-
 
-## Context
+## Current Implementation State
 
-[Why this task is needed]
+-
 
-## Requirements
+## Files Changed
 
-- 
-- 
-- 
+-
 
-## Constraints
+## Verification Performed
 
-- 
-- 
-- 
+-
 
-## Scope
+## Remaining Work
 
-Only modify what is necessary for this task.
-Do not refactor unrelated systems.
+-
 
-## Process
+## Known Problems
 
-1. Inspect the relevant existing implementation.
-2. Identify the integration point.
-3. Form a concise implementation plan.
-4. Implement the smallest complete solution.
-5. Run relevant verification.
-6. Inspect the final diff.
-7. Update project state if necessary.
-8. Summarize changes and verification.
+-
 
-## Definition of Done
+## Important Decisions
 
-- [ ] Requested behavior implemented
-- [ ] Relevant tests/checks pass
-- [ ] No obvious regressions
-- [ ] Diff reviewed
-- [ ] Project state updated if needed
+-
 
-## Important
+## Exact Next Step
 
-Do not speculate about code you have not inspected.
-Prefer existing architecture.
-Avoid unnecessary abstractions.
-Preserve user changes.
+-
+
+## Notes For The Next Claude Session
+
+-

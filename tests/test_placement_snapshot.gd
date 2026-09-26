@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 17 guard: performance work must not change what gets generated.
 ## Places the full GUILD_STACK (every guild's instances: guild, species id,
@@ -14,20 +14,28 @@ extends SceneTree
 ## Areas cover the origin (mixed forest), a river (18000,8820), a storm scar
 ## (-540,-2060), a fire scar (1760,-870), sedimentary wetland
 ## (8000,-12000) and a sea coast (19946,20042, from test_shores.gd's areas).
+##
+## Order pass (review T2): a second, fresh world without a worker rebuilds
+## the same chunks in reverse order and must match chunk for chunk, so a
+## result that depends on what was generated first fails here. ORDER_AREAS
+## adds a coast with an enclosed sea next to open ocean (not in the golden
+## file). Reversing chunk order didn't expose the water-label bug of review
+## D1 there, so test_shores.gd checks that one directly.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
 const GOLDEN := "res://tests/placement_snapshot.txt"
 ## Tile centers; each area is AREA_CHUNKS x AREA_CHUNKS chunks around it.
 const AREAS := [Vector2i(0, 0), Vector2i(18000, 8820), Vector2i(-540, -2060), Vector2i(1760, -870), Vector2i(8000, -12000), Vector2i(19946, 20042), Vector2i(-1920, -2280)]
 const AREA_CHUNKS := 3
-
-var _fails := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if not cond:
-		_fails += 1
+const ORDER_AREAS := [Vector2i(-1052, -1212)]
+## Added later (review T2), in layers of their own so the lines recorded
+## before stay as they were: a hot desert and a Barrens area, where the
+## desert_plants guild grows (no area above reaches it; "dry/" layers), and
+## one site of each landmark type (camp, standing stones, ruins) for the
+## structure parts, which are hashed over every area ("structure_parts").
+const DRY_AREAS := [Vector2i(512, -512), Vector2i(640, 224)]
+const SITE_AREAS := [Vector2i(32, 43), Vector2i(56, 215), Vector2i(276, -730)]
 
 
 func _init() -> void:
@@ -43,15 +51,21 @@ func _init() -> void:
 	var lines := {}  # layer name -> Array of lines
 	var t0 := Time.get_ticks_msec()
 	for area in AREAS:
-		var center: Vector2i = world._chunk_of(Vector2(area) * world.TILE_SIZE)
+		var center: Vector2i = world._streamer.chunk_of(Vector2(area) * world.TILE_SIZE)
 		for dy in AREA_CHUNKS:
 			for dx in AREA_CHUNKS:
 				var chunk := center + Vector2i(dx - AREA_CHUNKS / 2, dy - AREA_CHUNKS / 2)
 				var base: Vector2i = chunk * world.CHUNK_SIZE
-				var stack: Dictionary = world._place_stack_chunk(base)
-				for guild in world.GUILD_STACK:
+				var stack: Dictionary = world._ctx.place_stack_chunk(base)
+				for guild in world.CONTENT.guilds:
 					_add(lines, guild.id, stack[guild])
-				_add(lines, "oak_placement", world._place_definition_chunk(world.OAK_RESOURCE, base))
+				_add(lines, "oak_placement", world._ctx.place_definition_chunk(ViewModes.OAK_RESOURCE, base))
+	for chunk in _area_chunks(world, DRY_AREAS):
+		var stack: Dictionary = world._ctx.place_stack_chunk(chunk * world.CHUNK_SIZE)
+		for guild in world.CONTENT.guilds:
+			_add(lines, "dry/" + guild.id, stack[guild])
+	for chunk in _area_chunks(world, AREAS + DRY_AREAS + SITE_AREAS):
+		_add_parts(lines, world, chunk)
 	var t_place := Time.get_ticks_msec() - t0
 
 	t0 = Time.get_ticks_msec()
@@ -59,9 +73,9 @@ func _init() -> void:
 		world._view_mode = mode
 		var key: String = "image_" + CM.ViewMode.keys()[mode].to_lower()
 		for area in AREAS:
-			var chunk: Vector2i = world._chunk_of(Vector2(area) * world.TILE_SIZE)
+			var chunk: Vector2i = world._streamer.chunk_of(Vector2(area) * world.TILE_SIZE)
 			for lod_step in [1, 2]:
-				var img: Image = world._build_chunk_image(chunk, lod_step)
+				var img: Image = world._builder.build_chunk_image(chunk, lod_step)
 				_append(lines, key, "%s|%d|%s" % [chunk, lod_step, img.get_data().hex_encode().md5_text()])
 	var t_images := Time.get_ticks_msec() - t0
 	print("INFO snapshot: placement %d ms, images %d ms" % [t_place, t_images])
@@ -73,14 +87,40 @@ func _init() -> void:
 	for area in AREAS:
 		for y in range(area.y - 24, area.y + 24, 3):
 			for x in range(area.x - 24, area.x + 24, 3):
-				var s: Dictionary = world._world_gen.sample(x, y)
+				var s: Dictionary = world._ctx.world_gen.sample(x, y)
 				var st = EnvironmentalState.from_sample(s)
 				var cl: Dictionary = BiomeClassifier.classify_full(s)
 				bound_tiles += 1
-				for guild in world.GUILD_STACK:
+				for guild in world.CONTENT.guilds:
 					bound_ok = bound_ok and ResourceManager.get_guild_density(st, guild, SEED, x, y, cl) <= ResourceManager.get_guild_density_bound(guild)
-				bound_ok = bound_ok and ResourceManager.get_density(st, world.OAK_RESOURCE, SEED, x, y, cl) <= ResourceManager.get_density_bound(world.OAK_RESOURCE)
-	check(bound_ok, "density never exceeds its placement bound (%d tiles x %d guilds + oak)" % [bound_tiles, world.GUILD_STACK.size()])
+				bound_ok = bound_ok and ResourceManager.get_density(st, ViewModes.OAK_RESOURCE, SEED, x, y, cl) <= ResourceManager.get_density_bound(ViewModes.OAK_RESOURCE)
+	check(bound_ok, "density never exceeds its placement bound (%d tiles x %d guilds + oak)" % [bound_tiles, world.CONTENT.guilds.size()])
+	var drawn: Array = world.CONTENT.world_view_placement_layers().map(func(layer: Array): return layer[0])
+	check(drawn.size() == world.CONTENT.guilds.size() and world.CONTENT.guilds.all(func(g): return drawn.count(g) == 1),
+		"the World view draws each of the %d stack guilds once (resources/world_content.tres)" % drawn.size())
+
+	# Order pass: the golden areas and ORDER_AREAS, chunk by chunk, here and
+	# in reverse order from a fresh world with no worker.
+	var order_chunks: Array[Vector2i] = []
+	order_chunks.append_array(_area_chunks(world, AREAS + ORDER_AREAS + DRY_AREAS + SITE_AREAS))
+	t0 = Time.get_ticks_msec()
+	var forward := {}
+	for chunk in order_chunks:
+		forward[chunk] = _chunk_results(world, chunk)
+	var fresh: Node2D = load("res://world.tscn").instantiate()
+	fresh.world_seed = SEED
+	fresh.threaded_generation = false
+	root.add_child(fresh)
+	await process_frame
+	fresh.flush_chunk_work()
+	var differ: Array[Vector2i] = []
+	for i in range(order_chunks.size() - 1, -1, -1):
+		var chunk: Vector2i = order_chunks[i]
+		if _chunk_results(fresh, chunk) != forward[chunk]:
+			differ.append(chunk)
+	fresh.queue_free()
+	check(differ.is_empty(), "%d chunks identical rebuilt in reverse order by a fresh world without a worker (%d ms)%s" % [
+		order_chunks.size(), Time.get_ticks_msec() - t0, "" if differ.is_empty() else ", differ: %s" % [differ]])
 
 	var summary := PackedStringArray()
 	var dump := PackedStringArray()
@@ -112,8 +152,7 @@ func _init() -> void:
 		check(summary[i] == want, "%s: %s instances/images identical to golden" % [parts[0], parts[1]] if summary[i] == want else "%s: got '%s', golden '%s'" % [parts[0], summary[i], want])
 	check(total > 1000, "snapshot covers %d instances/images" % total)
 
-	print("RESULT %s (%d failures)" % ["PASS" if _fails == 0 else "FAIL", _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## Positions are written as integer micro-tiles, not "%.6f": far from the
@@ -126,6 +165,43 @@ func _add(lines: Dictionary, name: String, instances: Array) -> void:
 	for inst in instances:
 		var pos: Vector2 = inst["position"]
 		_append(lines, name, "%s|%s|%s|%d,%d" % [inst.get("guild", ""), inst["id"], inst["cell"], roundi(pos.x * 1e6), roundi(pos.y * 1e6)])
+
+
+## Every guild's, Oak Placement's and the Material view's image for one
+## chunk, as layer name -> hash.
+func _chunk_results(world: Node2D, chunk: Vector2i) -> Dictionary:
+	var lines := {}
+	var base: Vector2i = chunk * world.CHUNK_SIZE
+	var stack: Dictionary = world._ctx.place_stack_chunk(base)
+	for guild in world.CONTENT.guilds:
+		_add(lines, guild.id, stack[guild])
+	_add(lines, "oak_placement", world._ctx.place_definition_chunk(ViewModes.OAK_RESOURCE, base))
+	_add_parts(lines, world, chunk)
+	var view: int = world._view_mode
+	world._view_mode = world.get_script().ViewMode.MATERIAL
+	_append(lines, "image_material", world._builder.build_chunk_image(chunk, 1).get_data().hex_encode())
+	world._view_mode = view
+	var result := {}
+	for name in lines:
+		result[name] = "\n".join(PackedStringArray(lines[name])).md5_text()
+	return result
+
+
+## The AREA_CHUNKS x AREA_CHUNKS chunks around each area's centre tile.
+func _area_chunks(world: Node2D, areas: Array) -> Array[Vector2i]:
+	var chunks: Array[Vector2i] = []
+	for area in areas:
+		var center: Vector2i = world._streamer.chunk_of(Vector2(area) * world.TILE_SIZE)
+		for dy in AREA_CHUNKS:
+			for dx in AREA_CHUNKS:
+				chunks.append(center + Vector2i(dx - AREA_CHUNKS / 2, dy - AREA_CHUNKS / 2))
+	return chunks
+
+
+## A chunk's landmark structure parts (the stamps ChunkBuilder draws).
+func _add_parts(lines: Dictionary, world: Node2D, chunk: Vector2i) -> void:
+	for part in world._ctx.structures.parts_in_rect(Rect2i(chunk * world.CHUNK_SIZE, Vector2i(world.CHUNK_SIZE, world.CHUNK_SIZE))):
+		_append(lines, "structure_parts", "%s|%s|%s|%s|%s" % [part["site"], part["id"], Vector2i(part["position"].floor()), part["kind"], part["fill"].to_html()])
 
 
 func _append(lines: Dictionary, name: String, line: String) -> void:

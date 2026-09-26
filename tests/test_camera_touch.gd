@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Camera input (camera_rig.gd) through Godot's real input pipeline, with
 ## the project's emulate_mouse_from_touch=true: a tap or left click is one
@@ -8,22 +8,12 @@ extends SceneTree
 ## player loosely (still inside the follow zone, eased back to its edge
 ## outside it, never locked on). Run via tests/run_tests.sh.
 
-var _fails := 0
-var _passes := 0
 var rig: Node2D
 var cam: Camera2D
 var clicks := 0  # map_tapped: left click / tap
 var player: Node2D
 var home := Vector2.ZERO  # where reset() put the player and camera
 var infos := 0  # info_clicked: right click / long press
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if cond:
-		_passes += 1
-	else:
-		_fails += 1
 
 
 func _send(e: InputEvent) -> void:
@@ -293,5 +283,4 @@ func _init() -> void:
 		"map tap, map click and a seed action release the text field's keyboard focus")
 	field.queue_free()
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

@@ -80,11 +80,11 @@ func _settle(world: Node2D) -> void:
 func _view_has_hole(world: Node2D, cam: Node2D) -> bool:
 	var camera: Camera2D = cam.get_node("Camera2D")
 	var half: Vector2 = world.get_viewport().get_visible_rect().size / camera.zoom * 0.5
-	var c0: Vector2i = world._chunk_of(cam.global_position - half)
-	var c1: Vector2i = world._chunk_of(cam.global_position + half)
+	var c0: Vector2i = world._streamer.chunk_of(cam.global_position - half)
+	var c1: Vector2i = world._streamer.chunk_of(cam.global_position + half)
 	for cy in range(c0.y, c1.y + 1):
 		for cx in range(c0.x, c1.x + 1):
-			if not world._loaded_chunks.has(Vector2i(cx, cy)):
+			if not world._presenter.loaded_chunks.has(Vector2i(cx, cy)):
 				return true
 	return false
 

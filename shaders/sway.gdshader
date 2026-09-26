@@ -3,7 +3,7 @@
 // through the draw colour's alpha (ChunkManager._marker_colors():
 // alpha = 1 - sway * 0.5, so opaque draws - rocks, markers - never move);
 // the alpha is restored to 1 here. The offset is rounded to whole sprite
-// pixels so the pixel art stays crisp. Wind (scripts/wind.gd) drives the
+// pixels so the pixel art stays crisp. Wind (scripts/render/wind.gd) drives the
 // uniforms from the in-game clock.
 shader_type canvas_item;
 

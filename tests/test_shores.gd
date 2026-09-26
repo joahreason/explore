@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 10 steps 3-4 (river mouths, shores): WorldGen's shore_salinity tells
 ## sea shores (1) from lake shores (0) and is 0 away from any shore; sea-only
@@ -7,26 +7,14 @@ extends SceneTree
 ## their species can live; mud sits only at river mouths; coastal swamps get
 ## salt marsh where cattails (freshwater) stop. Run via tests/run_tests.sh.
 
-const SHORE := preload("res://resources/shore_features.tres")
-const WETLAND := preload("res://resources/wetland_plants.tres")
-const TREES := preload("res://resources/canopy_trees.tres")
-const SALT := preload("res://resources/salt.tres")
+const SHORE := preload("res://resources/guilds/shore_features.tres")
+const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
+const TREES := preload("res://resources/guilds/canopy_trees.tres")
+const SALT := preload("res://resources/deposits/salt.tres")
 const SEA_ONLY := ["shells", "salt", "mangrove", "saltmarsh_grass"]
 const SEED := 4242
 ## The last one holds a lake (its shores and a river running into it).
 const CENTERS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(20000, 20000), Vector2i(-600, 80)]
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -123,5 +111,50 @@ func _init() -> void:
 			same = same and wg.sample(x, y)["shore_salinity"] == wg2.sample(x, y)["shore_salinity"]
 	check(same, "shore_salinity identical from a fresh WorldGen")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	# Seed -1 (reachable as ?seed=-1) is configured like any other (review
+	# D2): it once matched the "not configured yet" sentinel and kept
+	# FastNoiseLite's defaults.
+	var minus_one := WorldGen.new()
+	minus_one.configure(-1)
+	check(minus_one._elev_base.frequency == wg._elev_base.frequency and minus_one._climate.seed == -1 + 3,
+		"seed -1 sets up the noise fields (elevation frequency %s, climate seed %d)" % [minus_one._elev_base.frequency, minus_one._climate.seed])
+
+	# 4. Water body labels don't depend on the order tiles are asked in
+	# (review D1): an enclosed sea sharing a 64x64 cell with open ocean once
+	# read as ocean if an ocean tile of that cell was asked first. Each case
+	# is a sea tile that did; each 64x64 cell is scanned both ways as well.
+	for case in [[4242, Vector2i(-1052, -1212)], [1337, Vector2i(-1912, -2112)]]:
+		var seed: int = case[0]
+		var tile: Vector2i = case[1]
+		var cell := Vector2i(floori(tile.x / 64.0), floori(tile.y / 64.0)) * 64
+		var tiles: Array[Vector2i] = []
+		for y in range(cell.y, cell.y + 64, 2):
+			for x in range(cell.x, cell.x + 64, 2):
+				tiles.append(Vector2i(x, y))
+		var fresh := func() -> WorldGen:
+			var g := WorldGen.new()
+			g.configure(seed)
+			return g
+		var alone: String = fresh.call().sample(tile.x, tile.y)["water_body"]
+		var forward: WorldGen = fresh.call()
+		var first_ocean := Vector2i.MAX
+		var labels := {}
+		for t in tiles:
+			var s := forward.sample(t.x, t.y)
+			labels[t] = [s["water_body"], s["shore_salinity"]]
+			if first_ocean == Vector2i.MAX and s["water_body"] == "ocean":
+				first_ocean = t
+		var ocean_first: WorldGen = fresh.call()
+		ocean_first.sample(first_ocean.x, first_ocean.y)
+		var after_ocean: String = ocean_first.sample(tile.x, tile.y)["water_body"]
+		var backward: WorldGen = fresh.call()
+		var differ := 0
+		for i in range(tiles.size() - 1, -1, -1):
+			var s := backward.sample(tiles[i].x, tiles[i].y)
+			if [s["water_body"], s["shore_salinity"]] != labels[tiles[i]]:
+				differ += 1
+		check(alone == "sea" and after_ocean == "sea" and differ == 0,
+			"seed %d: %s is %s asked first, %s after ocean at %s; %d of %d tiles in its cell differ scanned in reverse" % [
+				seed, tile, alone, after_ocean, first_ocean, differ, tiles.size()])
+
+	finish()

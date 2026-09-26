@@ -1,0 +1,606 @@
+class_name ResourceManager
+extends RefCounted
+
+## Phase 3 of docs/resource-generation-plan.md: habitat suitability.
+## get_suitability() combines a ResourceDefinition's curves/weights against
+## one tile's EnvironmentalState (+ an optional BiomeClassifier.classify_full()
+## result, for biome/subtype weighting) into a single 0..1 score. Consumes
+## already-computed fields only - never recomputes anything WorldGen.sample()
+## already provides (plan Rule 2).
+##
+## Deliberately NOT a blind product of every factor - the plan warns this
+## makes a single weak factor crater every resource's score. Curve-based
+## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
+## river/shore/deposition/salinity, succession, rock_exposure, shade) not
+## listed in required_curves, plus geology/water_body weights and the
+## succession-gated disturbance_type weight, are combined via GEOMETRIC MEAN:
+## still meaningfully penalizes a genuinely bad match (one factor at 0 still
+## zeroes the result - a true requirement), without each additional so-so
+## factor multiplicatively compounding the penalty the way straight
+## multiplication would. Biome/subtype are separate WEIGHTED MODIFIERS
+## multiplied in after the core mean. River/shore/disturbance affinities are
+## ADDITIVE bonuses. This mixes multiplicative/weighted/additive per the
+## plan's own guidance, while staying fully generic - no per-resource-type
+## branching here.
+##
+## Curves named in definition.required_curves are the resource's TOLERANCE
+## ENVELOPE and are taken out of the mean - the lowest of them multiplies the
+## result (the scarcest requirement limits growth), so being outside any one
+## of them means absent instead of merely ~20% less, as a mean of ~6 factors
+## gives. Biome weights are applied against the tile's normalized biome SCORES
+## (membership), not its argmax label, so a strong biome preference still
+## changes smoothly across a boundary instead of speckling where the label
+## flickers tile to tile.
+##
+## An unset curve, or a weight map with no entry for the tile's actual
+## biome/subtype/geology/water_body, means neutral (1.0) - "this resource has
+## no opinion about this factor" - never 0.0 (see ResourceDefinition's doc
+## comment for the same convention).
+
+## FBM simplex output clusters around 0 and rarely reaches +/-1, which would
+## leave "clearings" and "dense groves" too mild to read. Stretching it (then
+## clamping) gives real empty/full patches; tuned visually in Phase 5.
+const PATCH_CONTRAST := 1.8
+
+## Phase 14: the patch value exceeded on a share of all tiles
+## (PATCH_AREA_SHARES[i] -> PATCH_AREA_THRESHOLDS[i], linear between) -
+## measured quantiles of the stretched patch noise (seed 4242, canopy
+## scale; FBM simplex keeps that shape at any scale). The ends reach past
+## the clamped 0..1 range so a share of 0 admits no tile and 1 every tile.
+## See get_stand_membership().
+const PATCH_AREA_SHARES: Array[float] = [0.0, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 1.0]
+const PATCH_AREA_THRESHOLDS: Array[float] = [1.1, 0.903, 0.826, 0.723, 0.640, 0.567, 0.5, 0.432, 0.359, 0.277, 0.174, 0.098, -0.1]
+
+## Biome membership = score^sharpness, normalized. Raw classifier scores are
+## soft (Plains keeps a constant 0.2 floor on every land tile), so a plain
+## linear share would blur every biome by its neighbors; the exponent keeps
+## the leading biome dominant while staying continuous.
+const BIOME_MEMBERSHIP_SHARPNESS := 4.0
+
+
+## Phase 13 (correlated ecosystems): the guild whose density IS canopy
+## shade - see get_shade(). Named once here so every shade-reading resource
+## agrees on what shade means (plan Rule 2).
+const SHADE_SOURCE: ResourceGuild = preload("res://resources/guilds/canopy_trees.tres")
+
+static var _patch_noise_cache: Dictionary = {}
+static var _vein_noise_cache: Dictionary = {}
+
+
+static func get_suitability(
+	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
+) -> float:
+	# Categorical weight factors first (appended after the curves below, same
+	# order as always): a zero one - a rock off its geology, a land plant on
+	# water - zeroes the geometric mean and so the result, and skipping the
+	# curves then returns exactly what the full evaluation would (Phase 17).
+	var weight_factors: Array[float] = []
+	if not definition.geology_weights.is_empty():
+		var geology_factor: float = definition.geology_weights.get(state.geology, 1.0)
+		weight_factors.append(clampf(geology_factor, 0.0, 1.0))
+	if not definition.water_body_weights.is_empty():
+		var water_body_factor: float = definition.water_body_weights.get(state.water_body, 1.0)
+		weight_factors.append(clampf(water_body_factor, 0.0, 1.0))
+	if not definition.disturbance_type_weights.is_empty():
+		var type_weight: float = definition.disturbance_type_weights.get(state.disturbance_type, 1.0)
+		weight_factors.append(clampf(lerpf(1.0, type_weight, 1.0 - state.succession), 0.0, 1.0))
+	for factor in weight_factors:
+		if factor <= 0.0:
+			return 0.0
+
+	var core_factors: Array[float] = []
+	var requirement := 1.0
+	for entry in _curve_plan(definition):
+		var factor := clampf((entry[0] as Curve).sample(state.get(entry[1])), 0.0, 1.0)
+		if entry[2]:
+			requirement = minf(requirement, factor)
+			if requirement <= 0.0:
+				return 0.0
+		else:
+			core_factors.append(factor)
+	core_factors.append_array(weight_factors)
+
+	var suitability := requirement * _geometric_mean(core_factors)
+
+	if not classified.is_empty():
+		if not definition.biome_weights.is_empty():
+			suitability *= _biome_modifier(definition.biome_weights, classified, definition.strict_biomes)
+		if not definition.subtype_weights.is_empty():
+			var subtype_modifier: float = definition.subtype_weights.get(classified.get("subtype", ""), 1.0)
+			suitability *= subtype_modifier
+
+	# A zeroed true requirement (e.g. water_body weight 0.0 on a river tile)
+	# must stay excluded - otherwise oak's small positive river_affinity
+	# re-adds ~0.1 right on the river it was just excluded from, which
+	# Phase 7 placement turned into trees standing in rivers.
+	if suitability <= 0.0:
+		return 0.0
+
+	suitability += definition.river_affinity * state.river
+	suitability += definition.shore_affinity * state.shore_proximity
+	suitability += definition.disturbance_affinity * state.disturbance
+
+	return clampf(suitability, 0.0, 1.0)
+
+
+## [curve, EnvironmentalState field, required] for each non-null curve of
+## the definition, in ResourceDefinition.CURVES order - cached on the definition
+## (ResourceDefinition.curve_plan, reset when a curve is reassigned), which
+## saves looking up all 13 curve properties by name on every call.
+static func _curve_plan(definition: ResourceDefinition) -> Array:
+	if definition.curve_plan != null:
+		return definition.curve_plan
+	var plan := []
+	for curve_name in ResourceDefinition.CURVES:
+		var curve: Curve = definition.get(curve_name)
+		if curve != null:
+			plan.append([curve, StringName(ResourceDefinition.CURVES[curve_name][0]), definition.required_curves.has(curve_name)])
+	definition.curve_plan = plan
+	return plan
+
+
+## Builds the curve plans of `definitions` and of their quality profiles
+## now. _curve_plan() fills them lazily, which is a write two threads could
+## race on (the chunk worker and the "Go to" thread share definitions), so
+## the world builds them all before any thread starts (review C5).
+static func build_curve_plans(definitions: Array) -> void:
+	for definition in definitions:
+		_curve_plan(definition)
+		if definition.quality_profile != null:
+			_curve_plan(definition.quality_profile)
+
+
+## Membership-weighted biome modifier (see BIOME_MEMBERSHIP_SHARPNESS).
+## Water/Beach tiles carry no scores - they are categorical facts decided
+## upstream - so they fall back to the label's weight.
+static func _biome_modifier(weights: Dictionary, classified: Dictionary, strict: bool = false) -> float:
+	var scores: Dictionary = classified.get("scores", {})
+	if strict or scores.is_empty():
+		return weights.get(classified.get("base_biome", ""), 1.0)
+	var total := 0.0
+	var weighted := 0.0
+	for biome in scores:
+		var membership := pow(maxf(scores[biome], 0.0), BIOME_MEMBERSHIP_SHARPNESS)
+		total += membership
+		weighted += membership * float(weights.get(biome, 1.0))
+	return weighted / total if total > 0.0 else 1.0
+
+
+## Geometric mean of the preference factors - see class doc for why
+## this instead of a straight product. Empty input (a resource with no
+## curves/geology preference at all) means "no requirements defined",
+## neutral 1.0, consistent with the null-curve convention.
+static func _geometric_mean(values: Array[float]) -> float:
+	if values.is_empty():
+		return 1.0
+	var product := 1.0
+	for v in values:
+		product *= maxf(v, 0.0)
+	return pow(product, 1.0 / values.size())
+
+
+## Phase 5 of docs/resource-generation-plan.md: deterministic per-resource
+## distribution/patch noise, so a uniformly suitable area still reads as
+## groves/sparse woodland/clearings rather than flat density. Returns a 0..1
+## multiplier meant to be applied ON TOP of get_suitability() (Phase 6's
+## density = suitability * base_density * patch_modifier) - it never replaces
+## suitability, so an unsuitable tile stays unsuitable however high its patch
+## value is.
+##
+## Each resource gets its OWN noise field, seeded from world_seed +
+## WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET mixed with definition.id, so
+## different resources are decorrelated while the same seed/id/coordinate is
+## always identical. definition.id must therefore be unique per resource.
+## cluster_scale sets the patch size (tiles), cluster_strength how much the
+## patch noise modulates density (0 = uniform 1.0, 1 = full 0..1 range).
+static func get_patch_modifier(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
+	return _patch_value(definition.id, definition.cluster_scale, definition.cluster_strength, world_seed, wx, wy, definition.cluster_curve)
+
+
+## Guild counterpart of get_patch_modifier(): the guild's own patch noise,
+## reshaped by guild.cluster_curve when set.
+static func get_guild_patch_modifier(guild: ResourceGuild, world_seed: int, wx: int, wy: int) -> float:
+	return _patch_value(guild.id, guild.cluster_scale, guild.cluster_strength, world_seed, wx, wy, guild.cluster_curve)
+
+
+## Phase 14 clustering: for a guild with cover_sets_area, whether this tile
+## lies in a stand (1), a gap (0) or on a stand's soft edge. Cover decides
+## how much of the ground the stands occupy, not how thin they are: the
+## tile is in a stand where the guild's raw patch noise is above the value
+## that a `cover` share of all tiles exceeds, so sparse country gets a few
+## dense clumps with clear ground between instead of a thin even scatter,
+## and dense country gets stands broken by clearings. get_guild_density()
+## passes cover x the best member's score, so marginal ground also means
+## fewer stands rather than thinner ones. That value comes from the patch
+## noise's measured quantiles (PATCH_AREA_THRESHOLDS: 20% of tiles are above
+## ~0.72, 80% above ~0.28); guild.stand_edge is the half-width of the fade
+## in patch units.
+## cluster_strength and cluster_curve don't apply in this mode.
+static func get_stand_membership(guild: ResourceGuild, cover: float, world_seed: int, wx: int, wy: int) -> float:
+	var patch := _patch_value(guild.id, guild.cluster_scale, 1.0, world_seed, wx, wy)
+	var share := clampf(cover, 0.0, 1.0)
+	var i := 1
+	while i < PATCH_AREA_SHARES.size() - 1 and share > PATCH_AREA_SHARES[i]:
+		i += 1
+	var t := (share - PATCH_AREA_SHARES[i - 1]) / (PATCH_AREA_SHARES[i] - PATCH_AREA_SHARES[i - 1])
+	var threshold := lerpf(PATCH_AREA_THRESHOLDS[i - 1], PATCH_AREA_THRESHOLDS[i], t)
+	var edge := maxf(guild.stand_edge, 0.001)
+	return smoothstep(threshold - edge, threshold + edge, patch)
+
+
+static func _patch_value(id: String, cluster_scale: float, cluster_strength: float, world_seed: int, wx: int, wy: int, cluster_curve: Curve = null) -> float:
+	if cluster_strength <= 0.0:
+		return 1.0
+	var noise := _patch_noise(id, cluster_scale, world_seed)
+	var patch := clampf(noise.get_noise_2d(wx, wy) * PATCH_CONTRAST * 0.5 + 0.5, 0.0, 1.0)
+	if cluster_curve != null:
+		patch = clampf(cluster_curve.sample(patch), 0.0, 1.0)
+	return lerpf(1.0, patch, clampf(cluster_strength, 0.0, 1.0))
+
+
+static func _patch_noise(id: String, cluster_scale: float, world_seed: int) -> FastNoiseLite:
+	var scale := maxf(cluster_scale, 1.0)
+	var slot := _noise_slot(_patch_noise_cache, world_seed, id)
+	if slot.has(scale):
+		return slot[scale]
+	var noise := FastNoiseLite.new()
+	noise.seed = ("%d:%s" % [world_seed + WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET, id]).hash()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	noise.frequency = 1.0 / scale
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 3
+	slot[scale] = noise
+	return noise
+
+
+## The noise objects of one (seed, id) in a cache, by scale: nested
+## Dictionaries, because formatting a "seed|id|scale" String key on every
+## call cost more than the lookup itself (review P1).
+static func _noise_slot(cache: Dictionary, world_seed: int, id: String) -> Dictionary:
+	var by_id: Variant = cache.get(world_seed)
+	if by_id == null:
+		by_id = {}
+		cache[world_seed] = by_id
+	var slot: Variant = by_id.get(id)
+	if slot == null:
+		slot = {}
+		by_id[id] = slot
+	return slot
+
+
+## Phase 6 of docs/resource-generation-plan.md: "how much of this resource
+## should exist here?", as opposed to get_suitability()'s "would it like this
+## environment?". density = suitability * base_density * patch_modifier,
+## clamped to [0,1] - a 0..1 fraction of the resource's peak density, which
+## Phase 7 placement will interpret. Each term only ever scales the others
+## down, so density <= suitability always holds: patch noise can thin out a
+## good area but never make an unsuitable tile dense.
+static func get_density(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	classified: Dictionary = {}
+) -> float:
+	var suitability := get_suitability(state, definition, classified)
+	if suitability <= 0.0:
+		return 0.0
+	var base_density := clampf(definition.base_density, 0.0, 1.0)
+	var patch := get_patch_modifier(definition, world_seed, wx, wy)
+	return clampf(suitability * base_density * patch, 0.0, 1.0)
+
+
+## Phase 17: an upper bound on get_density() for this definition - its
+## clamped base_density, since suitability and patch are both in 0..1 and a
+## float product never rounds above a factor it is multiplied down from.
+## Lets placement skip evaluating candidates whose acceptance roll is at or
+## above it (ResourcePlacement's density_bound).
+static func get_density_bound(definition: ResourceDefinition) -> float:
+	return clampf(definition.base_density, 0.0, 1.0)
+
+
+## Phase 8 amendment (guilds, see ResourceGuild): each member's
+## get_suitability() at this tile, in guild.members order.
+static func get_member_suitabilities(
+	state: EnvironmentalState, guild: ResourceGuild, classified: Dictionary = {}
+) -> PackedFloat32Array:
+	var result := PackedFloat32Array()
+	for member in guild.members:
+		result.append(get_suitability(state, member, classified))
+	return result
+
+
+## What each member competes with in a guild, in guild.members order: its
+## get_suitability(), except for a deposit (vein_scale > 0), which scores its
+## EXPOSED deposit (Phase 9 step 2: an ore outcrop only appears where ore
+## exists and bedrock shows - or, for clay, where a river bank cuts into
+## it). Unexposed tiles skip the deposit math entirely.
+## A guild with a shade-reading member gets the tile's shade attached first
+## (get_shade()), so every guild path sees the same value.
+static func get_member_scores(
+	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> PackedFloat32Array:
+	if not state.shade_known and guild.reads_shade():
+		get_shade(state, world_seed, wx, wy, classified)
+	var result := PackedFloat32Array()
+	for member in guild.members:
+		if member.vein_scale <= 0.0:
+			result.append(get_suitability(state, member, classified))
+		elif get_exposure(state, member) <= 0.0:
+			result.append(0.0)
+		else:
+			var potential := get_deposit_potential(state, member, world_seed, wx, wy, classified)
+			result.append(get_exposed_deposit(potential, state, member))
+	return result
+
+
+## Each member's share of the guild's instances at a tile:
+## s_i^sharpness / sum_j s_j^sharpness. All zeros where no member can live.
+static func get_species_shares(suitabilities: PackedFloat32Array, sharpness: float) -> PackedFloat32Array:
+	var shares := PackedFloat32Array()
+	var total := 0.0
+	for s in suitabilities:
+		var w := pow(maxf(s, 0.0), maxf(sharpness, 0.0)) if s > 0.0 else 0.0
+		shares.append(w)
+		total += w
+	if total > 0.0:
+		for i in shares.size():
+			shares[i] /= total
+	return shares
+
+
+## Guild counterpart of get_density(): cover(cover_field) * base_density *
+## the guild's patch noise * the best member's score (get_member_scores():
+## suitability, or exposed deposit for ores). With guild.cover_sets_area
+## (Phase 14) it is base_density * get_stand_membership() at an area share
+## of cover * best instead: stands are dense, and cover and suitability set
+## how much ground they take. An empty cover_field means full
+## cover (the members' scores alone decide). guild.density_curve, if set,
+## reshapes the result. The environment sets how much can grow; the
+## best-member cap keeps the guild off tiles none of its members tolerate
+## (and thins it toward every member's limits) without letting the member
+## mix change the total.
+static func get_guild_density(
+	state: EnvironmentalState, guild: ResourceGuild, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> float:
+	var cover := get_guild_cover(state, guild)
+	# Cheap factors first: member suitabilities are the costly part, and most
+	# tiles have no cover for guilds like wetland plants (dry ground).
+	if cover <= 0.0:
+		return 0.0
+	# Stand mode: membership at `cover` bounds the one at cover * best (it
+	# only grows with the area share), so gaps skip the member scores too.
+	var amount := get_stand_membership(guild, cover, world_seed, wx, wy) if guild.cover_sets_area \
+		else cover * get_guild_patch_modifier(guild, world_seed, wx, wy)
+	if amount <= 0.0:
+		return 0.0
+	var best := 0.0
+	for s in get_member_scores(state, guild, world_seed, wx, wy, classified):
+		best = maxf(best, s)
+	if best <= 0.0:
+		return 0.0
+	if guild.cover_sets_area:
+		amount = get_stand_membership(guild, cover * best, world_seed, wx, wy)
+	else:
+		amount *= best
+	var density := clampf(amount * clampf(guild.base_density, 0.0, 1.0), 0.0, 1.0)
+	if guild.density_curve != null:
+		density = clampf(guild.density_curve.sample(density), 0.0, 1.0)
+	return density
+
+
+## The guild's cover at a tile (0..1): its cover_field through cover_curve,
+## 1.0 without a cover_field - the environment's "how much can grow here".
+static func get_guild_cover(state: EnvironmentalState, guild: ResourceGuild) -> float:
+	var field := 1.0 if guild.cover_field == "" else clampf(float(state.get(guild.cover_field)), 0.0, 1.0)
+	return clampf(guild.cover_curve.sample(field), 0.0, 1.0) if guild.cover_curve != null else field
+
+
+## Phase 13 of docs/resource-generation-plan.md: canopy shade at a tile,
+## 0 open .. 1 dense canopy, = get_guild_density() of SHADE_SOURCE (the
+## canopy trees). Resources influence each other only through this shared
+## environmental cause: the understory reads the canopy's DENSITY - a pure
+## function of (seed, tile), patch noise included, so shade follows groves
+## and clearings - never which tree instances were placed (that would be
+## an "if oak then X" rule, and would tie lower guilds to the stack filter).
+## Young trees and birch count: they are part of the tree cover the canopy
+## placement draws from, so shade and the trees you see agree.
+## Computed once per state and kept on it (EnvironmentalState.shade /
+## shade_known); shade_known is set before computing, so a canopy member
+## that read shade would see 0 instead of recursing (none does - tests check).
+static func get_shade(
+	state: EnvironmentalState, world_seed: int, wx: int, wy: int, classified: Dictionary = {}
+) -> float:
+	if not state.shade_known:
+		state.shade_known = true
+		state.shade = get_guild_density(state, SHADE_SOURCE, world_seed, wx, wy, classified)
+	return state.shade
+
+
+## Phase 17: an upper bound on get_guild_density() - the clamped
+## base_density (cover, patch and best score are all in 0..1), or 1.0 when a
+## density_curve can reshape the result upward. See get_density_bound().
+static func get_guild_density_bound(guild: ResourceGuild) -> float:
+	if guild.density_curve != null:
+		return 1.0
+	return clampf(guild.base_density, 0.0, 1.0)
+
+
+## Phase 9 of docs/resource-generation-plan.md: how much of an ore deposit
+## EXISTS here, exposed or not - geological affinity (get_suitability(),
+## chiefly geology_weights) x the ore's own vein noise x its patch noise
+## (the ore district) x base_density, 0..1. Zero for a definition that isn't
+## a deposit (vein_scale <= 0).
+static func get_deposit_potential(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	classified: Dictionary = {}
+) -> float:
+	if definition.vein_scale <= 0.0:
+		return 0.0
+	var suitability := get_suitability(state, definition, classified)
+	if suitability <= 0.0:
+		return 0.0
+	var district := get_patch_modifier(definition, world_seed, wx, wy)
+	if district <= 0.0:
+		return 0.0
+	var vein := get_vein_value(definition, world_seed, wx, wy)
+	return clampf(suitability * district * vein * clampf(definition.base_density, 0.0, 1.0), 0.0, 1.0)
+
+
+## The part of get_deposit_potential() visible at the surface: potential x
+## the deposit's exposure at the tile (get_exposure(); rock_exposure when no
+## definition is given). The rest is hidden - "resource exists" and
+## "resource is exposed" stay separate fields.
+static func get_exposed_deposit(potential: float, state: EnvironmentalState, definition: ResourceDefinition = null) -> float:
+	var exposure := get_exposure(state, definition) if definition != null else state.rock_exposure
+	return clampf(potential * exposure, 0.0, 1.0)
+
+
+## 0..1: how much of a deposit shows at this tile - its exposure_field
+## (rock_exposure for bedrock ores), through exposure_curve if set.
+static func get_exposure(state: EnvironmentalState, definition: ResourceDefinition) -> float:
+	var field := clampf(float(state.get(definition.exposure_field)), 0.0, 1.0)
+	if definition.exposure_curve != null:
+		return clampf(definition.exposure_curve.sample(field), 0.0, 1.0)
+	return field
+
+
+## Ridged vein noise, pow(1 - |n|, vein_sharpness): 1 along a seam's center
+## line, falling off to either side. Each deposit id gets its own field
+## (seeded from world_seed + WorldGen.DEPOSIT_VEIN_SEED_OFFSET and the id,
+## like get_patch_modifier()), so different ores don't share seams.
+static func get_vein_value(definition: ResourceDefinition, world_seed: int, wx: int, wy: int) -> float:
+	var noise := _vein_noise(definition.id, definition.vein_scale, world_seed)
+	var n := clampf(noise.get_noise_2d(wx, wy), -1.0, 1.0)
+	return pow(1.0 - absf(n), maxf(definition.vein_sharpness, 0.0))
+
+
+static func _vein_noise(id: String, vein_scale: float, world_seed: int) -> FastNoiseLite:
+	var scale := maxf(vein_scale, 1.0)
+	var slot := _noise_slot(_vein_noise_cache, world_seed, id)
+	if slot.has(scale):
+		return slot[scale]
+	var noise := FastNoiseLite.new()
+	noise.seed = ("%d:%s" % [world_seed + WorldGen.DEPOSIT_VEIN_SEED_OFFSET, id]).hash()
+	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	noise.frequency = 1.0 / scale
+	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
+	noise.fractal_octaves = 2
+	slot[scale] = noise
+	return noise
+
+
+## Phase 14 of docs/resource-generation-plan.md: the quality (0 worst .. 1
+## best) of one placed instance of `definition` standing on this tile, or
+## -1.0 when the definition has no quality_profile. A layer after placement
+## (Rule 4) - it only rates instances that exist, never decides which do.
+##   quality = get_suitability(state, profile) [the drivers: curves over
+##             EnvironmentalState fields, combined like any suitability]
+##             x deposit richness (profile.richness_from_deposit, deposits
+##             only: get_deposit_potential() / base_density)
+##             + (roll - 0.5) * 2 * profile.jitter, clamped to 0..1.
+## `roll` is the instance's own 0..1 hash (ResourcePlacement.instance_roll()),
+## so it is a pure function of (seed, instance key, tile fields) - never of
+## chunk or evaluation order. A profile with a shade_curve gets the tile's
+## shade attached first (get_shade()), as guild evaluation does.
+static func get_quality(
+	state: EnvironmentalState,
+	definition: ResourceDefinition,
+	world_seed: int,
+	wx: int,
+	wy: int,
+	roll: float,
+	classified: Dictionary = {}
+) -> float:
+	var profile = definition.quality_profile
+	if profile == null:
+		return -1.0
+	if profile.shade_curve != null and not state.shade_known:
+		get_shade(state, world_seed, wx, wy, classified)
+	var quality := get_suitability(state, profile, classified)
+	if profile.richness_from_deposit and definition.vein_scale > 0.0:
+		var base_density := clampf(definition.base_density, 0.0, 1.0)
+		var potential := get_deposit_potential(state, definition, world_seed, wx, wy, classified)
+		quality *= clampf(potential / base_density, 0.0, 1.0) if base_density > 0.0 else 0.0
+	quality += (roll - 0.5) * 2.0 * float(profile.jitter)
+	return clampf(quality, 0.0, 1.0)
+
+
+## The quality tier name ("old growth", "rich", ...) for a get_quality()
+## value, or "" when the definition has no profile or its profile no tiers.
+static func get_quality_tier(definition: ResourceDefinition, quality: float) -> String:
+	if definition.quality_profile == null or quality < 0.0:
+		return ""
+	return definition.quality_profile.tier_for(quality)
+
+
+## Phase 18 (developer tooling): get_suitability() for one tile, taken
+## apart - every factor that goes into it, in the same order and with the
+## same math, as display lines. Returns {"lines": Array[String],
+## "suitability": the real get_suitability(), "recomputed": the result
+## rebuilt from the explained parts} - the two must agree (tests check),
+## so the breakdown can't drift from the function it explains. Attach shade
+## first for a shade-reading definition (get_shade()), as for suitability.
+static func explain_suitability(
+	state: EnvironmentalState, definition: ResourceDefinition, classified: Dictionary = {}
+) -> Dictionary:
+	var lines: Array[String] = []
+	var weight_factors: Array[float] = []
+	if not definition.geology_weights.is_empty():
+		var f := clampf(float(definition.geology_weights.get(state.geology, 1.0)), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("geology %d: %.2f" % [state.geology, f])
+	if not definition.water_body_weights.is_empty():
+		var f := clampf(float(definition.water_body_weights.get(state.water_body, 1.0)), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("water body '%s': %.2f" % [state.water_body, f])
+	if not definition.disturbance_type_weights.is_empty():
+		var w := float(definition.disturbance_type_weights.get(state.disturbance_type, 1.0))
+		var f := clampf(lerpf(1.0, w, 1.0 - state.succession), 0.0, 1.0)
+		weight_factors.append(f)
+		lines.append("disturbance '%s' (succession %.2f): %.2f" % [state.disturbance_type, state.succession, f])
+
+	var core: Array[float] = []
+	var requirement := 1.0
+	var zeroed := false
+	for f in weight_factors:
+		zeroed = zeroed or f <= 0.0
+	for entry in _curve_plan(definition):
+		var value: float = float(state.get(entry[1]))
+		var f := clampf((entry[0] as Curve).sample(value), 0.0, 1.0)
+		if entry[2]:
+			requirement = minf(requirement, f)
+			lines.append("%s %.3f: %.2f (required)" % [entry[1], value, f])
+		else:
+			core.append(f)
+			lines.append("%s %.3f: %.2f" % [entry[1], value, f])
+	core.append_array(weight_factors)
+	var mean := _geometric_mean(core)
+	lines.append("required minimum: %.2f   geometric mean of the rest: %.2f" % [requirement, mean])
+
+	var result := 0.0 if zeroed or requirement <= 0.0 else requirement * mean
+	if result > 0.0 and not classified.is_empty():
+		if not definition.biome_weights.is_empty():
+			var m := _biome_modifier(definition.biome_weights, classified, definition.strict_biomes)
+			result *= m
+			lines.append("biome modifier (%s): x%.2f" % [classified.get("base_biome", "?"), m])
+		if not definition.subtype_weights.is_empty():
+			var m := float(definition.subtype_weights.get(classified.get("subtype", ""), 1.0))
+			result *= m
+			lines.append("subtype modifier (%s): x%.2f" % [classified.get("subtype", ""), m])
+	if result > 0.0:
+		var before := result
+		result += definition.river_affinity * state.river
+		result += definition.shore_affinity * state.shore_proximity
+		result += definition.disturbance_affinity * state.disturbance
+		if result != before:
+			lines.append("affinities (river / shore / disturbance): +%.3f" % (result - before))
+	result = clampf(result, 0.0, 1.0)
+	var actual := get_suitability(state, definition, classified)
+	lines.append("suitability: %.3f" % actual)
+	return {"lines": lines, "suitability": actual, "recomputed": result}

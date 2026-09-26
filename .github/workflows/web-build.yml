@@ -3,6 +3,7 @@ name: Web Build
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -13,12 +14,31 @@ permissions:
   pages: write
   id-token: write
 
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
+  # The fast suites (about 4 minutes) gate every pull request and every
+  # deploy. The full suite (about 20 minutes) stays a local run.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # PROJECT_STATE.md is a snapshot a new session reads in one go (X2).
+      - name: Check PROJECT_STATE.md size
+        run: |
+          test "$(wc -c < PROJECT_STATE.md)" -lt 10240 || { echo "PROJECT_STATE.md is over 10 KB: move history to CHANGELOG_DEV.md"; exit 1; }
+
+      - name: Cache Godot
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/godot
+          key: godot-${{ env.GODOT_VERSION }}
+
+      - name: Run fast test suites
+        run: tests/run_tests.sh snapshot resource_placement world_changes game_clock structures shores navigation world_session
+
   export-web:
+    needs: test
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -44,6 +64,11 @@ jobs:
 
   deploy:
     needs: export-web
+    # Here, not workflow-wide: a pull request run joining the group would
+    # cancel a deploy waiting in it.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     environment:
       name: github-pages
