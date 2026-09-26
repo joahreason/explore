@@ -43,6 +43,8 @@ const SWAY_SHADER := preload("res://shaders/sway.gdshader")
 ## - SunShadow - and swaying with them); one material for every chunk.
 const CAST_SHADOW_SHADER := preload("res://shaders/cast_shadow.gdshader")
 const SunShadowScript := preload("res://scripts/sun_shadow.gd")
+## Where the content .tres files live - reload_content() re-reads them all.
+const CONTENT_DIR := "res://resources"
 const OAK_RESOURCE := preload("res://resources/oak.tres")
 const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
 const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
@@ -355,8 +357,7 @@ func _ready() -> void:
 	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
 		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
-	ResourceManagerScript.build_curve_plans(_definitions_by_id().values() + ORE_DEPOSITS + [FARMLAND]
-		+ TerrainSurfaceScript.MATERIALS + StructureSitesScript.DEFINITIONS)
+	ResourceManagerScript.build_curve_plans(_content_definitions())
 
 	if _seed_text != "":
 		_seed_input.text = _seed_text
@@ -454,6 +455,78 @@ func regenerate(seed_text: String) -> void:
 		_target.snap_to_player()
 
 
+## Every definition generation reads (curve plans are built for these).
+func _content_definitions() -> Array:
+	return (_definitions_by_id().values() + ORE_DEPOSITS + [FARMLAND]
+		+ TerrainSurfaceScript.MATERIALS + StructureSitesScript.DEFINITIONS)
+
+
+## Desktop tuning (review X3, F5): re-reads every content .tres under
+## CONTENT_DIR from disk into the already loaded instances
+## (CACHE_MODE_REPLACE refreshes them in place, so the preloaded consts see
+## the edits), drops everything derived from them - curve plans, the static
+## noise caches, the generation caches - and rebuilds the loaded chunks.
+## Edit and save a .tres, press F5, and see it in seconds. Returns the
+## number of files reloaded.
+func reload_content() -> int:
+	# The "Go to" thread reads structure definitions without _gen_mutex.
+	_finder_cancel = true
+	if _finder_thread != null:
+		_finder_thread.wait_to_finish()
+		_finder_thread = null
+		_finish_biome_travel()
+	_finder_sites = null
+
+	_gen_mutex.lock()
+	var paths := _content_paths(CONTENT_DIR)
+	for path in paths:
+		# REPLACE only sets what the file stores: a value put back to its
+		# default (so no longer written) would keep the old one. Checked on 4.7.
+		_reset_to_defaults(load(path))
+		ResourceLoader.load(path, "", ResourceLoader.CACHE_MODE_REPLACE)
+	ResourceManagerScript._patch_noise_cache.clear()
+	ResourceManagerScript._vein_noise_cache.clear()
+	TerrainSurfaceScript._patch_noise_cache.clear()
+	for guild in GUILD_STACK:
+		guild.members = guild.members  # resets its cached reads_shade()
+	_definitions.clear()
+	var definitions := _content_definitions()
+	for definition in definitions:
+		definition.curve_plan = null
+		if definition.quality_profile != null:
+			definition.quality_profile.curve_plan = null
+	ResourceManagerScript.build_curve_plans(definitions)
+	clear_generation_caches()
+	_gen_mutex.unlock()
+
+	_invalidate_chunks()
+	print("Reloaded %d content files from %s" % [paths.size(), CONTENT_DIR])
+	return paths.size()
+
+
+static func _reset_to_defaults(resource: Resource) -> void:
+	var script: Script = resource.get_script()
+	if script == null:
+		return
+	for property in script.get_script_property_list():
+		if property["usage"] & PROPERTY_USAGE_STORAGE:
+			var value = script.get_property_default_value(property["name"])
+			if value is Array:
+				value = resource.get(property["name"]).duplicate()
+				value.clear()
+			resource.set(property["name"], value)
+
+
+static func _content_paths(dir: String) -> PackedStringArray:
+	var paths := PackedStringArray()
+	for file in DirAccess.get_files_at(dir):
+		if file.ends_with(".tres"):
+			paths.append(dir.path_join(file))
+	for sub in DirAccess.get_directories_at(dir):
+		paths.append_array(_content_paths(dir.path_join(sub)))
+	return paths
+
+
 func _threads_available() -> bool:
 	return not OS.has_feature("web") or OS.has_feature("threads")
 
@@ -539,6 +612,8 @@ func _finish_biome_travel() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_B:
 		toggle_biome_overlay()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5 and not OS.has_feature("web"):
+		reload_content()
 
 
 ## Quick keyboard shortcut: hop between Material and Base Biome. The dropdown

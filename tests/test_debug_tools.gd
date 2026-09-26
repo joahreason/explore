@@ -8,7 +8,8 @@ extends SceneTree
 ## Debug: Placement shows only that resource's instances, switching the
 ## resource rebuilds them, species densities add up to the guild's, the
 ## inspector shows the breakdown only in Debug views, and the resource
-## dropdown lists every resource and only shows in Debug views.
+## dropdown lists every resource and only shows in Debug views. F5 reloads
+## the content data from disk (review X3).
 ## Run via tests/run_tests.sh.
 
 const SEED := 4242
@@ -136,6 +137,51 @@ func _init() -> void:
 	dropdown.select(0)
 	dropdown.item_selected.emit(0)
 	check(world.debug_resource() == world.debug_resources()[0], "picking in the dropdown sets the debug resource (%s)" % world.debug_resource().id)
+
+	# F5 reloads the content .tres files from disk into the loaded
+	# instances and rebuilds the chunks with them (review X3). Stand-in for
+	# an edited file: the in-memory pine drifts from its file (a flat zero
+	# temperature curve, so no pines) and the world is rebuilt from that; the reload
+	# must bring back the file's values, in the same instances, and redraw.
+	# base_density is not in pine.tres: a value set back to its default must
+	# come back too.
+	world.flush_chunk_work()
+	var count_pines := func() -> int:
+		var n := 0
+		for chunk in world._chunk_placements:
+			for entry in world._chunk_placements[chunk]:
+				for inst in world._unchanged(entry[1]):
+					n += int(inst["id"] == "pine")
+		return n
+	var pines_before: int = count_pines.call()
+	var file_density: float = pine.base_density  # at its default, so not in the file
+	var curve: Curve = pine.temperature_curve
+	var file_points := []
+	for i in curve.point_count:
+		file_points.append(curve.get_point_position(i).y)
+		curve.set_point_value(i, 0.0)
+	pine.base_density = 0.5
+	ResourceManager._patch_noise_cache["stale"] = null
+	world.clear_generation_caches()
+	world._invalidate_chunks()
+	world.flush_chunk_work()
+	var pines_stale: int = count_pines.call()
+	var f5 := InputEventKey.new()
+	f5.keycode = KEY_F5
+	f5.pressed = true
+	world._unhandled_input(f5)
+	var rebuilding: bool = world.has_pending_chunks()
+	world.flush_chunk_work()
+	var pines_after: int = count_pines.call()
+	var files: int = world._content_paths(world.CONTENT_DIR).size()
+	check(pines_stale == 0 and rebuilding and pines_after == pines_before and pines_before > 0,
+		"F5 rebuilds the chunks from the reloaded data (pines: %d, %d with the drifted data, %d after)" % [pines_before, pines_stale, pines_after])
+	var points_back := true
+	for i in curve.point_count:
+		points_back = points_back and curve.get_point_position(i).y == file_points[i]
+	check(pine.base_density == file_density and pine.temperature_curve == curve and points_back
+		and pine.curve_plan != null and not ResourceManager._patch_noise_cache.has("stale") and files > 60,
+		"F5 re-reads all %d content files into the loaded instances (curves in place) and drops curve plans and noise caches" % files)
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
