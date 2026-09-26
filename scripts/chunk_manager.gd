@@ -36,6 +36,7 @@ const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 const TentSleepEffectScript := preload("res://scripts/tent_sleep_effect.gd")
 const WorldSessionScript := preload("res://scripts/world/world_session.gd")
 const NavigationScript := preload("res://scripts/world/navigation.gd")
+const ViewModesScript := preload("res://scripts/world/view_modes.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -45,23 +46,19 @@ const CAST_SHADOW_SHADER := preload("res://shaders/cast_shadow.gdshader")
 const SunShadowScript := preload("res://scripts/sun_shadow.gd")
 ## Where the content .tres files live - reload_content() re-reads them all.
 const CONTENT_DIR := "res://resources"
-const OAK_RESOURCE := preload("res://resources/oak.tres")
-const CANOPY_TREES := preload("res://resources/canopy_trees.tres")
-const SURFACE_ROCKS := preload("res://resources/surface_rocks.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const WETLAND_PLANTS := preload("res://resources/wetland_plants.tres")
-## Phase 10 shores / river mouths: shells, beach grass, mud flats.
-const SHORE_FEATURES := preload("res://resources/shore_features.tres")
-## Phase 11 succession: snags, logs and mushrooms on scars that were wooded,
-## and pioneer grass/herbs recolonizing them.
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const PIONEER_PLANTS := preload("res://resources/pioneer_plants.tres")
-## Cacti in hot deserts, sagebrush in the cold Barrens.
-const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
-## Phase 12: meadow grass, herbs and wildflowers on established ground.
-const GROUND_COVER := preload("res://resources/ground_cover.tres")
-## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
-const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
+## The guilds and resources particular views show (view_modes.gd);
+## forwarded for the tests until §4.1 step 9.
+const OAK_RESOURCE := ViewModesScript.OAK_RESOURCE
+const CANOPY_TREES := ViewModesScript.CANOPY_TREES
+const SURFACE_ROCKS := ViewModesScript.SURFACE_ROCKS
+const SHRUBS := ViewModesScript.SHRUBS
+const WETLAND_PLANTS := ViewModesScript.WETLAND_PLANTS
+const SHORE_FEATURES := ViewModesScript.SHORE_FEATURES
+const DEADWOOD := ViewModesScript.DEADWOOD
+const PIONEER_PLANTS := ViewModesScript.PIONEER_PLANTS
+const DESERT_PLANTS := ViewModesScript.DESERT_PLANTS
+const GROUND_COVER := ViewModesScript.GROUND_COVER
+const ORE_OUTCROPS := ViewModesScript.ORE_OUTCROPS
 ## What the world is made of - guild stack, World-view layers, deposits,
 ## farmland, ground materials, structures - as data (review A3).
 const CONTENT: WorldContent = preload("res://resources/world_content.tres")
@@ -141,49 +138,9 @@ const FADE_IN_SEC := 0.2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
 
-## Render-method views swap what color a chunk's base image is built from
-## (see _color_for) - cheap, one Sprite2D per chunk, no extra layer.
-## BASE_BIOME and SUBTYPE additionally draw a label overlay, since text can't
-## be baked into a flat pixel image (see _is_label_view). Keep in sync with
-## view_mode_dropdown.gd.
-enum ViewMode {
-	MATERIAL,
-	BASE_BIOME,
-	SUBTYPE,
-	MODIFIERS,
-	TEMPERATURE,
-	MOISTURE,
-	TEMP_VARIATION,
-	PRECIP_SEASONALITY,
-	DRAINAGE,
-	DISTURBANCE_AGE,
-	DISTURBANCE_TYPE,
-	FUEL_LOAD,
-	FIRE_RISK,
-	CAVE_POTENTIAL,
-	CLIFF_TENDENCY,
-	RESOURCE_SUITABILITY_OAK,
-	RESOURCE_DENSITY_OAK,
-	RESOURCE_PLACEMENT_OAK,
-	TREE_COVER,
-	TREE_PLACEMENT,
-	RESOURCES,
-	ROCK_PLACEMENT,
-	BERRY_PLACEMENT,
-	ROCK_EXPOSURE,
-	DEPOSITS,
-	WETLAND_PLACEMENT,
-	FARMING_POTENTIAL,
-	SHORE_PLACEMENT,
-	SUCCESSION,
-	SUCCESSION_PLACEMENT,
-	SHADE,
-	QUALITY,
-	DEBUG_SUITABILITY,
-	DEBUG_DENSITY,
-	DEBUG_PATCH,
-	DEBUG_PLACEMENT,
-}
+## Every view in one table - label, colouring, placement layers, flags:
+## scripts/world/view_modes.gd (review A2).
+const ViewMode := ViewModesScript.ViewMode
 
 ## Assign a saved WorldGen.tres preset here to tune generation in the
 ## Inspector; if left empty a default-tuned WorldGen is created at runtime.
@@ -296,6 +253,10 @@ var _gen_area: int = (2 * MIN_LOAD_RADIUS + 1) * (2 * MIN_LOAD_RADIUS + 1)
 ## "Go to biome" (travel_to_biome): searches run on their own thread with
 ## their own WorldGen copy, so they share nothing with chunk generation.
 signal biome_travel_finished(biome: String, found: bool, cancelled: bool)
+## set_view_mode() switched the view (review A4: listeners need not poll).
+signal view_changed(mode: ViewMode)
+## set_debug_resource() picked another resource for the Debug views.
+signal debug_resource_changed(definition: ResourceDefinition)
 var _finder_gen: WorldGen
 var _finder_thread: Thread
 var _finder_biome: String = ""
@@ -579,7 +540,7 @@ func toggle_biome_overlay() -> void:
 
 
 func _is_label_view(mode: ViewMode) -> bool:
-	return mode == ViewMode.BASE_BIOME or mode == ViewMode.SUBTYPE or mode == ViewMode.MODIFIERS
+	return ViewModesScript.is_label_view(mode)
 
 
 ## Public entry point for the view-mode dropdown. Rebuilds every currently
@@ -596,6 +557,7 @@ func set_view_mode(mode: ViewMode) -> void:
 	_view_mode = mode
 	_gen_mutex.unlock()
 	_invalidate_chunks()
+	view_changed.emit(mode)
 
 
 ## Without a target (target_path unset) the area around the origin stays
@@ -1016,67 +978,36 @@ func _corner_shade(cx: int, cy: int) -> float:
 	return ResourceManagerScript.get_shade(env[0], world_seed, cx, cy, env[1])
 
 
-## Returns null (not a heatmap view, or BASE_BIOME/SUBTYPE/MODIFIERS which
-## use the plain Material look as their overlay base) so _color_for can
+## The current view's colour (ViewModes' "color") for a tile. Returns null
+## (not a heatmap view, or a label view, which uses the plain Material look
+## as its overlay base) so _color_for can
 ## fall back to pure Material with no blending cost. wx/wy are only needed by
 ## views that depend on position beyond the sample itself (resource density's
 ## patch noise).
 func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
-	match _view_mode:
-		ViewMode.TEMPERATURE:
-			return HeatmapColorizerScript.temperature(sample)
-		ViewMode.MOISTURE:
-			return HeatmapColorizerScript.moisture(sample)
-		ViewMode.TEMP_VARIATION:
-			return HeatmapColorizerScript.temp_variation(sample)
-		ViewMode.PRECIP_SEASONALITY:
-			return HeatmapColorizerScript.precip_seasonality(sample)
-		ViewMode.DRAINAGE:
-			return HeatmapColorizerScript.drainage(sample)
-		ViewMode.DISTURBANCE_AGE:
-			return HeatmapColorizerScript.disturbance_age(sample)
-		ViewMode.DISTURBANCE_TYPE:
-			return HeatmapColorizerScript.disturbance_type(sample)
-		ViewMode.FUEL_LOAD:
-			return HeatmapColorizerScript.fuel_load(sample)
-		ViewMode.FIRE_RISK:
-			return HeatmapColorizerScript.fire_risk(sample)
-		ViewMode.CAVE_POTENTIAL:
-			return HeatmapColorizerScript.cave_potential(sample)
-		ViewMode.CLIFF_TENDENCY:
-			return HeatmapColorizerScript.cliff_tendency(sample)
-		ViewMode.RESOURCE_SUITABILITY_OAK:
-			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, OAK_RESOURCE))
-		ViewMode.RESOURCE_DENSITY_OAK, ViewMode.RESOURCE_PLACEMENT_OAK:
-			return HeatmapColorizerScript.resource_density(_resource_density(OAK_RESOURCE, wx, wy, sample))
-		ViewMode.TREE_COVER, ViewMode.TREE_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(CANOPY_TREES, wx, wy, sample))
-		ViewMode.ROCK_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(SURFACE_ROCKS, wx, wy, sample))
-		ViewMode.BERRY_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(SHRUBS, wx, wy, sample))
-		ViewMode.WETLAND_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(WETLAND_PLANTS, wx, wy, sample))
-		ViewMode.SHORE_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_guild_density(SHORE_FEATURES, wx, wy, sample))
-		ViewMode.SUCCESSION, ViewMode.SUCCESSION_PLACEMENT:
-			return HeatmapColorizerScript.succession(sample)
-		ViewMode.SHADE:
+	var color := ViewModesScript.color(_view_mode)
+	if color.is_empty():
+		return null
+	match color[0]:
+		"heat":
+			var colorizer: Script = HeatmapColorizerScript  # its static functions, by name
+			return colorizer.call(color[1], sample)
+		"suitability":
+			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, color[1]))
+		"resource_density":
+			return HeatmapColorizerScript.resource_density(_resource_density(color[1], wx, wy, sample))
+		"guild_density":
+			return HeatmapColorizerScript.resource_density(_guild_density(color[1], wx, wy, sample))
+		"shade":
 			return HeatmapColorizerScript.shade(_guild_density(ResourceManagerScript.SHADE_SOURCE, wx, wy, sample))
-		ViewMode.ROCK_EXPOSURE:
-			return HeatmapColorizerScript.rock_exposure(sample)
-		ViewMode.DEPOSITS:
+		"deposits":
 			return _deposit_color(sample, wx, wy)
-		ViewMode.DEBUG_SUITABILITY:
-			return HeatmapColorizerScript.resource_suitability(_debug_values(wx, wy, sample)["score"])
-		ViewMode.DEBUG_DENSITY, ViewMode.DEBUG_PLACEMENT:
-			return HeatmapColorizerScript.resource_density(_debug_values(wx, wy, sample)["density"])
-		ViewMode.DEBUG_PATCH:
-			return HeatmapColorizerScript.resource_density(_debug_values(wx, wy, sample)["patch"])
-		ViewMode.FARMING_POTENTIAL:
-			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, CONTENT.farmland))
-		_:
-			return null
+		"debug":
+			var value: float = _debug_values(wx, wy, sample)[color[1]]
+			if color[1] == "score":
+				return HeatmapColorizerScript.resource_suitability(value)
+			return HeatmapColorizerScript.resource_density(value)
+	return null
 
 
 ## Phase 4 of docs/resource-generation-plan.md: full sample -> EnvironmentalState
@@ -1453,41 +1384,17 @@ func _unload_chunk(chunk_coord: Vector2i) -> void:
 
 ## Phase 7: the ResourceDefinitions/ResourceGuilds the current view places
 ## instances of, as [source, marker shape(, shape for members without a
-## sprite when drawing SPRITE)] in draw order (empty = no
-## placement markers in this view). Placement views keep the matching
-## density heatmap as their base image, so each marker can be read against
-## the field it was drawn from; the Resources view draws every guild over
-## the Material image, trees last (as tinted sheet sprites) so they sit on
-## top.
+## sprite when drawing SPRITE)] in draw order (empty = no placement markers
+## in this view) - ViewModes' "layers"; the World view draws every guild
+## over the Material image, trees last (as tinted sheet sprites) so they
+## sit on top.
 func _placement_layers() -> Array:
-	var circle := ResourceMarkerChunkScript.Shape.CIRCLE
-	match _view_mode:
-		ViewMode.RESOURCE_PLACEMENT_OAK:
-			return [[OAK_RESOURCE, circle]]
-		ViewMode.TREE_PLACEMENT:
-			return [[CANOPY_TREES, circle]]
-		ViewMode.ROCK_PLACEMENT:
-			return [[SURFACE_ROCKS, circle]]
-		ViewMode.BERRY_PLACEMENT:
-			return [[SHRUBS, circle]]
-		ViewMode.WETLAND_PLACEMENT:
-			return [[WETLAND_PLANTS, circle]]
-		ViewMode.SHORE_PLACEMENT:
-			return [[SHORE_FEATURES, circle]]
-		ViewMode.SUCCESSION_PLACEMENT:
-			return [[DEADWOOD, circle], [PIONEER_PLANTS, circle]]
-		ViewMode.SHADE:
-			return [[GROUND_COVER, circle], [DEADWOOD, circle], [SHRUBS, circle]]
-		ViewMode.DEPOSITS:
-			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON]]
-		ViewMode.QUALITY:
-			return [[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.HEXAGON], [CANOPY_TREES, circle], [SHRUBS, circle]]
-		ViewMode.DEBUG_PLACEMENT:
-			return [[debug_guild(), circle]]
-		ViewMode.RESOURCES:
-			return CONTENT.world_view_placement_layers()
-		_:
-			return []
+	var layers: Variant = ViewModesScript.layers(_view_mode)
+	if layers is Array:
+		return layers
+	if layers == "world":
+		return CONTENT.world_view_placement_layers()
+	return [[debug_guild(), ResourceMarkerChunkScript.Shape.CIRCLE]]
 
 
 func _placements_visible_at(lod_step: int) -> bool:
@@ -1948,7 +1855,7 @@ func _redraw_markers(chunk_coord: Vector2i) -> void:
 ## which show _debug_resource's suitability / density / patch noise /
 ## placement and add its factor breakdown to the inspector.
 func is_debug_view(mode: ViewMode = _view_mode) -> bool:
-	return mode in [ViewMode.DEBUG_SUITABILITY, ViewMode.DEBUG_DENSITY, ViewMode.DEBUG_PATCH, ViewMode.DEBUG_PLACEMENT]
+	return ViewModesScript.is_debug(mode)
 
 
 ## Every resource the Debug views can show: each stack member, in
@@ -1976,10 +1883,10 @@ func set_debug_resource(definition: ResourceDefinition) -> void:
 		return
 	_gen_mutex.lock()
 	_debug_resource = definition
-	debug_guild()
 	_gen_mutex.unlock()
 	if is_debug_view():
 		_invalidate_chunks()
+	debug_resource_changed.emit(definition)
 
 
 ## The debug resource at a tile, as the guild sees it:
@@ -2050,7 +1957,7 @@ func _notification(what: int) -> void:
 
 ## Views the day/night cycle tints (DayNight): the gameplay views only.
 func is_time_tinted_view() -> bool:
-	return _view_mode == ViewMode.RESOURCES or _view_mode == ViewMode.MATERIAL
+	return ViewModesScript.is_tinted(_view_mode)
 
 
 ## Player (user request): a tap / left click (CameraRig "map_tapped") walks
