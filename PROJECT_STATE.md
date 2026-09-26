@@ -1,4 +1,4 @@
-# Project State — updated 2026-09-26, review-followup @ claude/review-batch-6
+# Project State — updated 2026-09-26, branch review-followup (main @ a46ae53, deployed)
 
 A snapshot for a new session: read it in one go, keep it under 10 KB (CI
 checks). History is in `CHANGELOG_DEV.md`, decisions in `docs/decisions.md`.
