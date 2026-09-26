@@ -56,16 +56,16 @@ uniform bool ground_detail = false;
 // How far (pixels) ground edges wander from the tile grid (under half a
 // tile, so only direct neighbours meet), and the length (pixels) of one
 // wiggle along an edge.
-const float EDGE_PX = 4.0;
-const float EDGE_WAVE = 18.0;
+const float EDGE_PX = 2.0;
+const float EDGE_WAVE = 26.0;
 // Splotches along ground borders (edge_pick()): one per BLOB_SLOT px of
 // edge at most, with this chance; radius range (px); and how far from the
 // edge line they can reach (EDGE_PX + largest radius + gap), which must
 // stay under half a tile.
 const float BLOB_SLOT = 7.0;
-const float BLOB_CHANCE = 0.3;
-const vec2 BLOB_RADIUS = vec2(1.4, 2.6);
-const float BLOB_REACH = 7.0 + 2.6;
+const float BLOB_CHANCE = 0.15;
+const vec2 BLOB_RADIUS = vec2(1.2, 2.0);
+const float BLOB_REACH = EDGE_PX + 3.0 + BLOB_RADIUS.y;
 
 varying vec2 world_px;
 
