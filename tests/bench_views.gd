@@ -1,12 +1,11 @@
 extends SceneTree
 
-## Phase 17 benchmark: cold view-switch times with the real world.tscn
-## (seed 4242, default camera = 81 loaded chunks), each from Material with
-## the per-chunk guild placement cache dropped first - the numbers quoted in
-## PROJECT_STATE.md. Since chunk jobs stream in over frames, a switch is timed
-## until flush_chunk_work() has built and shown every chunk (the total work,
-## no longer a single frame's freeze). Not a pass/fail suite (run_tests.sh
-## only runs test_*):
+## Cold view-switch times with the real world.tscn (seed 4242, default camera
+## = 81 loaded chunks), each from Material with the per-chunk guild placement
+## cache dropped first - the numbers recorded in docs/tuning-log.md. Since
+## chunk jobs stream in over frames, a switch is timed until
+## flush_chunk_work() has built and shown every chunk (the total work). Not a
+## pass/fail suite (run_tests.sh only runs test_*):
 ##
 ##   $GODOT --headless --path . --script res://tests/bench_views.gd
 ##

@@ -1,12 +1,11 @@
 extends RefCounted
 
-## Main thread: what the world shows of each loaded chunk (§4.1 step 7,
-## moved out of chunk_manager.gd). Turns a finished chunk job's data into
-## its terrain Sprite2D (borders shared with its neighbours), its biome
-## label overlay and its resource markers with their shadows, styles
-## sprites by season, and redraws a chunk's markers from its stored
-## placements after a harvest. The shown placements (chunk_placements) are
-## what picking reads. Only this and ChunkManager touch the scene tree.
+## Main thread: what the world shows of each loaded chunk. Turns a finished
+## chunk job's data into its terrain Sprite2D (borders shared with its
+## neighbours), its biome label overlay and its resource markers with their
+## shadows, styles sprites by season, and redraws a chunk's markers from its
+## stored placements after a harvest. The shown placements (chunk_placements)
+## are what picking reads. Only this and ChunkManager touch the scene tree.
 
 const GameConstants := preload("res://scripts/game_constants.gd")
 const GenerationContextScript := preload("res://scripts/world/generation_context.gd")

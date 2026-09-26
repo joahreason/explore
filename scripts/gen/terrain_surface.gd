@@ -1,9 +1,8 @@
 class_name TerrainSurface
 extends RefCounted
 
-## Phase 13.5 terrain surface layer: which ground a tile shows (one discrete
-## SurfaceMaterial per land tile) and its colour. Replaces the old averaged
-## Material blend, which made large areas one uniform, biome-coloured tone.
+## Terrain surface layer: which ground a tile shows (one discrete
+## SurfaceMaterial per land tile) and its colour.
 ##
 ## Choice: every material scores suitability (ResourceManager.get_suitability
 ## over the tile's EnvironmentalState, x its base_density prevalence) times

@@ -1,9 +1,8 @@
 extends RefCounted
 
 ## Tile codes of the gameplay views' chunk images, read by
-## shaders/terrain.gdshader, and the shore shapes they carry (§4.1 step 1,
-## moved out of chunk_manager.gd). Constants and one pure function; any
-## thread.
+## shaders/terrain.gdshader, and the shore shapes they carry. Constants and
+## one pure function; any thread.
 
 ## Polish pass 2: tile codes in the gameplay views' chunk images (alpha,
 ## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass

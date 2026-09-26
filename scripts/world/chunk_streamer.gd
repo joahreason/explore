@@ -1,7 +1,6 @@
 extends RefCounted
 
-## Which chunks the camera wants and the jobs that build them (§4.1 step 7,
-## moved out of chunk_manager.gd).
+## Which chunks the camera wants and the jobs that build them.
 ##
 ## Phase 17 streaming: a chunk's content (image, markers, labels) is built by
 ## a job, nearest chunk first, and shown by the main thread a few per frame,

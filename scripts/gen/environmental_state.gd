@@ -1,23 +1,20 @@
 class_name EnvironmentalState
 extends RefCounted
 
-## Typed wrapper over a WorldGen.sample() Dictionary - the Phase 1 "formalized
-## representation" from docs/resource-generation-plan.md, for the new
-## resource-generation system to consume with real field access instead of
-## string keys. WorldGen.sample() itself is UNCHANGED and keeps returning a
-## Dictionary; every existing caller (biome_classifier.gd, biome_subtype.gd,
-## biome_modifiers.gd, heatmap_colorizer.gd, terrain_surface.gd (water),
-## chunk_manager.gd, tile_inspector_panel.gd) is untouched - this is an
-## additional representation, not a replacement (see docs/architecture.md §8
-## and the Phase 1 decision in the session that added this file).
+## Typed wrapper over a WorldGen.sample() Dictionary
+## (docs/resource-generation-plan.md, Phase 1), so resource generation reads
+## fields by name instead of by string key. WorldGen.sample() still returns
+## the Dictionary, and callers that need only a few keys (the biome
+## classifier, heatmaps, the water colour, the tile inspector) read it
+## directly; see docs/architecture.md §8.
 ##
-## Built from one sample() call via from_sample() and never mutated
-## afterward - adds no new per-tile state and no risk to determinism. The one
-## exception is `shade` (Phase 13), which is not a sample() key: it is
-## derived from the canopy guild and attached once, lazily, by
-## ResourceManager.get_shade() (a pure function of seed + tile as well). Since
-## Phase 17 chunk_manager.gd keeps instances in a bounded per-tile cache
-## (GenerationContext.tile_env) and shares them between readers, which relies on exactly that.
+## Built from one sample() call via from_sample() and never mutated afterward
+## - adds no new per-tile state and no risk to determinism. The one exception
+## is `shade`, which is not a sample() key: it is derived from the canopy
+## guild and attached once, lazily, by ResourceManager.get_shade() (a pure
+## function of seed + tile as well). GenerationContext keeps instances in a
+## bounded per-tile cache (tile_env()) and shares them between readers, which
+## relies on exactly that.
 
 var elevation: float
 var slope: float

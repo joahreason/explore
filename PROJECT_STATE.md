@@ -67,9 +67,6 @@ deployed build.
   speckled snow line.
 - Placement count is concave in density (tuning-log.md "Standing
   observations").
-- `tests/bench_views.gd`'s header still says its numbers are in
-  PROJECT_STATE.md; they are in `docs/tuning-log.md` (code left unchanged in
-  this docs-only batch).
 
 ## Recent changes (last ~10; details in CHANGELOG_DEV.md)
 

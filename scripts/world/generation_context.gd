@@ -1,10 +1,10 @@
 extends RefCounted
 
-## Everything generation reads and caches for one seed, behind one lock
-## (§4.1 step 5, moved out of chunk_manager.gd): the WorldGen, the landmark
-## sites, and the per-seed caches - tile environments, densities, raw guild
-## placements, walkability. Pure functions of (seed, tile), so the chunk
-## worker, the main thread's inline steps and the UI all share them.
+## Everything generation reads and caches for one seed, behind one lock: the
+## WorldGen, the landmark sites, and the per-seed caches - tile environments,
+## densities, raw guild placements, walkability. Pure functions of (seed,
+## tile), so the chunk worker, the main thread's inline steps and the UI all
+## share them.
 ##
 ## Threading (review C2): every public method takes `mutex` itself (a
 ## Mutex is recursive, so a caller may hold it across several calls, as a

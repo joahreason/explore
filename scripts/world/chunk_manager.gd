@@ -1,19 +1,18 @@
 extends Node2D
 
 ## Infinite chunk-based procedural world, deterministic per world_seed.
-## Rendering here is a debug visualization only (flat colored tiles per
-## WorldGen field sample) - the art tileset is intentionally not used yet;
-## see scripts/gen/world_gen.gd and scripts/gen/terrain_surface.gd for the actual
-## generation/coloring logic. This file ties the world's modules together
-## (review §4.1): ChunkStreamer decides which chunks to build and runs their
-## jobs (scripts/world/chunk_streamer.gd), ChunkBuilder builds each one's
-## content, ChunkPresenter shows it. Threading rule: everything
-## generation touches - _world_gen (and its water topology cache), the
-## generation caches, the view mode, ResourceManager's static noise caches,
-## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex
-## (held per job step), and the scene tree only on the main
-## thread. Tests that call generation functions directly do it after
-## flush_chunk_work(), which leaves the worker idle.
+## Generation lives in scripts/gen (WorldGen samples the fields,
+## TerrainSurface colours the ground) and scripts/resources (what grows and
+## where it is placed). This file ties the world's modules together (review
+## §4.1): ChunkStreamer decides which chunks to build and runs their jobs
+## (scripts/world/chunk_streamer.gd), ChunkBuilder builds each one's content,
+## ChunkPresenter shows it. Threading rule: everything generation touches -
+## the WorldGen (and its water topology cache), the generation caches, the
+## view mode, ResourceManager's static noise caches,
+## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex (held
+## per job step), and the scene tree only on the main thread. Tests that call
+## generation functions directly do it after flush_chunk_work(), which leaves
+## the worker idle.
 
 const TerrainSurfaceScript := preload("res://scripts/gen/terrain_surface.gd")
 const BiomeClassifierScript := preload("res://scripts/gen/biome_classifier.gd")

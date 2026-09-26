@@ -1,12 +1,12 @@
 class_name ResourceDefinition
 extends Resource
 
-## Phase 2 of docs/resource-generation-plan.md: data-driven description of one
-## placeable resource's environmental preferences (a tree species, an ore
-## type, etc.) - no spawning logic lives here or anywhere else yet. Follows
-## the same pattern as WorldGen (Resource + @export, tunable/saveable as a
-## .tres in the Inspector), the project's existing precedent for a large
-## configurable data object.
+## Data-driven description of one placeable resource's environmental
+## preferences (a tree species, an ore type, etc.)
+## (docs/resource-generation-plan.md, Phase 2); ResourcePlacement does the
+## placing. Follows the same pattern as WorldGen (Resource + @export,
+## tunable/saveable as a .tres in the Inspector), the project's existing
+## precedent for a large configurable data object.
 ##
 ## Curves use Godot's built-in Curve resource (matches the plan's own
 ## "temperature_curve.sample(temperature)" language exactly) rather than a
