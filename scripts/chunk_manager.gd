@@ -36,6 +36,7 @@ const GameClockScript := preload("res://scripts/game_clock.gd")
 const WindScript := preload("res://scripts/wind.gd")
 const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 const TentSleepEffectScript := preload("res://scripts/tent_sleep_effect.gd")
+const NavigationScript := preload("res://scripts/world/navigation.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
@@ -2121,7 +2122,7 @@ func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 				_set_last(points, stand, end)
 	elif end == goal:
 		_set_last(points, world_pos, end)
-	points = _smooth_path(_player.position, points)
+	points = NavigationScript.smooth_path(_player.position, points, is_walkable, TILE_SIZE)
 	_gen_mutex.unlock()
 	_player.walk(points, on_arrive)
 	return path
@@ -2138,38 +2139,6 @@ func _set_last(points: Array[Vector2], point: Vector2, end: Vector2i) -> void:
 		points.append(point)
 	else:
 		points[-1] = point
-
-
-## String-pulls a walk: drops every point the player can skip by walking
-## straight to a later one over walkable ground (_walkable_line()), so the
-## walk is free rather than tile to tile. Call with _gen_mutex held.
-func _smooth_path(start: Vector2, points: Array[Vector2]) -> Array[Vector2]:
-	var result: Array[Vector2] = []
-	var from := start
-	var i := 0
-	while i < points.size():
-		var j := points.size() - 1
-		while j > i and not _walkable_line(from, points[j]):
-			j -= 1
-		result.append(points[j])
-		from = points[j]
-		i = j + 1
-	return result
-
-
-## Whether the straight walk from `a` to `b` (world px) stays on walkable
-## tiles, with a little clearance either side so it never grazes a water
-## corner. Call with _gen_mutex held.
-func _walkable_line(a: Vector2, b: Vector2) -> bool:
-	var d := b - a
-	var n := ceili(d.length() / (TILE_SIZE * 0.25)) + 1
-	var side := d.orthogonal().normalized() * 3.0 if d.length() > 0.0 else Vector2.ZERO
-	for k in n + 1:
-		var p := a + d * (float(k) / n)
-		for q in [p, p + side, p - side]:
-			if not is_walkable(Vector2i(((q as Vector2) / TILE_SIZE).floor())):
-				return false
-	return true
 
 
 ## Whether a camp tent stands on `tile` (a "tent" part of the site there).
@@ -2271,109 +2240,6 @@ func teleport_player(world_pos: Vector2) -> void:
 		_target.snap_to_player()
 
 
-## Max tiles A* expands per path: enough to route round a lake across the
-## screen; beyond it the player heads for the closest tile found.
-const MAX_PATH_NODES := 6000
-const PATH_STEPS: Array[Vector2i] = [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1), Vector2i(1, 1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(-1, -1)]
-
-
-## A* over tiles, 8 directions (no cutting a corner past water): the tiles
-## to step through from `from` (excluded) to `to`, or to within one tile of
-## it with `near` (walking up to a resource). If `to` can't be reached
-## within MAX_PATH_NODES, the path to the closest tile explored. Call with
-## _gen_mutex held (is_walkable() may sample).
-func find_path(from: Vector2i, to: Vector2i, near: bool = false) -> Array[Vector2i]:
-	var done := func(t: Vector2i) -> bool:
-		return t == to or (near and maxi(absi(t.x - to.x), absi(t.y - to.y)) <= 1)
-	var came := {from: from}
-	var cost := {from: 0.0}
-	var open_f: Array[float] = [_octile(from, to)]
-	var open_t: Array[Vector2i] = [from]
-	var best := from
-	var best_h := _octile(from, to)
-	var expanded := 0
-	var reached := false
-	while not open_t.is_empty() and expanded < MAX_PATH_NODES:
-		var current: Vector2i = _heap_pop(open_f, open_t)
-		if done.call(current):
-			best = current
-			reached = true
-			break
-		expanded += 1
-		var h := _octile(current, to)
-		if h < best_h:
-			best_h = h
-			best = current
-		for step in PATH_STEPS:
-			var next: Vector2i = current + step
-			if not is_walkable(next):
-				continue
-			if step.x != 0 and step.y != 0 and not (is_walkable(current + Vector2i(step.x, 0)) and is_walkable(current + Vector2i(0, step.y))):
-				continue
-			var g: float = cost[current] + (1.41421356 if step.x != 0 and step.y != 0 else 1.0)
-			if g < cost.get(next, INF):
-				cost[next] = g
-				came[next] = current
-				_heap_push(open_f, open_t, g + _octile(next, to), next)
-	var path: Array[Vector2i] = []
-	var t := best
-	while t != from:
-		path.push_front(t)
-		t = came[t]
-	return path
-
-
-static func _octile(a: Vector2i, b: Vector2i) -> float:
-	var dx := absi(a.x - b.x)
-	var dy := absi(a.y - b.y)
-	return maxi(dx, dy) + 0.41421356 * mini(dx, dy)
-
-
-static func _heap_push(f: Array[float], t: Array[Vector2i], priority: float, tile: Vector2i) -> void:
-	f.append(priority)
-	t.append(tile)
-	var i := f.size() - 1
-	while i > 0:
-		var parent := (i - 1) / 2
-		if f[parent] <= f[i]:
-			break
-		var pf := f[parent]
-		f[parent] = f[i]
-		f[i] = pf
-		var pt := t[parent]
-		t[parent] = t[i]
-		t[i] = pt
-		i = parent
-
-
-static func _heap_pop(f: Array[float], t: Array[Vector2i]) -> Vector2i:
-	var top := t[0]
-	var last := f.size() - 1
-	f[0] = f[last]
-	t[0] = t[last]
-	f.resize(last)
-	t.resize(last)
-	var i := 0
-	while true:
-		var l := i * 2 + 1
-		var r := l + 1
-		var m := i
-		if l < f.size() and f[l] < f[m]:
-			m = l
-		if r < f.size() and f[r] < f[m]:
-			m = r
-		if m == i:
-			break
-		var mf := f[m]
-		f[m] = f[i]
-		f[i] = mf
-		var mt := t[m]
-		t[m] = t[i]
-		t[i] = mt
-		i = m
-	return top
-
-
 ## Whether the player can stand on a tile: anything but open water (a sea,
 ## lake or river that isn't frozen solid). Call with _gen_mutex held.
 func is_walkable(tile: Vector2i) -> bool:
@@ -2411,22 +2277,19 @@ static func _walkable_sample(sample: Dictionary) -> bool:
 	return TerrainSurfaceScript.water_liquid(sample) <= 0.0
 
 
-## The walkable tile nearest `tile` (spiral search), as a world position at
-## its centre; `tile` itself if none within 64 tiles.
+## The walkable tile nearest `tile` (Navigation.nearest_walkable()), as a
+## world position at its centre.
 func _nearest_walkable(tile: Vector2i) -> Vector2:
 	_gen_mutex.lock()
-	var found := tile
-	var done := is_walkable(tile)
-	for r in range(1, 65):
-		if done:
-			break
-		for dy in range(-r, r + 1):
-			for dx in [-r, r] if absi(dy) != r else range(-r, r + 1):
-				if not done and is_walkable(tile + Vector2i(dx, dy)):
-					found = tile + Vector2i(dx, dy)
-					done = true
+	var found := NavigationScript.nearest_walkable(tile, is_walkable)
 	_gen_mutex.unlock()
 	return (Vector2(found) + Vector2(0.5, 0.5)) * TILE_SIZE
+
+
+## A* from `from` to `to` over walkable tiles (Navigation.find_path()).
+## Call with _gen_mutex held (is_walkable() may sample).
+func find_path(from: Vector2i, to: Vector2i, near: bool = false) -> Array[Vector2i]:
+	return NavigationScript.find_path(from, to, is_walkable, near)
 
 
 ## Polish (HoverHighlight): the resource a left click at `point` (tile
