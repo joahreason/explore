@@ -205,9 +205,17 @@ func _resolve_world_seed() -> int:
 ## A purely numeric seed is used directly (matches the exported int seed
 ## behavior everywhere else in this project); anything else (letters/spaces)
 ## is hashed to a deterministic int, so the same text always regenerates the
-## same world.
+## same world. So is a number outside -2^31..2^32 (review D3): the noise keeps
+## only 32 bits of a seed while placement hashes all of it, so such a seed
+## could share another's terrain but not its objects, and above 2^53 its save
+## (JSON numbers are doubles) never matched it again. Every seed that fits is
+## unchanged, and the result always fits.
 static func _seed_from_text(text: String) -> int:
-	return int(text) if text.is_valid_int() else text.hash()
+	if text.is_valid_int():
+		var value := int(text)
+		if value >= -0x80000000 and value < 0x100000000:
+			return value
+	return text.hash()
 
 
 ## Desktop seed UI (SeedInput's Enter, RandomizeButton - via

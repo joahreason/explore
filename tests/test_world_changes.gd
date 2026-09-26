@@ -13,6 +13,7 @@ extends "res://tests/harness.gd"
 ## save directory. Run via tests/run_tests.sh.
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
+const ChunkManagerScript := preload("res://scripts/world/chunk_manager.gd")
 const SEED := 4242
 const DIR := "user://test_world_changes"
 
@@ -134,6 +135,21 @@ func _init() -> void:
 	check(world4.changes_path() == "", "tests using the default dir never touch the player's saves")
 	world4.queue_free()
 	await process_frame
+
+	# Seeds from text (review D3): short numbers and words are unchanged,
+	# and a number too long for 32 bits is hashed like a word, so every seed
+	# fits the noise's 32 bits and survives the JSON save exactly.
+	var from_text := func(text: String) -> int: return ChunkManagerScript._seed_from_text(text)
+	check(from_text.call("4242") == 4242 and from_text.call("-5") == -5 and from_text.call("4294967295") == 4294967295
+		and from_text.call("hello") == "hello".hash(), "short numeric and word seeds are unchanged")
+	var long_seed: int = from_text.call("9007199254740993")
+	check(long_seed == "9007199254740993".hash() and long_seed >= -2147483648 and long_seed < 4294967296,
+		"a seed longer than 32 bits is hashed into range (%d)" % long_seed)
+	var long_changes := WorldChanges.new()
+	long_changes.harvest("canopy_trees:1,1", "oak")
+	var reloaded := WorldChanges.new()
+	check(reloaded.from_dict(JSON.parse_string(JSON.stringify(long_changes.to_dict(long_seed))), long_seed) and reloaded.size() == 1,
+		"its save round-trips through JSON")
 
 	_clean()
 	finish()
