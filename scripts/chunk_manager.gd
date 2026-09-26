@@ -101,6 +101,7 @@ const LOD_THRESHOLDS := [
 	{"zoom": 0.25, "step": 4},
 	{"zoom": 0.0, "step": 8},
 ]
+const LOD_HYSTERESIS := 0.05
 
 ## Phase 17: how many chunks of per-tile EnvironmentalState + classify_full()
 ## results _tile_env() keeps (FIFO). Placing one chunk's guild stack reads
@@ -162,7 +163,7 @@ const SHALLOW_DEPTH := 0.008
 const GRASS_GROUND := ["grass", "dry_grass"]
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
-## Seconds a newly streamed-in chunk takes to fade in.
+## Seconds a newly streamed-in chunk's label overlay takes to fade in.
 const FADE_IN_SEC := 0.2
 ## Time per frame spent turning finished chunk jobs into nodes (at least one).
 const APPLY_BUDGET_USEC := 3000
@@ -240,10 +241,17 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 
 var _target: Node2D
 var _player: Node2D
-## Tile -> whether the player can stand there (not open water; frozen water
-## is walkable). Filled for free wherever a chunk image is baked tile by
-## tile, else sampled on demand (is_walkable()); guarded by _gen_mutex.
+## Chunk -> whether the player can stand on each of its tiles (not open
+## water; frozen water is walkable): a PackedByteArray of CHUNK_SIZE x
+## CHUNK_SIZE, 0 = not known yet, WALKABLE / BLOCKED. Filled for free
+## wherever a chunk image is baked tile by tile, else sampled on demand
+## (is_walkable()); guarded by _gen_mutex. At most WALKABLE_CHUNKS chunks,
+## oldest dropped first (review W3: a Dictionary entry per tile grew by
+## ~200 KB per chunk walked).
 var _walkable: Dictionary = {}
+const WALKABLE_CHUNKS := 4096  # ~1.5 MB
+const WALKABLE := 1
+const BLOCKED := 2
 ## Chunk -> the shown image padded with a 1-texel border (_padded_image()):
 ## the border holds the loaded neighbours' edge tiles (_share_borders()), so
 ## terrain.gdshader can blend ground across chunk borders.
@@ -347,6 +355,8 @@ func _ready() -> void:
 	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
 		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
+	ResourceManagerScript.build_curve_plans(_definitions_by_id().values() + ORE_DEPOSITS + [FARMLAND]
+		+ TerrainSurfaceScript.MATERIALS + StructureSitesScript.DEFINITIONS)
 
 	if _seed_text != "":
 		_seed_input.text = _seed_text
@@ -383,7 +393,8 @@ func _exit_tree() -> void:
 ## by ReloadButton/RandomizeButton/SeedInput's Enter from whatever's in the
 ## seed field (see _seed_from_text). If no param was given at all, a fresh
 ## random seed is generated instead of falling back to the fixed exported
-## default, so every plain visit gets a different world. Elsewhere the
+## default, so every plain visit gets a different world, and written into
+## the URL so a refresh keeps it. Elsewhere the
 ## exported world_seed is used (the seed UI regenerates in place instead -
 ## see regenerate()). Either way, _seed_text is left holding whatever seed
 ## ended up in effect, so _ready() can show it in the seed field.
@@ -398,6 +409,9 @@ func _resolve_world_seed() -> int:
 	var raw_str := str(raw) if raw != null else ""
 	if raw_str == "":
 		raw_str = str(randi())
+		# Put it in the URL, so refreshing, bookmarking or sharing the page
+		# gives the same world (and its save) - review W6.
+		JavaScriptBridge.eval("history.replaceState(null, '', '?seed=%s' + location.hash)" % raw_str.uri_encode())
 	_seed_text = raw_str
 	return _seed_from_text(raw_str)
 
@@ -659,7 +673,21 @@ func _current_load_radius() -> int:
 
 
 func _current_lod_step() -> int:
-	var zoom := _current_zoom()
+	return _lod_step_for(_current_zoom(), _last_lod_step)
+
+
+## The LOD step for `zoom`, coming from step `current` (-1: none yet). A
+## threshold must be passed by LOD_HYSTERESIS (5 %) before the step changes,
+## so a pinch hovering at a threshold doesn't rebuild every loaded chunk on
+## each crossing (review W5).
+static func _lod_step_for(zoom: float, current: int) -> int:
+	var plain := _lod_step_at(zoom)
+	if current < 0 or plain == current:
+		return plain
+	return _lod_step_at(zoom / (1.0 + LOD_HYSTERESIS) if plain < current else zoom / (1.0 - LOD_HYSTERESIS))
+
+
+static func _lod_step_at(zoom: float) -> int:
 	for entry in LOD_THRESHOLDS:
 		if zoom >= entry["zoom"]:
 			return entry["step"]
@@ -788,7 +816,10 @@ func _take_job() -> Array:
 ## by the steps) and step list (planned by the first _step_job(); fine =
 ## the main-thread fallback's finer steps, see _chunk_job_steps).
 func _new_job_state(job: Array, fine: bool) -> Dictionary:
-	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": _new_chunk_image(job[2])}
+	_gen_mutex.lock()  # the image format follows _view_mode (review C2)
+	var image := _new_chunk_image(job[2])
+	_gen_mutex.unlock()
+	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image}
 	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
 
 
@@ -1187,7 +1218,7 @@ func _bake_rows(img: Image, chunk_coord: Vector2i, lod_step: int, y0: int, y1: i
 			var sample := _world_gen.sample(wx, wy)
 			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
 			if lod_step == 1:
-				_walkable[Vector2i(wx, wy)] = _walkable_sample(sample)
+				_set_walkable(Vector2i(wx, wy), _walkable_sample(sample))
 
 
 ## Fills _tile_env() for tile rows y0..y1-1 of a chunk (a warm-up job step).
@@ -1279,15 +1310,16 @@ func _apply_chunk_data(data: Dictionary) -> void:
 		var markers := _marker_node(base, data["placements"])
 		resources_root.add_child(markers)
 		_loaded_placements[chunk_coord] = markers
-	# Polish: a chunk that newly streams in fades in (FADE_IN_SEC) instead of
-	# popping; rebuilding one already on screen (view change) swaps in place.
-	if fresh:
-		var markers_node = _loaded_placements.get(chunk_coord)
-		var shadow_node = markers_node.shadow_layer() if markers_node != null else null
-		for node in [sprite, _loaded_overlays.get(chunk_coord), markers_node, shadow_node]:
-			if node != null:
-				node.modulate.a = 0.0
-				node.create_tween().tween_property(node, "modulate:a", 1.0, FADE_IN_SEC)
+	# Polish: a label overlay that newly streams in fades in (FADE_IN_SEC)
+	# instead of popping; rebuilding one already on screen (view change)
+	# swaps in place. Only overlays: the terrain, sway and shadow shaders
+	# replace COLOR (so modulate never shows), and sway.gdshader and
+	# cast_shadow.gdshader read data packed into the vertex colour, which
+	# modulate would scale - sprites bent like grass mid-fade (review C1).
+	var overlay_node = _loaded_overlays.get(chunk_coord)
+	if fresh and overlay_node != null:
+		overlay_node.modulate.a = 0.0
+		overlay_node.create_tween().tween_property(overlay_node, "modulate:a", 1.0, FADE_IN_SEC)
 
 
 ## A chunk image with a 1-texel border, its edge tiles repeated there until
@@ -2000,8 +2032,10 @@ func _save_gameplay_state() -> void:
 	_changes.save(changes_path(), world_seed)
 
 
+## Saves on quit, and whenever the game loses focus or is paused (a browser
+## tab can close without a close request; review W6).
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+	if what in [NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_PAUSED]:
 		_save_gameplay_state()
 
 
@@ -2117,13 +2151,20 @@ func _walkable_line(a: Vector2, b: Vector2) -> bool:
 
 ## Whether a camp tent stands on `tile` (a "tent" part of the site there).
 func is_tent(tile: Vector2i) -> bool:
-	_gen_mutex.lock()  # site_at() may build the site, sampling the world
+	return not _tent_site(tile).is_empty()
+
+
+## The camp site whose tent stands on `tile`, or {}. Looked up under
+## _gen_mutex: site_at() may build the site (sampling the world) and the
+## worker writes the same StructureSites cache (review C2).
+func _tent_site(tile: Vector2i) -> Dictionary:
+	_gen_mutex.lock()
 	var site := _structures.site_at(tile)
 	_gen_mutex.unlock()
 	for part in site.get("parts", []):
 		if part["tile"] == tile and part["kind"] == "tent":
-			return true
-	return false
+			return site
+	return {}
 
 
 ## How the World view draws the camp tent on `tile`: [texture, rect in
@@ -2145,14 +2186,15 @@ func tent_drawn(tile: Vector2i) -> Array:
 ## (GameClock.sleep()); _process() brings the player out when the clock
 ## wakes. Nothing happens if there's no tent there.
 func enter_tent(tile: Vector2i) -> void:
-	if _player == null or not is_tent(tile):
+	var site := _tent_site(tile) if _player != null else {}
+	if site.is_empty():
 		return
 	_leave_tent()
 	_tent_tile = tile
 	_player.visible = false
 	var chunk := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
 	_redraw_markers(chunk)
-	var def: StructureDefinition = _structures.site_at(tile)["definition"]
+	var def: StructureDefinition = site["definition"]
 	var tent_sheet := Vector2i.ZERO
 	for part in def.parts:
 		if part["kind"] == "tent":
@@ -2312,14 +2354,34 @@ static func _heap_pop(f: Array[float], t: Array[Vector2i]) -> Vector2i:
 ## Whether the player can stand on a tile: anything but open water (a sea,
 ## lake or river that isn't frozen solid). Call with _gen_mutex held.
 func is_walkable(tile: Vector2i) -> bool:
-	var known = _walkable.get(tile)
-	if known != null:
-		return known
-	if _walkable.size() > 400000:
-		_walkable.clear()
+	var cells: PackedByteArray = _walkable.get(_chunk_of_tile(tile), PackedByteArray())
+	if not cells.is_empty():
+		var known := cells[_walkable_index(tile)]
+		if known != 0:
+			return known == WALKABLE
 	var walkable := _walkable_sample(_world_gen.sample(tile.x, tile.y))
-	_walkable[tile] = walkable
+	_set_walkable(tile, walkable)
 	return walkable
+
+
+func _set_walkable(tile: Vector2i, walkable: bool) -> void:
+	var chunk := _chunk_of_tile(tile)
+	var cells: PackedByteArray = _walkable.get(chunk, PackedByteArray())
+	_walkable.erase(chunk)  # one owner while it's written; re-added as newest
+	if cells.is_empty():
+		cells.resize(CHUNK_SIZE * CHUNK_SIZE)
+		if _walkable.size() >= WALKABLE_CHUNKS:
+			_walkable.erase(_walkable.keys()[0])  # the oldest (insertion order)
+	cells[_walkable_index(tile)] = WALKABLE if walkable else BLOCKED
+	_walkable[chunk] = cells
+
+
+static func _chunk_of_tile(tile: Vector2i) -> Vector2i:
+	return Vector2i(floori(float(tile.x) / CHUNK_SIZE), floori(float(tile.y) / CHUNK_SIZE))
+
+
+static func _walkable_index(tile: Vector2i) -> int:
+	return posmod(tile.y, CHUNK_SIZE) * CHUNK_SIZE + posmod(tile.x, CHUNK_SIZE)
 
 
 static func _walkable_sample(sample: Dictionary) -> bool:

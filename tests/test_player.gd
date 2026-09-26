@@ -273,6 +273,18 @@ func _init() -> void:
 	world2._gen_mutex.unlock()
 	check(dry and Vector2(player2.tile() - lake).length() < 12.0 and world2.get_node("CameraRig").global_position == player2.position,
 		"teleporting onto water lands on the nearest dry tile (%s, %.1f tiles off)" % [player2.tile(), Vector2(player2.tile() - lake).length()])
+
+	# Walkability is kept per chunk, at most WALKABLE_CHUNKS of them (review
+	# W3); a dropped chunk is sampled again and gives the same answer.
+	world2._gen_mutex.lock()
+	var first_answer: bool = world2.is_walkable(lake)
+	for i in world2.WALKABLE_CHUNKS + 10:
+		world2._set_walkable(Vector2i(100000 + i * world2.CHUNK_SIZE, 0), true)
+	var dropped: bool = not world2._walkable.has(world2._chunk_of_tile(lake))
+	var again: bool = world2.is_walkable(lake)
+	world2._gen_mutex.unlock()
+	check(world2._walkable.size() == world2.WALKABLE_CHUNKS and dropped and again == first_answer and not first_answer,
+		"walkability cache holds at most %d chunks; a dropped one is sampled again the same (lake %s: %s)" % [world2.WALKABLE_CHUNKS, lake, again])
 	world2.queue_free()
 	await process_frame
 

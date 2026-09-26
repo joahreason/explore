@@ -123,6 +123,14 @@ func _init() -> void:
 			same = same and wg.sample(x, y)["shore_salinity"] == wg2.sample(x, y)["shore_salinity"]
 	check(same, "shore_salinity identical from a fresh WorldGen")
 
+	# Seed -1 (reachable as ?seed=-1) is configured like any other (review
+	# D2): it once matched the "not configured yet" sentinel and kept
+	# FastNoiseLite's defaults.
+	var minus_one := WorldGen.new()
+	minus_one.configure(-1)
+	check(minus_one._elev_base.frequency == wg._elev_base.frequency and minus_one._climate.seed == -1 + 3,
+		"seed -1 sets up the noise fields (elevation frequency %s, climate seed %d)" % [minus_one._elev_base.frequency, minus_one._climate.seed])
+
 	# 4. Water body labels don't depend on the order tiles are asked in
 	# (review D1): an enclosed sea sharing a 64x64 cell with open ocean once
 	# read as ocean if an ocean tile of that cell was asked first. Each case

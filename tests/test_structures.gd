@@ -163,6 +163,23 @@ func _init() -> void:
 
 
 func _check_scene(found: Array) -> void:
+	# Curve plans are built when the world starts, not lazily by whichever
+	# thread asks first: the "Go to" thread reads these same definitions
+	# (review C5).
+	await process_frame  # the tree is running, so add_child() runs _ready() at once
+	var lazy: Array = StructureSitesScript.DEFINITIONS + TerrainSurface.MATERIALS
+	for def in lazy:
+		def.curve_plan = null
+	var eager: Node2D = load("res://world.tscn").instantiate()
+	eager.world_seed = SEED
+	eager.changes_dir = ""
+	eager.threaded_generation = false
+	root.add_child(eager)  # runs _ready(); no frame, so no chunk work yet
+	var unbuilt: Array = lazy.filter(func(def): return def.curve_plan == null).map(func(def): return def.id)
+	eager.queue_free()
+	await process_frame
+	check(unbuilt.is_empty(), "every structure and terrain curve plan is built at startup (not yet: %s)" % [unbuilt])
+
 	var world: Node2D = load("res://world.tscn").instantiate()
 	world.world_seed = SEED
 	world.changes_dir = ""

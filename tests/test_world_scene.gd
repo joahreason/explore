@@ -76,6 +76,14 @@ func _init() -> void:
 	check(match_keys and world._loaded_placements.size() == world._loaded_chunks.size(), "after pan: markers track streamed chunks exactly")
 	check(world.resources_root.get_child_count() >= world._loaded_placements.size(), "markers parented under Resources")
 
+	# LOD hysteresis (review W5): a threshold must be passed by 5 % either way.
+	var steps := []
+	var step := 1
+	for zoom in [0.99, 0.94, 1.02, 1.06, 0.24, 0.23, 0.26, 0.27]:
+		step = CM._lod_step_for(zoom, step)
+		steps.append(step)
+	check(steps == [1, 2, 2, 1, 4, 8, 8, 4], "LOD switches only 5%% past a threshold, either way: zooms 0.99..0.27 give steps %s" % [steps])
+
 	# Zoom out past MAX_PLACEMENT_LOD_STEP: markers removed; back in: rebuilt.
 	var camera: Camera2D = world.get_viewport().get_camera_2d()
 	camera.zoom = Vector2(0.3, 0.3)

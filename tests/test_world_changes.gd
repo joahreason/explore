@@ -119,6 +119,13 @@ func _init() -> void:
 	var e = world3.get_resource_instance(target)
 	check(e.harvest_state == ResourceInstance.HARVEST_AVAILABLE and not world3._unchanged([target]).is_empty(),
 		"a stale change (key now holds another resource) never hides or harvests the new object")
+	# A closed browser tab never sends the close request (review W6): losing
+	# focus saves too.
+	world3.clock.minutes += 123.0
+	world3._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	var saved := WorldChanges.new()
+	saved.load_file(DIR + "/%d.json" % SEED, SEED)
+	check(is_equal_approx(saved.time_minutes, world3.clock.minutes), "losing focus saves the time (%.1f, clock %.1f)" % [saved.time_minutes, world3.clock.minutes])
 	world3.queue_free()
 	await process_frame
 

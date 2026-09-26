@@ -27,22 +27,45 @@ func _init() -> void:
 	root.add_child(world)
 	await process_frame
 
-	# Fade-in: a freshly streamed chunk starts transparent and fades in.
-	var faded := 0
+	# Fade-in (review C1): only label overlays fade. Terrain, markers and
+	# shadows are never modulated - their shaders drop modulate, and it
+	# would scale the sway and shadow data packed into their vertex colour.
 	var seen := {}
+	var modulated := 0
 	var deadline := Time.get_ticks_msec() + 20000
 	while seen.size() < 20 and Time.get_ticks_msec() < deadline:
 		await process_frame
 		for c in world._loaded_chunks:
 			if not seen.has(c):
 				seen[c] = true
-				faded += int(world._loaded_chunks[c].modulate.a < 1.0)
+				var markers = world._loaded_placements.get(c)
+				for node in [world._loaded_chunks[c], markers, markers.shadow_layer() if markers != null else null]:
+					modulated += int(node != null and node.modulate.a < 1.0)
+	world.flush_chunk_work()
+	world.set_view_mode(world.get_script().ViewMode.BASE_BIOME)
+	world.flush_chunk_work()
+	var spawn: Vector2 = world._player.position
+	world.teleport_player(Vector2(4000, 4000) * world.TILE_SIZE)
+	var fresh_overlays := 0
+	var faded := 0
+	deadline = Time.get_ticks_msec() + 20000
+	while fresh_overlays < 10 and Time.get_ticks_msec() < deadline:
+		await process_frame
+		for c in world._loaded_overlays:
+			if not seen.has(c):
+				seen[c] = true
+				fresh_overlays += 1
+				faded += int(world._loaded_overlays[c].modulate.a < 1.0)
 	world.flush_chunk_work()
 	await create_timer(world.FADE_IN_SEC + 0.2).timeout
 	var all_opaque := true
-	for c in world._loaded_chunks:
-		all_opaque = all_opaque and world._loaded_chunks[c].modulate.a == 1.0 and world._loaded_placements.get(c, world._loaded_chunks[c]).modulate.a == 1.0
-	check(faded == seen.size() and faded > 0 and all_opaque, "new chunks fade in (%d of %d caught mid-fade on arrival), all fully shown after %.1f s" % [faded, seen.size(), world.FADE_IN_SEC])
+	for c in world._loaded_overlays:
+		all_opaque = all_opaque and world._loaded_overlays[c].modulate.a == 1.0
+	check(modulated == 0 and seen.size() > 20 and faded == fresh_overlays and faded > 0 and all_opaque,
+		"new label overlays fade in (%d of %d caught mid-fade), fully shown after %.1f s; terrain, markers and shadows never modulated (%d)" % [faded, fresh_overlays, world.FADE_IN_SEC, modulated])
+	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
+	world.teleport_player(spawn)
+	world.flush_chunk_work()
 
 	# Shadows: per-resource data, and drawn only for resources that cast them.
 	var defs: Dictionary = world._definitions_by_id()
