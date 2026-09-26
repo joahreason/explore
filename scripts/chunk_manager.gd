@@ -4,14 +4,10 @@ extends Node2D
 ## Rendering here is a debug visualization only (flat colored tiles per
 ## WorldGen field sample) - the art tileset is intentionally not used yet;
 ## see scripts/world_gen.gd and scripts/terrain_surface.gd for the actual
-## generation/coloring logic. This file just handles chunk streaming.
-##
-## Phase 17 streaming: a chunk's content (image, markers, labels) is built by
-## a job, nearest chunk first, and shown by the main thread a few per frame,
-## so crossing a chunk boundary never stalls a frame on a whole row of
-## chunks. On desktop the jobs run on one worker thread; where threads are
-## unavailable (the web export has thread_support off) they run on the main
-## thread, a few small steps per frame (INLINE_BUDGET_USEC). Threading rule: everything
+## generation/coloring logic. This file ties the world's modules together
+## (review §4.1): ChunkStreamer decides which chunks to build and runs their
+## jobs (scripts/world/chunk_streamer.gd), ChunkBuilder builds each one's
+## content, ChunkPresenter shows it. Threading rule: everything
 ## generation touches - _world_gen (and its water topology cache), the
 ## generation caches, the view mode, ResourceManager's static noise caches,
 ## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex
@@ -21,7 +17,6 @@ extends Node2D
 
 const TerrainSurfaceScript := preload("res://scripts/terrain_surface.gd")
 const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
-const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
 const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const GameConstants := preload("res://scripts/game_constants.gd")
@@ -37,8 +32,10 @@ const NavigationScript := preload("res://scripts/world/navigation.gd")
 const ViewModesScript := preload("res://scripts/world/view_modes.gd")
 const GenerationContextScript := preload("res://scripts/world/generation_context.gd")
 const ChunkBuilderScript := preload("res://scripts/world/chunk_builder.gd")
+const ChunkStreamerScript := preload("res://scripts/world/chunk_streamer.gd")
+const ChunkPresenterScript := preload("res://scripts/world/chunk_presenter.gd")
 ## One material for every marker node: resource sprites sway in the wind by
-## their sway value (see _marker_colors()); other draws are unaffected.
+## their sway value (see ChunkPresenter.marker_colors()); other draws are unaffected.
 const SWAY_SHADER := preload("res://shaders/sway.gdshader")
 ## Cast shadows under sprites (their silhouettes, thrown by the sun or moon
 ## - SunShadow - and swaying with them); one material for every chunk.
@@ -70,28 +67,6 @@ var FARMLAND: ResourceDefinition:
 
 const TILE_SIZE := GameConstants.TILE_SIZE  # world pixels per tile (scripts/game_constants.gd)
 const CHUNK_SIZE := 16         # tiles per chunk edge
-const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
-const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
-
-## LOD: at low zoom, sample each chunk on a coarser grid (1 sample per
-## lod_step^2 tiles instead of per-tile) and let the Sprite2D's scale
-## stretch it back to the same world-space footprint - same idea as a
-## mipmap. Zoomed out means MORE chunks are needed to cover the screen, not
-## fewer, so without this every additional chunk still paid full per-tile
-## WorldGen.sample() cost (~30-40 noise calls each after all the biome-
-## variety fields) even though individual tiles aren't perceivable at that
-## zoom anyway. Steps must evenly divide CHUNK_SIZE.
-const LOD_THRESHOLDS := [
-	{"zoom": 1.0, "step": 1},
-	{"zoom": 0.5, "step": 2},
-	{"zoom": 0.25, "step": 4},
-	{"zoom": 0.0, "step": 8},
-]
-const LOD_HYSTERESIS := 0.05
-
-## Without a worker thread: time per frame spent on chunk job steps on the
-## main thread (at least one step per frame while any are queued).
-const INLINE_BUDGET_USEC := 5000
 ## Review W1: main-thread time per frame for a "Go to" search without threads.
 const TRAVEL_BUDGET_USEC := 4000
 ## Tile codes and shore shapes: scripts/world/terrain_codes.gd. Forwarded
@@ -112,11 +87,6 @@ const SHALLOW_DEPTH := TerrainCodes.SHALLOW_DEPTH
 const GRASS_GROUND := TerrainCodes.GRASS_GROUND
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
-## Seconds a newly streamed-in chunk's label overlay takes to fade in.
-const FADE_IN_SEC := 0.2
-## Time per frame spent turning finished chunk jobs into nodes (at least one).
-const APPLY_BUDGET_USEC := 3000
-
 ## Every view in one table - label, colouring, placement layers, flags:
 ## scripts/world/view_modes.gd (review A2).
 const ViewMode := ViewModesScript.ViewMode
@@ -150,17 +120,10 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 
 var _target: Node2D
 var _player: Node2D
-## Chunk -> the shown image padded with a 1-texel border (_padded_image()):
-## the border holds the loaded neighbours' edge tiles (_share_borders()), so
-## terrain.gdshader can blend ground across chunk borders.
-var _chunk_images: Dictionary = {}
 ## Sleeping in a camp tent (enter_tent()): the bouncing tent standing in
-## for its marker (session.tent_tile), which _marker_node() leaves out.
+## for its marker (session.tent_tile), which ChunkPresenter.marker_node() leaves out.
 var _tent_effect: Node2D
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
-var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
-var _loaded_overlays: Dictionary = {} # Vector2i chunk -> Node2D (biome overlay), only in a label view
-var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource markers), only in a placement view
 ## The player's session: clock, saved changes, tent (WorldSession). Its
 ## changes are written on the main thread under _ctx.mutex, read by
 ## generation under it and by marker building on the main thread.
@@ -171,6 +134,11 @@ var _ctx: GenerationContextScript = GenerationContextScript.new()
 ## Builds each chunk job's image, label grids and placements as plain data:
 ## scripts/world/chunk_builder.gd.
 var _builder: ChunkBuilderScript = ChunkBuilderScript.new(_ctx)
+## Which chunks to build, their jobs and the worker thread (started in
+## _ready()); and what is shown of them (made in _ready(), once the scene
+## tree is there).
+var _streamer: ChunkStreamerScript = ChunkStreamerScript.new(_builder, _ctx, _camera_view, _show_chunk, _hide_chunk)
+var _presenter: ChunkPresenterScript
 ## In-game time (session.clock): DayNight tints the world by it and the
 ## clock label shows it.
 var clock:
@@ -182,10 +150,6 @@ var wind = WindScript.new()
 var sway_material := ShaderMaterial.new()
 var shadow_material := ShaderMaterial.new()
 var terrain_material := ShaderMaterial.new()
-## Polish pass 2: the in-game day the sprites' season colours were last
-## drawn for; markers are redrawn when it changes (_update_seasons()).
-var _season_day: int = -1
-var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown ChunkBuilder.placement_chunk() data, to redraw markers after a change
 ## The view and the Debug views' resource live on the chunk builder, which
 ## generation reads them from; set them under _ctx.mutex.
 var _debug_resource: ResourceDefinition:
@@ -195,26 +159,6 @@ var _view_mode: ViewMode:
 	get: return _builder.view_mode
 	set(value): _builder.view_mode = value
 var _sprite_images: Dictionary = {}  # sprite_texture -> its Image, for _sprite_covers()
-var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
-var _last_load_radius: int = -1
-var _last_lod_step: int = -1
-
-# Chunk jobs (see the streaming note at the top). _epoch is bumped by a view
-# or LOD change; a loaded chunk whose _shown_epoch differs is stale and gets
-# rebuilt. Only the main thread writes _epoch (under _queue_mutex).
-var _epoch: int = 0
-var _shown_epoch: Dictionary = {}   # Vector2i chunk -> epoch its content was built for
-var _jobs_dirty: bool = false       # rebuild the job list on the next _refresh_streaming()
-var _jobs: Array = []               # [chunk, epoch, lod step, area], nearest last (popped from the back)
-var _in_flight: Dictionary = {}     # chunk -> epoch of a job taken but not yet applied
-var _results: Array = []            # finished job data for the main thread
-var _ready_results: Array = []      # main thread: taken from _results, not yet applied
-var _inline_job: Dictionary = {}     # main thread without a worker: the job being stepped (see _run_inline_steps)
-var _queue_mutex := Mutex.new()     # guards _jobs, _in_flight, _results, _epoch writes, _stop_worker
-var _semaphore := Semaphore.new()
-var _worker: Thread
-var _stop_worker: bool = false
-
 ## "Go to biome" (travel_to_biome): searches run on their own thread with
 ## their own WorldGen copy, so they share nothing with chunk generation.
 signal biome_travel_finished(biome: String, found: bool, cancelled: bool)
@@ -229,8 +173,6 @@ var _finder_seed: int = 0
 var _finder_result: Variant = null  # written by the search thread, read after it finishes
 var _finder_search: RefCounted  # a search stepped from _process() where there's no thread (web)
 var _finder_cancel: bool = false
-var _longest_step_usec := 0  # debug overlay: since take_perf_counters(), under _queue_mutex
-var _chunks_shown := 0  # debug overlay: chunks applied so far
 var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
 var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
 
@@ -241,6 +183,9 @@ func _ready() -> void:
 	terrain_material.shader = TERRAIN_SHADER
 	for material in [sway_material, shadow_material, terrain_material]:
 		GameConstants.apply_to(material)
+	_presenter = ChunkPresenterScript.new(
+		{"chunks": chunks_root, "overlay": overlay_root, "resources": resources_root, "shadows": shadows_root},
+		{"terrain": terrain_material, "sway": sway_material, "shadow": shadow_material}, session, _builder)
 	world_seed = _resolve_world_seed()
 	if world_gen_params != null:
 		_ctx.world_gen = world_gen_params
@@ -265,10 +210,8 @@ func _ready() -> void:
 		if _target.has_method("snap_to_player"):
 			_target.snap_to_player()
 
-	if threaded_generation and _threads_available():
-		_worker = Thread.new()
-		_worker.start(_worker_loop)
-	_refresh_streaming()
+	_streamer.start(threaded_generation and _threads_available())
+	_streamer.refresh()
 
 
 func _exit_tree() -> void:
@@ -276,14 +219,7 @@ func _exit_tree() -> void:
 		_finder_cancel = true
 		_finder_thread.wait_to_finish()
 		_finder_thread = null
-	if _worker == null:
-		return
-	_queue_mutex.lock()
-	_stop_worker = true
-	_queue_mutex.unlock()
-	_semaphore.post()
-	_worker.wait_to_finish()
-	_worker = null
+	_streamer.stop()
 
 
 ## Web only: a "?seed=" query param overrides the exported world_seed - set
@@ -341,9 +277,7 @@ func regenerate(seed_text: String) -> void:
 	_load_gameplay_state()
 	_ctx.mutex.unlock()
 
-	for c in _loaded_chunks.keys():
-		_unload_chunk(c)
-	_invalidate_chunks()
+	_streamer.unload_all()
 	_finder_cancel = true  # a running search is looking at the old world
 	_travel_visited.clear()
 	if _target and _target.has_method("snap_to_player"):
@@ -380,7 +314,7 @@ func reload_content() -> int:
 	_ctx.clear()
 	_ctx.mutex.unlock()
 
-	_invalidate_chunks()
+	_streamer.invalidate()
 	print("Reloaded %d content files from %s" % [paths.size(), CONTENT_DIR])
 	return paths.size()
 
@@ -520,7 +454,7 @@ func set_view_mode(mode: ViewMode) -> void:
 	_ctx.mutex.lock()
 	_view_mode = mode
 	_ctx.mutex.unlock()
-	_invalidate_chunks()
+	_streamer.invalidate()
 	view_changed.emit(mode)
 
 
@@ -539,7 +473,7 @@ func _process(delta: float) -> void:
 	terrain_material.set_shader_parameter("wave_dir", WindScript.direction_at(clock.minutes))
 	var grass: Color = SeasonsScript.tint("grass", SeasonsScript.year_fraction(clock))
 	terrain_material.set_shader_parameter("grass_tint", Vector4(grass.r, grass.g, grass.b, grass.a))
-	_update_seasons()
+	_presenter.update_seasons()
 	if save_clock:
 		_save_gameplay_state()
 	if _finder_thread != null and not _finder_thread.is_alive():
@@ -551,116 +485,43 @@ func _process(delta: float) -> void:
 			_finder_result = _finder_search.result
 		_finder_search = null
 		_finish_biome_travel()
-	_refresh_streaming()
-	if _worker == null:
-		_run_inline_steps(Time.get_ticks_usec() + INLINE_BUDGET_USEC)
-	_apply_results(APPLY_BUDGET_USEC)
-
-
-## Keeps the job list in step with the camera: a LOD change makes every
-## loaded chunk stale, a new center or radius changes which chunks are wanted.
-func _refresh_streaming() -> void:
-	var lod_step := _current_lod_step()
-	if lod_step != _last_lod_step:
-		_last_lod_step = lod_step
-		_invalidate_chunks()
-
-	var center := _chunk_of(_target.global_position if _target else Vector2.ZERO)
-	var load_radius := _current_load_radius()
-	if center == _last_center and load_radius == _last_load_radius and not _jobs_dirty:
-		return
-	_last_center = center
-	_last_load_radius = load_radius
-	_update_chunks(center, load_radius)
-
-
-## View or LOD changed: every loaded chunk is stale. It keeps showing its old
-## content until its rebuild (queued with the missing chunks) replaces it.
-func _invalidate_chunks() -> void:
-	_queue_mutex.lock()
-	_epoch += 1
-	_queue_mutex.unlock()
-	_jobs_dirty = true
+	_streamer.process()
 
 
 ## Tests and benchmarks: finishes every chunk job for the current camera,
-## view and LOD now (on this thread, alongside the worker) and applies the
-## results, as if enough frames had passed. Afterwards the worker is idle
-## until something changes, so generation functions are safe to call.
+## view and LOD now and applies the results (ChunkStreamer.flush()).
+## Afterwards the worker is idle until something changes, so generation
+## functions are safe to call.
 func flush_chunk_work() -> void:
-	while true:
-		_refresh_streaming()
-		while not _inline_job.is_empty():
-			if _step_job(_inline_job):
-				_inline_job = {}
-		while _run_next_job():
-			pass
-		_apply_results(-1)
-		if not has_pending_chunks():
-			return
-		OS.delay_usec(200)  # the worker is finishing a chunk
+	_streamer.flush()
 
 
-## The debug overlay's counters (review W4): the longest job step since the
-## last call (then reset), chunks queued or being built, and chunks shown
-## so far.
+## The debug overlay's counters (review W4, ChunkStreamer).
 func take_perf_counters() -> Dictionary:
-	_queue_mutex.lock()
-	var counters := {"longest_step_usec": _longest_step_usec, "queued": _jobs.size() + _in_flight.size(), "shown": _chunks_shown}
-	_longest_step_usec = 0
-	_queue_mutex.unlock()
-	return counters
+	return _streamer.take_perf_counters()
 
 
 func has_pending_chunks() -> bool:
-	_queue_mutex.lock()
-	var busy := not (_jobs.is_empty() and _in_flight.is_empty() and _results.is_empty())
-	_queue_mutex.unlock()
-	return busy or not _ready_results.is_empty() or not _inline_job.is_empty() or _jobs_dirty
+	return _streamer.has_pending()
+
+
+## What the streamer loads around: the target's position (the origin
+## without one, as the initial load always did), the zoom and the viewport.
+func _camera_view() -> Array:
+	return [_target.global_position if _target else Vector2.ZERO, _current_zoom(), get_viewport().get_visible_rect().size]
+
+
+func _show_chunk(data: Dictionary) -> void:
+	_presenter.show_chunk(data)
+
+
+func _hide_chunk(chunk_coord: Vector2i) -> void:
+	_presenter.unload_chunk(chunk_coord)
 
 
 func _current_zoom() -> float:
 	var cam := get_viewport().get_camera_2d()
 	return cam.zoom.x if cam else 4.0
-
-
-## Enough chunks to cover the current camera view (whatever its zoom), plus
-## a floor so a fully zoomed-in camera still has a comfortable buffer.
-func _current_load_radius() -> int:
-	var zoom := _current_zoom()
-	var viewport_size := get_viewport().get_visible_rect().size
-	var half_extent_px := (viewport_size / zoom) * 0.5
-	var half_diagonal_px := half_extent_px.length()
-	var chunk_px := CHUNK_SIZE * TILE_SIZE
-	var needed := ceili(half_diagonal_px / chunk_px) + 1
-	return maxi(MIN_LOAD_RADIUS, needed)
-
-
-func _current_lod_step() -> int:
-	return _lod_step_for(_current_zoom(), _last_lod_step)
-
-
-## The LOD step for `zoom`, coming from step `current` (-1: none yet). A
-## threshold must be passed by LOD_HYSTERESIS (5 %) before the step changes,
-## so a pinch hovering at a threshold doesn't rebuild every loaded chunk on
-## each crossing (review W5).
-static func _lod_step_for(zoom: float, current: int) -> int:
-	var plain := _lod_step_at(zoom)
-	if current < 0 or plain == current:
-		return plain
-	return _lod_step_at(zoom / (1.0 + LOD_HYSTERESIS) if plain < current else zoom / (1.0 - LOD_HYSTERESIS))
-
-
-static func _lod_step_at(zoom: float) -> int:
-	for entry in LOD_THRESHOLDS:
-		if zoom >= entry["zoom"]:
-			return entry["step"]
-	return 1
-
-
-func _chunk_of(world_pos: Vector2) -> Vector2i:
-	var tile := Vector2i(floori(world_pos.x / TILE_SIZE), floori(world_pos.y / TILE_SIZE))
-	return Vector2i(floori(float(tile.x) / CHUNK_SIZE), floori(float(tile.y) / CHUNK_SIZE))
 
 
 ## Driven by CameraRig's "info_clicked" signal (a right click / long press) - samples the single clicked tile fresh (bypassing the topology
@@ -689,294 +550,6 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	_inspector_panel.show_info(tile, sample, classified, resource, deposits, farming, shade, ground.display_name if ground != null else "", debug_lines, structure)
 
 
-## Unloads chunks beyond load_radius + UNLOAD_BUFFER (hysteresis) and queues
-## a job for every chunk within load_radius that is missing or stale, nearest
-## first. A chunk whose job for the current epoch is already running isn't
-## queued again.
-func _update_chunks(center: Vector2i, load_radius: int) -> void:
-	_jobs_dirty = false
-	var unload_radius := load_radius + UNLOAD_BUFFER
-	for c in _loaded_chunks.keys():
-		if Vector2(c - center).length() > unload_radius:
-			_unload_chunk(c)
-
-	var wanted: Array[Vector2i] = []
-	for cy in range(center.y - load_radius, center.y + load_radius + 1):
-		for cx in range(center.x - load_radius, center.x + load_radius + 1):
-			var c := Vector2i(cx, cy)
-			if _shown_epoch.get(c, -1) != _epoch:
-				wanted.append(c)
-	wanted.sort_custom(_farther_first.bind(center))
-	var area := (2 * load_radius + 1) * (2 * load_radius + 1)
-
-	_queue_mutex.lock()
-	_jobs.clear()
-	for c in wanted:
-		if _in_flight.get(c, -1) != _epoch:
-			_jobs.append([c, _epoch, _last_lod_step, area])
-	var has_jobs := not _jobs.is_empty()
-	_queue_mutex.unlock()
-	if has_jobs and _worker != null:
-		_semaphore.post()
-
-
-## Job order: farthest from center first (jobs are popped from the back), ties
-## by position so the order is deterministic.
-static func _farther_first(a: Vector2i, b: Vector2i, center: Vector2i) -> bool:
-	var da := (a - center).length_squared()
-	var db := (b - center).length_squared()
-	if da != db:
-		return da > db
-	return a.y > b.y or (a.y == b.y and a.x > b.x)
-
-
-## Takes the nearest queued chunk and runs its whole job (every step),
-## leaving the data in _results for _apply_results() - the worker's and
-## flush_chunk_work()'s way. Returns false when there was nothing to take
-## (or the worker is stopping).
-func _run_next_job() -> bool:
-	var job := _take_job()
-	if job.is_empty():
-		return false
-	var state := _new_job_state(job, false)
-	while not _step_job(state):
-		pass
-	return true
-
-
-## Main thread without a worker: runs job steps (taking new jobs as needed)
-## until the deadline - at least one step, so a frame spends at most about
-## one step past its budget.
-func _run_inline_steps(deadline: int) -> void:
-	while true:
-		if _inline_job.is_empty():
-			var job := _take_job()
-			if job.is_empty():
-				return
-			_inline_job = _new_job_state(job, true)
-		if _step_job(_inline_job):
-			_inline_job = {}
-		if Time.get_ticks_usec() >= deadline:
-			return
-
-
-## Pops the nearest queued job for the current epoch and marks it in flight
-## (jobs queued before a view/LOD change are dropped - their rebuild is
-## queued too); [] if there is none, or the worker is stopping.
-func _take_job() -> Array:
-	var job: Array = []
-	_queue_mutex.lock()
-	while not _jobs.is_empty() and not _stop_worker:
-		var candidate: Array = _jobs.pop_back()
-		if candidate[1] == _epoch:
-			_in_flight[candidate[0]] = candidate[1]
-			job = candidate
-			break
-	_queue_mutex.unlock()
-	return job
-
-
-## A taken job ([chunk, epoch, lod step, area]) about to run: its data (filled
-## by the steps) and step list (planned by the first _step_job(); fine =
-## the main-thread fallback's finer steps, see _chunk_job_steps).
-func _new_job_state(job: Array, fine: bool) -> Dictionary:
-	_ctx.mutex.lock()  # the image format follows _view_mode (review C2)
-	var image := _builder.new_image(job[2])
-	_ctx.mutex.unlock()
-	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image}
-	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
-
-
-## Runs one step of a job (holding _ctx.mutex). Returns true when the job
-## is over: finished, with its data queued in _results, or abandoned because
-## a view/LOD/seed change made it stale (its rebuild is queued already).
-func _step_job(state: Dictionary) -> bool:
-	var data: Dictionary = state["data"]
-	_queue_mutex.lock()
-	var stale: bool = data["epoch"] != _epoch
-	_queue_mutex.unlock()
-	if not stale:
-		_ctx.mutex.lock()
-		_ctx.gen_area = data["area"]
-		if not state["planned"]:
-			state["steps"] = _builder.job_steps(data, state["fine"])
-			state["planned"] = true
-		var steps: Array = state["steps"]
-		if state["next"] < steps.size():
-			var began := Time.get_ticks_usec()
-			(steps[state["next"]] as Callable).call()
-			state["next"] += 1
-			var took := Time.get_ticks_usec() - began
-			_queue_mutex.lock()
-			_longest_step_usec = maxi(_longest_step_usec, took)
-			_queue_mutex.unlock()
-		_ctx.mutex.unlock()
-		if state["next"] < steps.size():
-			return false
-
-	_queue_mutex.lock()
-	if stale:
-		if _in_flight.get(data["chunk"], -1) == data["epoch"]:
-			_in_flight.erase(data["chunk"])
-	else:
-		_results.append(data)
-	_queue_mutex.unlock()
-	return true
-
-
-func _worker_loop() -> void:
-	while true:
-		_semaphore.wait()
-		_queue_mutex.lock()
-		var stop := _stop_worker
-		_queue_mutex.unlock()
-		if stop:
-			return
-		while _run_next_job():
-			pass
-
-
-## Main thread: shows finished jobs until budget_usec is spent (at least one;
-## negative = no limit). A result built for an older view/LOD, or for a chunk
-## that has since left the unload radius, is dropped.
-func _apply_results(budget_usec: int) -> void:
-	_queue_mutex.lock()
-	_ready_results.append_array(_results)
-	_results.clear()
-	_queue_mutex.unlock()
-
-	var deadline := Time.get_ticks_usec() + budget_usec
-	var i := 0
-	while i < _ready_results.size():
-		var data: Dictionary = _ready_results[i]
-		i += 1
-		var chunk_coord: Vector2i = data["chunk"]
-		_queue_mutex.lock()
-		if _in_flight.get(chunk_coord, -1) == data["epoch"]:
-			_in_flight.erase(chunk_coord)
-		_queue_mutex.unlock()
-		if data["epoch"] != _epoch or Vector2(chunk_coord - _last_center).length() > _last_load_radius + UNLOAD_BUFFER:
-			continue
-		_apply_chunk_data(data)
-		_chunks_shown += 1
-		if budget_usec >= 0 and Time.get_ticks_usec() >= deadline:
-			break
-	_ready_results = _ready_results.slice(i)
-
-
-## Main thread: shows one finished job - creates the chunk's Sprite2D or
-## swaps its texture, and replaces its label overlay and marker node.
-func _apply_chunk_data(data: Dictionary) -> void:
-	var chunk_coord: Vector2i = data["chunk"]
-	var lod_step: int = data["lod"]
-	var base := chunk_coord * CHUNK_SIZE
-	var sprite: Sprite2D = _loaded_chunks.get(chunk_coord)
-	var fresh := sprite == null
-	if fresh:
-		sprite = Sprite2D.new()
-		sprite.centered = false
-		sprite.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		sprite.material = terrain_material
-		chunks_root.add_child(sprite)
-		_loaded_chunks[chunk_coord] = sprite
-	var padded := _padded_image(data["image"])
-	_chunk_images[chunk_coord] = padded
-	_share_borders(chunk_coord)
-	sprite.texture = ImageTexture.create_from_image(padded)
-	sprite.region_enabled = true
-	sprite.region_rect = Rect2(1, 1, padded.get_width() - 2, padded.get_height() - 2)
-	sprite.scale = Vector2(TILE_SIZE * lod_step, TILE_SIZE * lod_step)
-	_shown_epoch[chunk_coord] = data["epoch"]
-
-	_free_chunk_node(_loaded_overlays, chunk_coord)
-	if data.has("overlay"):
-		var overlay := BiomeOverlayChunkScript.new()
-		overlay.setup(data["overlay"][0], CHUNK_SIZE, TILE_SIZE, data["overlay"][1])
-		overlay.position = sprite.position
-		overlay_root.add_child(overlay)
-		_loaded_overlays[chunk_coord] = overlay
-
-	_free_chunk_node(_loaded_placements, chunk_coord)
-	_chunk_placements.erase(chunk_coord)
-	if data.has("placements"):
-		_chunk_placements[chunk_coord] = data["placements"]
-		var markers := _marker_node(base, data["placements"])
-		resources_root.add_child(markers)
-		_loaded_placements[chunk_coord] = markers
-	# Polish: a label overlay that newly streams in fades in (FADE_IN_SEC)
-	# instead of popping; rebuilding one already on screen (view change)
-	# swaps in place. Only overlays: the terrain, sway and shadow shaders
-	# replace COLOR (so modulate never shows), and sway.gdshader and
-	# cast_shadow.gdshader read data packed into the vertex colour, which
-	# modulate would scale - sprites bent like grass mid-fade (review C1).
-	var overlay_node = _loaded_overlays.get(chunk_coord)
-	if fresh and overlay_node != null:
-		overlay_node.modulate.a = 0.0
-		overlay_node.create_tween().tween_property(overlay_node, "modulate:a", 1.0, FADE_IN_SEC)
-
-
-## A chunk image with a 1-texel border, its edge tiles repeated there until
-## a neighbour fills it (_share_borders()); the sprite shows only the inside
-## (region_rect).
-static func _padded_image(img: Image) -> Image:
-	var n := img.get_width()
-	var padded := Image.create(n + 2, n + 2, false, img.get_format())
-	padded.blit_rect(img, Rect2i(0, 0, n, n), Vector2i(1, 1))
-	for i in range(-1, n + 1):
-		var c := clampi(i, 0, n - 1)
-		padded.set_pixel(i + 1, 0, img.get_pixel(c, 0))
-		padded.set_pixel(i + 1, n + 1, img.get_pixel(c, n - 1))
-		padded.set_pixel(0, i + 1, img.get_pixel(0, c))
-		padded.set_pixel(n + 1, i + 1, img.get_pixel(n - 1, c))
-	return padded
-
-
-const NEIGHBOUR_STEPS: Array[Vector2i] = [Vector2i(-1, -1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(-1, 0), Vector2i(1, 0), Vector2i(-1, 1), Vector2i(0, 1), Vector2i(1, 1)]
-
-
-## Main thread, when a chunk is shown: fills its border from each loaded
-## neighbour of the same size (LOD) and theirs from it, re-uploading the
-## neighbours' textures - so tile blending carries across chunk borders.
-func _share_borders(chunk_coord: Vector2i) -> void:
-	var img: Image = _chunk_images[chunk_coord]
-	var n := img.get_width() - 2
-	for d in NEIGHBOUR_STEPS:
-		var other: Image = _chunk_images.get(chunk_coord + d)
-		if other == null or other.get_width() != img.get_width():
-			continue
-		_copy_border(img, other, d, n)
-		_copy_border(other, img, -d, n)
-		var sprite: Sprite2D = _loaded_chunks.get(chunk_coord + d)
-		if sprite != null and sprite.texture is ImageTexture:
-			(sprite.texture as ImageTexture).update(other)
-
-
-## Copies into `dst`'s border on side `d` the matching edge tiles of `src`,
-## the neighbour on that side (n = tiles per side).
-static func _copy_border(dst: Image, src: Image, d: Vector2i, n: int) -> void:
-	var xs := [0] if d.x < 0 else ([n + 1] if d.x > 0 else range(1, n + 1))
-	var ys := [0] if d.y < 0 else ([n + 1] if d.y > 0 else range(1, n + 1))
-	for y in ys:
-		for x in xs:
-			dst.set_pixel(x, y, src.get_pixel(x - d.x * n, y - d.y * n))
-
-
-func _free_chunk_node(nodes: Dictionary, chunk_coord: Vector2i) -> void:
-	if nodes.has(chunk_coord):
-		nodes[chunk_coord].queue_free()
-		nodes.erase(chunk_coord)
-
-
-func _unload_chunk(chunk_coord: Vector2i) -> void:
-	_free_chunk_node(_loaded_chunks, chunk_coord)
-	_chunk_images.erase(chunk_coord)
-	_shown_epoch.erase(chunk_coord)
-	_free_chunk_node(_loaded_overlays, chunk_coord)
-	_free_chunk_node(_loaded_placements, chunk_coord)
-	_chunk_placements.erase(chunk_coord)
-
-
 ## Phase 15: the gameplay record (ResourceInstance) of a placed instance -
 ## the one place views, the inspector and later gameplay get an instance's
 ## quality, size, health and harvest state from, with the player's changes
@@ -996,50 +569,6 @@ func get_resource_instance(inst: Dictionary):
 ## Placement's single definition) - WorldContent.definitions_by_id().
 func _definitions_by_id() -> Dictionary:
 	return CONTENT.definitions_by_id()
-
-
-## Main thread: one marker node drawing a chunk's ChunkBuilder.placement_chunk() layers,
-## minus the instances the player harvested (Phase 16) - filtered here, when
-## the node is built, so a job generated before a harvest can't show it.
-func _marker_node(base: Vector2i, placements: Array) -> Node2D:
-	var markers := ResourceMarkerChunkScript.new()
-	markers.material = sway_material
-	for entry in placements:
-		var layer: Array = entry[0]
-		var source: Resource = layer[0]
-		if source == null:  # structure parts (ChunkBuilder.placement_chunk()): each carries its sheet tile and tint
-			var sprites := {}
-			for inst in entry[1]:
-				sprites[inst["id"]] = {"tile": inst["sheet"], "size": 1.0}
-			var parts: Array = entry[1]
-			if session.tent_tile != null:  # the occupied tent is drawn by _tent_effect
-				parts = parts.filter(func(p): return Vector2i((p["position"] as Vector2).floor()) != session.tent_tile)
-			# Structures stay on the grid: each part stands on its tile's
-			# bottom middle rather than a jittered pivot.
-			parts = parts.map(func(p):
-				var part: Dictionary = p.duplicate()
-				part["pivot"] = (p["position"] as Vector2).floor() + Vector2(0.5, 1.0)
-				return part)
-			markers.add_instances(parts, base, TILE_SIZE, 1.0, {}, ResourceMarkerChunkScript.Shape.SPRITE, sprites)
-			continue
-		var as_sprites: bool = layer[1] == ResourceMarkerChunkScript.Shape.SPRITE
-		var fallback: int = layer[2] if layer.size() > 2 else ResourceMarkerChunkScript.Shape.TRIANGLE
-		var first: int = markers.instance_count()
-		var kept := _unchanged(entry[1])
-		markers.add_instances(kept, base, TILE_SIZE, source.minimum_spacing, _marker_colors(source, as_sprites), layer[1], _sprite_tiles(source), fallback)
-		if as_sprites and source is ResourceGuild:
-			var defs := _definitions_by_id()
-			var casts: Array[bool] = []
-			for inst in kept:
-				casts.append(defs[inst["id"]].casts_shadow)
-			if casts.has(true):
-				markers.add_shadows(first, shadow_material, casts)
-	markers.position = Vector2(base.x * TILE_SIZE, base.y * TILE_SIZE)
-	var shadows: Node2D = markers.shadow_layer()
-	if shadows != null:
-		shadows.position = markers.position
-		shadows_root.add_child(shadows)
-	return markers
 
 
 ## The placed resource instance under a click (tile units), or {} if none:
@@ -1109,7 +638,7 @@ func _drawn_near(tile: Vector2i) -> Array:
 	var center := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
 	for dy in range(-1, 2):
 		for dx in range(-1, 2):
-			for entry in _chunk_placements.get(center + Vector2i(dx, dy), []):
+			for entry in _presenter.chunk_placements.get(center + Vector2i(dx, dy), []):
 				if entry[0][0] == null:  # skip the structure-parts layer
 					continue
 				var near := (entry[1] as Array).filter(func(inst): return rect.has_point(Vector2i((inst["position"] as Vector2).floor())))
@@ -1158,7 +687,7 @@ func sprite_drawn(inst: Dictionary) -> Array:
 	if definition == null or definition.sprite_tile.x < 0:
 		return []
 	var sprite := {"tile": definition.sprite_tile, "size": definition.sprite_size, "texture": definition.sprite_texture}
-	return ResourceMarkerChunkScript.sprite_draw(sprite, (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()) + [sway_alpha(definition.sway)]
+	return ResourceMarkerChunkScript.sprite_draw(sprite, (ResourceMarkerChunkScript.pivot(inst) * TILE_SIZE).round()) + [ChunkPresenterScript.sway_alpha(definition.sway)]
 
 
 ## A sprite texture's pixels (cached), for hit tests and outlines.
@@ -1166,45 +695,6 @@ func sprite_image(texture: Texture2D) -> Image:
 	if not _sprite_images.has(texture):
 		_sprite_images[texture] = texture.get_image()
 	return _sprite_images[texture]
-
-
-## Instance id -> marker color for a ResourceDefinition or ResourceGuild:
-## debug_color, or sprite_color for members drawn as sprites - its alpha
-## then carries the member's sway (sway_alpha()).
-func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
-	var colors := {}
-	for member in (source.members if source is ResourceGuild else [source]):
-		if as_sprites and member.sprite_tile.x >= 0:
-			colors[member.id] = sprite_fill(member)
-		else:
-			colors[member.id] = member.debug_color
-	return colors
-
-
-## The colour a resource's sprite is drawn with in the World view: its
-## sprite_color in today's season colour (Seasons, its season_class), with
-## its sway in the alpha (sway_alpha()).
-func sprite_fill(definition: ResourceDefinition) -> Color:
-	var c: Color = SeasonsScript.apply(definition.sprite_color, SeasonsScript.tint(definition.season_class, SeasonsScript.year_fraction(clock)))
-	c.a = sway_alpha(definition.sway)
-	return c
-
-
-## A sprite's draw-colour alpha carrying its sway to the sway shader
-## (shaders/sway.gdshader turns it back into sway and draws opaque):
-## 1 - sway / 2, so opaque (alpha 1) draws never sway.
-static func sway_alpha(sway: float) -> float:
-	return 1.0 - clampf(sway, 0.0, 1.0) * 0.5
-
-
-## Instance id -> {"tile", "size"} (resource_marker_chunk.gd), for members
-## that have a sprite.
-func _sprite_tiles(source: Resource) -> Dictionary:
-	var tiles := {}
-	for member in (source.members if source is ResourceGuild else [source]):
-		if member.sprite_tile.x >= 0:
-			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size, "texture": member.sprite_texture}
-	return tiles
 
 
 ## Phase 16: the instances of a placement list the player hasn't harvested.
@@ -1243,7 +733,7 @@ func _harvest(inst: Dictionary):
 		_save_gameplay_state()
 	_ctx.mutex.unlock()
 	if entity != null:
-		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
+		_presenter.redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
 		_spawn_harvest_effect(entity)
 	return entity
 
@@ -1259,22 +749,11 @@ func _spawn_harvest_effect(entity) -> void:
 	var texture: Texture2D = ResourceMarkerChunkScript.sprite_texture(definition.sprite_tile) if has_sprite else null
 	if has_sprite and definition.sprite_texture != null:
 		texture = definition.sprite_texture
-	var color: Color = sprite_fill(definition) if has_sprite else definition.debug_color
+	var color: Color = _presenter.sprite_fill(definition) if has_sprite else definition.debug_color
 	effect.setup(texture, color, definition.sprite_size * ResourceMarkerChunkScript.SPRITE_SIZE, entity.key, definition.sprite_texture != null)
 	effect.position = (ResourceMarkerChunkScript.pivot({"position": entity.world_position}) * TILE_SIZE).round()
 	effect.name = "HarvestEffect"
 	resources_root.add_child(effect)
-
-
-## Rebuilds one loaded chunk's marker node from its stored placements (no
-## generation), e.g. after a harvest.
-func _redraw_markers(chunk_coord: Vector2i) -> void:
-	if not _chunk_placements.has(chunk_coord):
-		return
-	_free_chunk_node(_loaded_placements, chunk_coord)
-	var markers := _marker_node(chunk_coord * CHUNK_SIZE, _chunk_placements[chunk_coord])
-	resources_root.add_child(markers)
-	_loaded_placements[chunk_coord] = markers
 
 
 ## Phase 18 (developer tooling): whether a view is one of the Debug views,
@@ -1311,7 +790,7 @@ func set_debug_resource(definition: ResourceDefinition) -> void:
 	_debug_resource = definition
 	_ctx.mutex.unlock()
 	if is_debug_view():
-		_invalidate_chunks()
+		_streamer.invalidate()
 	debug_resource_changed.emit(definition)
 
 
@@ -1477,7 +956,7 @@ func enter_tent(tile: Vector2i) -> void:
 	session.tent_tile = tile
 	_player.visible = false
 	var chunk := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
-	_redraw_markers(chunk)
+	_presenter.redraw_markers(chunk)
 	var def: StructureDefinition = site["definition"]
 	var tent_sheet := Vector2i.ZERO
 	for part in def.parts:
@@ -1513,7 +992,7 @@ func _leave_tent() -> void:
 	_tent_effect = null
 	if _player:
 		_player.visible = true
-	_redraw_markers(Vector2i((Vector2(tile) / CHUNK_SIZE).floor()))
+	_presenter.redraw_markers(Vector2i((Vector2(tile) / CHUNK_SIZE).floor()))
 
 
 ## Moves the player to the walkable tile nearest `world_pos` (its centre if
@@ -1557,22 +1036,6 @@ func find_path(from: Vector2i, to: Vector2i, near: bool = false) -> Array[Vector
 ## markers there's nothing to pick. No "entity" or display names.
 func hover_target(point: Vector2) -> Dictionary:
 	return _pick(point, _drawn_near(Vector2i(point.floor())), false)
-
-
-## Polish pass 2: sprites take their season colour (Seasons, per
-## ResourceDefinition.season_class) when their markers are built; once per
-## in-game day every loaded chunk's markers are redrawn from their stored
-## placements (no generation), so colours drift through the year. Only the
-## World view draws sprites.
-func _update_seasons() -> void:
-	var day: int = clock.day_index()
-	if day == _season_day:
-		return
-	_season_day = day
-	if _view_mode != ViewMode.RESOURCES:
-		return
-	for chunk in _chunk_placements.keys():
-		_redraw_markers(chunk)
 
 
 ## Polish pass 2 (AmbientParticles): the environment at a tile for the
@@ -1689,3 +1152,62 @@ func _instance_quality(inst: Dictionary) -> float:
 
 func _debug_values(wx: int, wy: int, sample: Dictionary = {}) -> Dictionary:
 	return _builder.debug_values(wx, wy, sample)
+
+## Forwarded for the tests until §4.1 step 9 (ChunkStreamer, ChunkPresenter).
+const FADE_IN_SEC := ChunkPresenterScript.FADE_IN_SEC
+var _worker: Thread:
+	get: return _streamer._worker
+var _epoch: int:
+	get: return _streamer._epoch
+var _shown_epoch: Dictionary:
+	get: return _streamer._shown_epoch
+var _loaded_chunks: Dictionary:
+	get: return _presenter.loaded_chunks
+var _loaded_overlays: Dictionary:
+	get: return _presenter.loaded_overlays
+var _loaded_placements: Dictionary:
+	get: return _presenter.loaded_placements
+var _chunk_placements: Dictionary:
+	get: return _presenter.chunk_placements
+var _chunk_images: Dictionary:
+	get: return _presenter.chunk_images
+
+
+func _invalidate_chunks() -> void:
+	_streamer.invalidate()
+
+
+func _current_lod_step() -> int:
+	return _streamer.current_lod_step(_current_zoom())
+
+
+static func _lod_step_for(zoom: float, current: int) -> int:
+	return ChunkStreamerScript.lod_step_for(zoom, current)
+
+
+func _chunk_of(world_pos: Vector2) -> Vector2i:
+	return ChunkStreamerScript.chunk_of(world_pos)
+
+
+func _marker_node(base: Vector2i, placements: Array) -> Node2D:
+	return _presenter.marker_node(base, placements)
+
+
+func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
+	return _presenter.marker_colors(source, as_sprites)
+
+
+func _sprite_tiles(source: Resource) -> Dictionary:
+	return _presenter.sprite_tiles(source)
+
+
+func sprite_fill(definition: ResourceDefinition) -> Color:
+	return _presenter.sprite_fill(definition)
+
+
+static func sway_alpha(sway: float) -> float:
+	return ChunkPresenterScript.sway_alpha(sway)
+
+
+func _redraw_markers(chunk_coord: Vector2i) -> void:
+	_presenter.redraw_markers(chunk_coord)
