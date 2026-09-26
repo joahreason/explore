@@ -17,7 +17,7 @@ extends RefCounted
 ## derived from the canopy guild and attached once, lazily, by
 ## ResourceManager.get_shade() (a pure function of seed + tile as well). Since
 ## Phase 17 chunk_manager.gd keeps instances in a bounded per-tile cache
-## (_tile_env) and shares them between readers, which relies on exactly that.
+## (GenerationContext.tile_env) and shares them between readers, which relies on exactly that.
 
 var elevation: float
 var slope: float
