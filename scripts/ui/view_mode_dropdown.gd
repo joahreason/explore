@@ -1,7 +1,7 @@
 extends OptionButton
 
 ## Lists the views ViewModes gives a label; selecting one calls set_view_mode() on
-## the World node (grandparent: World/UI/ViewModeDropdown -> World). The first item
+## the World node (World/UI/Menu/ViewModeDropdown -> World). The first item
 ## is the default view (ChunkManager._view_mode: World = terrain + every
 ## placed resource, Phase 13.5), since the dropdown starts on it.
 
@@ -18,5 +18,5 @@ func _ready() -> void:
 
 
 func _on_item_selected(index: int) -> void:
-	var world := get_node("../..")
+	var world := get_node("../../..")
 	world.set_view_mode(_items[index]["mode"])

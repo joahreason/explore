@@ -31,4 +31,4 @@ func _on_text_submitted(new_text: String) -> void:
 	# Hand the keyboard back to the map (e.g. the B shortcut) on desktop,
 	# where the page doesn't reload.
 	release_focus()
-	SeedReloadScript.apply_seed(get_node("../.."), new_text)
+	SeedReloadScript.apply_seed(get_node("../../.."), new_text)

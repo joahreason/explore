@@ -7,24 +7,17 @@ extends OptionButton
 ## it (StructureSites.find()), the next one on each repeat. The first item is a
 ## placeholder the menu returns to, so picking the same biome again hops on.
 ## While a search runs the menu shows it, and the first item cancels it.
-## Sits just below the view dropdown (which moves up on desktop - see
-## reload_button.gd).
+## Sits just below the view dropdown in the menu.
 
 const BiomeClassifierScript := preload("res://scripts/gen/biome_classifier.gd")
 const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
 const PLACEHOLDER := "Go to..."
 const CANCEL := "Cancel search"
-const SPACING := 8
 
-@onready var _world := get_node("../..")
+@onready var _world := get_node("../../..")
 
 
 func _ready() -> void:
-	var views := get_node_or_null("../ViewModeDropdown") as Control
-	if views:
-		var height := offset_bottom - offset_top
-		offset_top = views.offset_bottom + SPACING
-		offset_bottom = offset_top + height
 	add_item(PLACEHOLDER)
 	for biome in BiomeClassifierScript.BIOME_COLORS:
 		add_item(biome)

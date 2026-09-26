@@ -82,7 +82,7 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 ## Every chunk's cast shadows, drawn under all resource sprites.
 @onready var shadows_root: Node2D = $ShadowLayer
 @onready var _inspector_panel := $UI/TileInspector
-@onready var _seed_input: LineEdit = $UI/SeedInput
+@onready var _seed_input: LineEdit = $UI/Menu/SeedInput
 
 var _target: Node2D
 var _player: Node2D

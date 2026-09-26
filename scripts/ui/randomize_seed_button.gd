@@ -16,4 +16,4 @@ func _on_pressed() -> void:
 	var seed_input := get_node("../SeedInput") as LineEdit
 	if seed_input:
 		seed_input.text = new_seed
-	SeedReloadScript.apply_seed(get_node("../.."), new_seed)
+	SeedReloadScript.apply_seed(get_node("../../.."), new_seed)
