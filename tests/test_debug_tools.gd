@@ -8,7 +8,9 @@ extends SceneTree
 ## Debug: Placement shows only that resource's instances, switching the
 ## resource rebuilds them, species densities add up to the guild's, the
 ## inspector shows the breakdown only in Debug views, and the resource
-## dropdown lists every resource and only shows in Debug views.
+## dropdown lists every resource and only shows in Debug views. F5 reloads
+## the content data from disk (review X3); F3 shows the debug overlay
+## (review W4).
 ## Run via tests/run_tests.sh.
 
 const SEED := 4242
@@ -136,6 +138,77 @@ func _init() -> void:
 	dropdown.select(0)
 	dropdown.item_selected.emit(0)
 	check(world.debug_resource() == world.debug_resources()[0], "picking in the dropdown sets the debug resource (%s)" % world.debug_resource().id)
+
+	# F5 reloads the content .tres files from disk into the loaded
+	# instances and rebuilds the chunks with them (review X3). Stand-in for
+	# an edited file: the in-memory pine drifts from its file (a flat zero
+	# temperature curve, so no pines) and the world is rebuilt from that; the reload
+	# must bring back the file's values, in the same instances, and redraw.
+	# base_density is not in pine.tres: a value set back to its default must
+	# come back too.
+	world.flush_chunk_work()
+	var count_pines := func() -> int:
+		var n := 0
+		for chunk in world._chunk_placements:
+			for entry in world._chunk_placements[chunk]:
+				for inst in world._unchanged(entry[1]):
+					n += int(inst["id"] == "pine")
+		return n
+	var pines_before: int = count_pines.call()
+	var file_density: float = pine.base_density  # at its default, so not in the file
+	var curve: Curve = pine.temperature_curve
+	var file_points := []
+	for i in curve.point_count:
+		file_points.append(curve.get_point_position(i).y)
+		curve.set_point_value(i, 0.0)
+	pine.base_density = 0.5
+	ResourceManager._patch_noise_cache["stale"] = null
+	world.clear_generation_caches()
+	world._invalidate_chunks()
+	world.flush_chunk_work()
+	var pines_stale: int = count_pines.call()
+	var f5 := InputEventKey.new()
+	f5.keycode = KEY_F5
+	f5.pressed = true
+	world._unhandled_input(f5)
+	var rebuilding: bool = world.has_pending_chunks()
+	world.flush_chunk_work()
+	var pines_after: int = count_pines.call()
+	var files: int = world._content_paths(world.CONTENT_DIR).size()
+	check(pines_stale == 0 and rebuilding and pines_after == pines_before and pines_before > 0,
+		"F5 rebuilds the chunks from the reloaded data (pines: %d, %d with the drifted data, %d after)" % [pines_before, pines_stale, pines_after])
+	var points_back := true
+	for i in curve.point_count:
+		points_back = points_back and curve.get_point_position(i).y == file_points[i]
+	check(pine.base_density == file_density and pine.temperature_curve == curve and points_back
+		and pine.curve_plan != null and not ResourceManager._patch_noise_cache.has("stale") and files > 60,
+		"F5 re-reads all %d content files into the loaded instances (curves in place) and drops curve plans and noise caches" % files)
+
+	# Debug overlay (review W4): hidden until F3 (or ?debug=1 on the web),
+	# then reports frames, job steps, the queue, chunks per second and nodes.
+	var perf: Label = world.get_node("UI/PerfOverlay")
+	var hidden_at_start := not perf.visible
+	var f3 := InputEventKey.new()
+	f3.keycode = KEY_F3
+	f3.pressed = true
+	perf._unhandled_input(f3)
+	world._invalidate_chunks()  # something to stream
+	var until := Time.get_ticks_msec() + 2000
+	while Time.get_ticks_msec() < until:
+		await process_frame
+	var lines: PackedStringArray = perf.text.split("\n")
+	var longest := 0
+	for c in perf._counters:
+		longest = maxi(longest, c[1])
+	var shown: int = perf._counters.back()[2] - perf._counters[0][2]
+	check(hidden_at_start and perf.visible and lines.size() == 4 and lines[0].begins_with("Frame p50") and lines[1].begins_with("Longest job step")
+		and lines[2].begins_with("Queued chunks") and lines[3].begins_with("Nodes") and longest > 0 and shown > 0 and perf._frames.size() > 5,
+		"F3 shows the debug overlay: %s" % " | ".join(lines))
+	world.flush_chunk_work()
+	world.take_perf_counters()
+	var idle: Dictionary = world.take_perf_counters()
+	perf._unhandled_input(f3)
+	check(idle["longest_step_usec"] == 0 and idle["queued"] == 0 and not perf.visible, "the longest step resets once read; F3 hides the overlay again")
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)

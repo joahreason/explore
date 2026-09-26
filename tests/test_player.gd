@@ -200,6 +200,20 @@ func _init() -> void:
 		await process_frame
 	check(same.call(world.hover_target(other_at / world.TILE_SIZE), other), "another tap on the way cancels the harvest (%s still stands)" % other.get("id", "?"))
 
+	# The tapped object is the one harvested on arrival, even if the view
+	# changed on the way (review C3: arrival used to pick again at the tap
+	# point, by the rules of the view current then).
+	world._on_map_tapped(other_at)
+	world.set_view_mode(world.get_script().ViewMode.MATERIAL)
+	frames = 0
+	while player.is_walking() and frames < 1200:
+		await process_frame
+		frames += 1
+	var taken: bool = world._changes.is_instance_harvested(other)
+	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
+	world.flush_chunk_work()
+	check(taken, "the tapped %s is harvested on arrival after a switch to Terrain Only on the way" % other.get("id", "?"))
+
 	# Tapping a camp tent: walk up, go inside (hidden), sleep until night start.
 	world._gen_mutex.lock()
 	var camp_at = world._structures.find("camp", player.tile())
