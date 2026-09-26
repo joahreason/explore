@@ -245,14 +245,6 @@ var _walkable: Dictionary = {}
 ## the border holds the loaded neighbours' edge tiles (_share_borders()), so
 ## terrain.gdshader can blend ground across chunk borders.
 var _chunk_images: Dictionary = {}
-## The harvest sound (assets/sfx/harvest.wav, tools/generate_sfx.gd), its
-## pitch varied a little each time; harvest_sounds counts plays (tests).
-const HARVEST_SOUND := preload("res://assets/sfx/harvest.wav")
-const HARVEST_SOUND_DB := -18.0
-const HARVEST_SOUND_PITCH := Vector2(0.92, 1.1)
-var harvest_sounds := 0
-var _harvest_player: AudioStreamPlayer
-var _sound_rng := RandomNumberGenerator.new()
 var _world_gen: WorldGen
 ## Landmark layer: sites for the current seed (StructureSites, which caches
 ## them per cell; used under _gen_mutex like _world_gen).
@@ -339,13 +331,6 @@ func _ready() -> void:
 	_world_gen = world_gen_params if world_gen_params != null else WorldGen.new()
 	_world_gen.configure(world_seed)
 	_structures = StructureSitesScript.new(_world_gen, world_seed)
-	_harvest_player = AudioStreamPlayer.new()
-	_harvest_player.name = "HarvestSound"
-	_harvest_player.stream = HARVEST_SOUND
-	_harvest_player.volume_db = HARVEST_SOUND_DB
-	_harvest_player.max_polyphony = 2
-	add_child(_harvest_player)
-	_sound_rng.randomize()
 	if player_path != NodePath():
 		_player = get_node(player_path)
 		_player.set_shadow_material(shadow_material)
@@ -1748,9 +1733,6 @@ func _on_harvest_clicked(world_pos: Vector2):
 	if entity != null:
 		_redraw_markers(Vector2i((entity.world_position / CHUNK_SIZE).floor()))
 		_spawn_harvest_effect(entity)
-		_harvest_player.pitch_scale = _sound_rng.randf_range(HARVEST_SOUND_PITCH.x, HARVEST_SOUND_PITCH.y)
-		_harvest_player.play()
-		harvest_sounds += 1
 	return entity
 
 
