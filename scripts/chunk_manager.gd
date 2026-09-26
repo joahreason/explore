@@ -43,46 +43,12 @@ const CAST_SHADOW_SHADER := preload("res://shaders/cast_shadow.gdshader")
 const SunShadowScript := preload("res://scripts/sun_shadow.gd")
 ## Where the content .tres files live - reload_content() re-reads them all.
 const CONTENT_DIR := "res://resources"
-## The guilds and resources particular views show (view_modes.gd);
-## forwarded for the tests until §4.1 step 9.
-const OAK_RESOURCE := ViewModesScript.OAK_RESOURCE
-const CANOPY_TREES := ViewModesScript.CANOPY_TREES
-const SURFACE_ROCKS := ViewModesScript.SURFACE_ROCKS
-const SHRUBS := ViewModesScript.SHRUBS
-const WETLAND_PLANTS := ViewModesScript.WETLAND_PLANTS
-const SHORE_FEATURES := ViewModesScript.SHORE_FEATURES
-const DEADWOOD := ViewModesScript.DEADWOOD
-const PIONEER_PLANTS := ViewModesScript.PIONEER_PLANTS
-const DESERT_PLANTS := ViewModesScript.DESERT_PLANTS
-const GROUND_COVER := ViewModesScript.GROUND_COVER
-const ORE_OUTCROPS := ViewModesScript.ORE_OUTCROPS
 ## What the world is made of - guild stack, World-view layers, deposits,
 ## farmland, ground materials, structures - as data (review A3).
 const CONTENT: WorldContent = preload("res://resources/world_content.tres")
-## Forwarded for the tests until §4.1 step 9.
-var GUILD_STACK: Array[ResourceGuild]:
-	get: return CONTENT.guilds
-var FARMLAND: ResourceDefinition:
-	get: return CONTENT.farmland
 
 const TILE_SIZE := GameConstants.TILE_SIZE  # world pixels per tile (scripts/game_constants.gd)
 const CHUNK_SIZE := 16         # tiles per chunk edge
-## Tile codes and shore shapes: scripts/world/terrain_codes.gd. Forwarded
-## for the tests until §4.1 step 9.
-const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
-const FOAM_CODE := TerrainCodes.FOAM_CODE
-const WASH_CODE := TerrainCodes.WASH_CODE
-const WASH_GRASS_CODE := TerrainCodes.WASH_GRASS_CODE
-const WATER_CODE_ICE := TerrainCodes.WATER_CODE_ICE
-const WATER_CODE := TerrainCodes.WATER_CODE
-const SHALLOW_CODE := TerrainCodes.SHALLOW_CODE
-const GRASS_CODE := TerrainCodes.GRASS_CODE
-const SHORE_SHAPES := TerrainCodes.SHORE_SHAPES
-const SHORE_STEPS := TerrainCodes.SHORE_STEPS
-const CORNER_EDGES := TerrainCodes.CORNER_EDGES
-const SEA_BODIES := TerrainCodes.SEA_BODIES
-const SHALLOW_DEPTH := TerrainCodes.SHALLOW_DEPTH
-const GRASS_GROUND := TerrainCodes.GRASS_GROUND
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
 ## Every view in one table - label, colouring, placement layers, flags:
@@ -145,9 +111,6 @@ var _travel: WorldTravelScript = WorldTravelScript.new()
 ## clock label shows it.
 var clock:
 	get: return session.clock
-## Forwarded for the tests until §4.1 step 9.
-var _changes:
-	get: return session.changes
 var wind = WindScript.new()
 var sway_material := ShaderMaterial.new()
 var shadow_material := ShaderMaterial.new()
@@ -881,177 +844,3 @@ func sprite_drawn(inst: Dictionary) -> Array:
 
 func sprite_image(texture: Texture2D) -> Image:
 	return _picker.sprite_image(texture)
-
-
-## Forwarded for the tests until §4.1 step 9 (GenerationContext).
-const WALKABLE_CHUNKS := GenerationContextScript.WALKABLE_CHUNKS
-var _world_gen: WorldGen:
-	get: return _ctx.world_gen
-var _gen_mutex: Mutex:
-	get: return _ctx.mutex
-var _structures: StructureSites:
-	get: return _ctx.structures
-var _raw_guild_chunks: Dictionary:
-	get: return _ctx._raw_guild_chunks
-var _env_chunks: Dictionary:
-	get: return _ctx._env_chunks
-var _walkable: Dictionary:
-	get: return _ctx._walkable
-
-
-func clear_generation_caches() -> void:
-	_ctx.clear()
-
-
-func is_walkable(tile: Vector2i) -> bool:
-	return _ctx.is_walkable(tile)
-
-
-func _set_walkable(tile: Vector2i, walkable: bool) -> void:
-	_ctx.set_walkable(tile, walkable)
-
-
-static func _chunk_of_tile(tile: Vector2i) -> Vector2i:
-	return GenerationContextScript.chunk_of_tile(tile)
-
-
-func _guild_density(guild: ResourceGuild, wx: int, wy: int, sample: Dictionary = {}) -> float:
-	return _ctx.guild_density(guild, wx, wy, sample)
-
-
-func _deposit_potentials(sample: Dictionary, wx: int, wy: int) -> Dictionary:
-	return _ctx.deposit_potentials(sample, wx, wy)
-
-
-func _place_stack(rect: Rect2i, depth: int = CONTENT.guilds.size()) -> Dictionary:
-	return _ctx.place_stack(rect, depth)
-
-
-func _place_stack_chunk(base: Vector2i, depth: int = CONTENT.guilds.size()) -> Dictionary:
-	return _ctx.place_stack_chunk(base, depth)
-
-
-func _place_definition_chunk(definition: ResourceDefinition, base: Vector2i) -> Array:
-	return _ctx.place_definition_chunk(definition, base)
-
-## Forwarded for the tests until §4.1 step 9 (ChunkBuilder).
-const MAX_PLACEMENT_LOD_STEP := ChunkBuilderScript.MAX_PLACEMENT_LOD_STEP
-const HEATMAP_OVERLAY_STRENGTH := ChunkBuilderScript.HEATMAP_OVERLAY_STRENGTH
-
-
-func _color_for(sample: Dictionary, wx: int, wy: int) -> Color:
-	return _builder.color_for(sample, wx, wy)
-
-
-func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
-	return _builder.terrain_color(sample, wx, wy)
-
-
-func _surface_at(sample: Dictionary, wx: int, wy: int) -> SurfaceMaterial:
-	return _builder.surface_at(sample, wx, wy)
-
-
-func _corner_shade(cx: int, cy: int) -> float:
-	return _builder.corner_shade(cx, cy)
-
-
-func _build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
-	return _builder.build_chunk_image(chunk_coord, lod_step)
-
-
-func _placement_layers() -> Array:
-	return _builder.placement_layers()
-
-
-func _placement_chunk(chunk_coord: Vector2i) -> Array:
-	return _builder.placement_chunk(chunk_coord)
-
-
-func _instance_quality(inst: Dictionary) -> float:
-	return _builder.instance_quality(inst)
-
-
-func _debug_values(wx: int, wy: int, sample: Dictionary = {}) -> Dictionary:
-	return _builder.debug_values(wx, wy, sample)
-
-## Forwarded for the tests until §4.1 step 9 (ChunkStreamer, ChunkPresenter).
-const FADE_IN_SEC := ChunkPresenterScript.FADE_IN_SEC
-var _worker: Thread:
-	get: return _streamer._worker
-var _epoch: int:
-	get: return _streamer._epoch
-var _shown_epoch: Dictionary:
-	get: return _streamer._shown_epoch
-var _loaded_chunks: Dictionary:
-	get: return _presenter.loaded_chunks
-var _loaded_overlays: Dictionary:
-	get: return _presenter.loaded_overlays
-var _loaded_placements: Dictionary:
-	get: return _presenter.loaded_placements
-var _chunk_placements: Dictionary:
-	get: return _presenter.chunk_placements
-var _chunk_images: Dictionary:
-	get: return _presenter.chunk_images
-
-
-func _invalidate_chunks() -> void:
-	_streamer.invalidate()
-
-
-func _current_lod_step() -> int:
-	return _streamer.current_lod_step(_current_zoom())
-
-
-static func _lod_step_for(zoom: float, current: int) -> int:
-	return ChunkStreamerScript.lod_step_for(zoom, current)
-
-
-func _chunk_of(world_pos: Vector2) -> Vector2i:
-	return ChunkStreamerScript.chunk_of(world_pos)
-
-
-func _marker_node(base: Vector2i, placements: Array) -> Node2D:
-	return _presenter.marker_node(base, placements)
-
-
-func _marker_colors(source: Resource, as_sprites: bool = false) -> Dictionary:
-	return _presenter.marker_colors(source, as_sprites)
-
-
-func _sprite_tiles(source: Resource) -> Dictionary:
-	return _presenter.sprite_tiles(source)
-
-
-func sprite_fill(definition: ResourceDefinition) -> Color:
-	return _presenter.sprite_fill(definition)
-
-
-static func sway_alpha(sway: float) -> float:
-	return ChunkPresenterScript.sway_alpha(sway)
-
-
-func _redraw_markers(chunk_coord: Vector2i) -> void:
-	_presenter.redraw_markers(chunk_coord)
-
-
-## Forwarded for the tests until §4.1 step 9 (ResourcePicker, WorldTravel).
-var _finder_gen: WorldGen:
-	get: return _travel._finder_gen
-	set(value): _travel._finder_gen = value
-var _finder_seed: int:
-	get: return _travel._finder_seed
-	set(value): _travel._finder_seed = value
-var _finder_result: Variant:
-	get: return _travel._finder_result
-
-
-func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
-	return _travel._new_search(biome, start, avoid)
-
-
-func _run_search(search: RefCounted) -> void:
-	_travel._run_search(search)
-
-
-func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
-	return _picker.resource_at(point, include_harvested)

@@ -14,7 +14,7 @@ func _ready() -> void:
 	close_button.pressed.connect(func(): visible = false)
 
 
-## resource: the placed instance under the click (ChunkManager._resource_at()),
+## resource: the placed instance under the click (ResourcePicker.resource_at()),
 ## or {} when the click hit bare ground; its "entity" (Phase 15
 ## ResourceInstance) adds the quality line (when it has one) and a size /
 ## health / state line. deposits: deposit name ->

@@ -1,5 +1,7 @@
 extends SceneTree
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
+const ChunkStreamer := preload("res://scripts/world/chunk_streamer.gd")
 const ResourceMarkerChunk := preload("res://scripts/resource_marker_chunk.gd")
 
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
@@ -30,22 +32,22 @@ func _init() -> void:
 	var CM = world.get_script()
 	# Phase 17 streaming: chunks come from queued jobs (on a worker thread
 	# here), so a test settles them with flush_chunk_work() after each change.
-	check(world._worker != null, "chunk jobs run on a worker thread")
+	check(world._streamer._worker != null, "chunk jobs run on a worker thread")
 	world.flush_chunk_work()
-	check(world._loaded_chunks.size() == 81 and _all_current(world), "startup: %d chunks loaded, all built for the current view" % world._loaded_chunks.size())
+	check(world._presenter.loaded_chunks.size() == 81 and _all_current(world), "startup: %d chunks loaded, all built for the current view" % world._presenter.loaded_chunks.size())
 	# Phase 13.5: the default view is the World (terrain + every placed resource).
-	check(world._view_mode == CM.ViewMode.RESOURCES and world._loaded_placements.size() == 81, "startup: default World view shows placed resources (%d marker nodes)" % world._loaded_placements.size())
+	check(world._view_mode == CM.ViewMode.RESOURCES and world._presenter.loaded_placements.size() == 81, "startup: default World view shows placed resources (%d marker nodes)" % world._presenter.loaded_placements.size())
 	world.set_view_mode(CM.ViewMode.MATERIAL)
 	world.flush_chunk_work()
-	check(world._loaded_placements.is_empty(), "Terrain Only view: no placement markers")
+	check(world._presenter.loaded_placements.is_empty(), "Terrain Only view: no placement markers")
 	var t0 := Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCE_PLACEMENT_OAK)
 	world.flush_chunk_work()
-	print("INFO switch to Oak Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	print("INFO switch to Oak Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._presenter.loaded_chunks.size()])
 	await process_frame
-	check(world._loaded_placements.size() == world._loaded_chunks.size(), "placement view: one marker node per loaded chunk (%d)" % world._loaded_placements.size())
+	check(world._presenter.loaded_placements.size() == world._presenter.loaded_chunks.size(), "placement view: one marker node per loaded chunk (%d)" % world._presenter.loaded_placements.size())
 	var total := 0
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		total += m._positions.size()
 	check(total > 0, "placement view: %d oak markers in loaded area" % total)
 
@@ -56,31 +58,31 @@ func _init() -> void:
 	# inside one, and those shown so far are the nearest ones.
 	await process_frame  # its _process unloads the old area and queues the new
 	var frames := 1
-	while world._loaded_chunks.size() < 3 and frames < 500:
+	while world._presenter.loaded_chunks.size() < 3 and frames < 500:
 		await process_frame
 		frames += 1
-	var center: Vector2i = world._chunk_of(cam.global_position)
+	var center: Vector2i = world._streamer.chunk_of(cam.global_position)
 	var nearest_first := true
 	for cy in range(center.y - 4, center.y + 5):
 		for cx in range(center.x - 4, center.x + 5):
 			var missing := Vector2i(cx, cy)
-			if world._loaded_chunks.has(missing):
+			if world._presenter.loaded_chunks.has(missing):
 				continue
-			for c in world._loaded_chunks:
+			for c in world._presenter.loaded_chunks:
 				nearest_first = nearest_first and (c - center).length_squared() <= (missing - center).length_squared()
-	check(world.has_pending_chunks() and world._loaded_chunks.size() < 81 and nearest_first, "after a jump: %d of 81 chunks shown after %d frames, nearest first" % [world._loaded_chunks.size(), frames])
+	check(world.has_pending_chunks() and world._presenter.loaded_chunks.size() < 81 and nearest_first, "after a jump: %d of 81 chunks shown after %d frames, nearest first" % [world._presenter.loaded_chunks.size(), frames])
 	world.flush_chunk_work()
 	var match_keys := true
-	for c in world._loaded_chunks.keys():
-		match_keys = match_keys and world._loaded_placements.has(c)
-	check(match_keys and world._loaded_placements.size() == world._loaded_chunks.size(), "after pan: markers track streamed chunks exactly")
-	check(world.resources_root.get_child_count() >= world._loaded_placements.size(), "markers parented under Resources")
+	for c in world._presenter.loaded_chunks.keys():
+		match_keys = match_keys and world._presenter.loaded_placements.has(c)
+	check(match_keys and world._presenter.loaded_placements.size() == world._presenter.loaded_chunks.size(), "after pan: markers track streamed chunks exactly")
+	check(world.resources_root.get_child_count() >= world._presenter.loaded_placements.size(), "markers parented under Resources")
 
 	# LOD hysteresis (review W5): a threshold must be passed by 5 % either way.
 	var steps := []
 	var step := 1
 	for zoom in [0.99, 0.94, 1.02, 1.06, 0.24, 0.23, 0.26, 0.27]:
-		step = CM._lod_step_for(zoom, step)
+		step = ChunkStreamer.lod_step_for(zoom, step)
 		steps.append(step)
 	check(steps == [1, 2, 2, 1, 4, 8, 8, 4], "LOD switches only 5%% past a threshold, either way: zooms 0.99..0.27 give steps %s" % [steps])
 
@@ -88,14 +90,14 @@ func _init() -> void:
 	var camera: Camera2D = world.get_viewport().get_camera_2d()
 	camera.zoom = Vector2(0.3, 0.3)
 	world.flush_chunk_work()
-	check(world._loaded_placements.is_empty(), "zoomed out (lod %d): markers hidden" % world._current_lod_step())
+	check(world._presenter.loaded_placements.is_empty(), "zoomed out (lod %d): markers hidden" % world._streamer._last_lod_step)
 	camera.zoom = Vector2(4, 4)
 	world.flush_chunk_work()
-	check(world._loaded_placements.size() == world._loaded_chunks.size() and _all_current(world), "zoomed back in: markers rebuilt")
+	check(world._presenter.loaded_placements.size() == world._presenter.loaded_chunks.size() and _all_current(world), "zoomed back in: markers rebuilt")
 
 	world.set_view_mode(CM.ViewMode.MATERIAL)
 	world.flush_chunk_work()
-	check(world._loaded_placements.is_empty(), "back to Material: markers removed")
+	check(world._presenter.loaded_placements.is_empty(), "back to Material: markers removed")
 
 	# Guild view: one marker node per chunk, markers in both species' colors.
 	world.teleport_player(Vector2.ZERO)
@@ -103,16 +105,16 @@ func _init() -> void:
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	world.flush_chunk_work()
-	print("INFO switch to Tree Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
-	check(world._loaded_placements.size() == world._loaded_chunks.size(), "tree view: one marker node per loaded chunk")
+	print("INFO switch to Tree Placement: %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._presenter.loaded_chunks.size()])
+	check(world._presenter.loaded_placements.size() == world._presenter.loaded_chunks.size(), "tree view: one marker node per loaded chunk")
 	var fills := {}
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		for c in m._fills:
 			fills[c] = fills.get(c, 0) + 1
-	var oak_c: Color = world.OAK_RESOURCE.debug_color
+	var oak_c: Color = ViewModes.OAK_RESOURCE.debug_color
 	var pine_c: Color = load("res://resources/pine.tres").debug_color
 	var member_colors := {}
-	for member in world.CANOPY_TREES.members:
+	for member in ViewModes.CANOPY_TREES.members:
 		member_colors[member.debug_color] = true
 	var only_members := true
 	for c in fills:
@@ -124,17 +126,17 @@ func _init() -> void:
 	for mode in [CM.ViewMode.ROCK_PLACEMENT, CM.ViewMode.BERRY_PLACEMENT, CM.ViewMode.WETLAND_PLACEMENT, CM.ViewMode.SHORE_PLACEMENT]:
 		world.set_view_mode(mode)
 		world.flush_chunk_work()
-		var guild: ResourceGuild = world._placement_layers()[0][0]
-		var ok: bool = world._loaded_placements.size() == world._loaded_chunks.size()
+		var guild: ResourceGuild = world._builder.placement_layers()[0][0]
+		var ok: bool = world._presenter.loaded_placements.size() == world._presenter.loaded_chunks.size()
 		var n := 0
-		for m in world._loaded_placements.values():
+		for m in world._presenter.loaded_placements.values():
 			n += m._positions.size()
 			for c in m._fills:
 				ok = ok and guild.members.any(func(member): return member.debug_color == c)
 		guild_counts[guild.id] = n
 		# The loaded area has no sea coast; shore features are covered by
 		# test_shores.gd.
-		check(ok and (n > 0 or guild == world.SHORE_FEATURES), "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
+		check(ok and (n > 0 or guild == ViewModes.SHORE_FEATURES), "%s view: %d markers, one node per chunk, member colors only" % [guild.id, n])
 
 	# Resources view: Material base image; the same trees as Tree Placement,
 	# rocks, ore outcrops, plants and shore features, all as tinted sheet
@@ -142,40 +144,40 @@ func _init() -> void:
 	var tree_count := 0
 	world.set_view_mode(CM.ViewMode.TREE_PLACEMENT)
 	world.flush_chunk_work()
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		tree_count += m._positions.size()
 	# Cold: drop the per-chunk placement/density/environment caches the views
 	# above filled.
-	world.clear_generation_caches()
+	world._ctx.clear()
 	t0 = Time.get_ticks_msec()
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
-	print("INFO switch to Resources (9 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._loaded_chunks.size()])
+	print("INFO switch to Resources (9 guilds, cold cache): %d ms for %d chunks" % [Time.get_ticks_msec() - t0, world._presenter.loaded_chunks.size()])
 	var shape_counts := {}
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		for s in m._shapes:
 			shape_counts[s] = shape_counts.get(s, 0) + 1
 	var Shape = world.ResourceMarkerChunkScript.Shape
 	var outcrops_placed := 0
 	var succession_placed := 0  # deadwood + pioneer plants (Phase 11) + ground cover (Phase 12)
-	for c in world._loaded_chunks:
-		outcrops_placed += world._place_stack_chunk(c * world.CHUNK_SIZE, 1)[world.ORE_OUTCROPS].size()
-		var stack: Dictionary = world._place_stack_chunk(c * world.CHUNK_SIZE)
-		succession_placed += stack[world.DEADWOOD].size() + stack[world.PIONEER_PLANTS].size() + stack[world.GROUND_COVER].size()
+	for c in world._presenter.loaded_chunks:
+		outcrops_placed += world._ctx.place_stack_chunk(c * world.CHUNK_SIZE, 1)[ViewModes.ORE_OUTCROPS].size()
+		var stack: Dictionary = world._ctx.place_stack_chunk(c * world.CHUNK_SIZE)
+		succession_placed += stack[ViewModes.DEADWOOD].size() + stack[ViewModes.PIONEER_PLANTS].size() + stack[ViewModes.GROUND_COVER].size()
 	var sprites_ok := true
 	var sprite_colors := {}
-	for g in [world.CANOPY_TREES, world.SURFACE_ROCKS, world.ORE_OUTCROPS, world.SHRUBS, world.WETLAND_PLANTS, world.SHORE_FEATURES, world.DEADWOOD, world.PIONEER_PLANTS, world.GROUND_COVER]:
+	for g in [ViewModes.CANOPY_TREES, ViewModes.SURFACE_ROCKS, ViewModes.ORE_OUTCROPS, ViewModes.SHRUBS, ViewModes.WETLAND_PLANTS, ViewModes.SHORE_FEATURES, ViewModes.DEADWOOD, ViewModes.PIONEER_PLANTS, ViewModes.GROUND_COVER]:
 		for member in g.members:
-			sprite_colors[world.sprite_fill(member)] = true  # season colour + sway alpha
+			sprite_colors[world._presenter.sprite_fill(member)] = true  # season colour + sway alpha
 	# Landmark structure parts are sprites too, tinted by their kind.
 	var structure_parts := 0
-	for c in world._chunk_placements:
-		for entry in world._chunk_placements[c]:
+	for c in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[c]:
 			if entry[0][0] == null:
 				structure_parts += entry[1].size()
 				for inst in entry[1]:
 					sprite_colors[inst["fill"]] = true
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		for i in m._shapes.size():
 			if m._shapes[i] == Shape.SPRITE:
 				sprites_ok = sprites_ok and m._textures[i] != null and sprite_colors.has(m._fills[i])
@@ -189,7 +191,7 @@ func _init() -> void:
 	# Click-to-inspect names the placed resource under the click, in any view.
 	var some_tree: Dictionary = {}
 	for base in [Vector2i(0, 0), Vector2i(-16, 0), Vector2i(0, -16), Vector2i(-16, -16)]:
-		var trees: Array = world._place_stack_chunk(base)[world.CANOPY_TREES]
+		var trees: Array = world._ctx.place_stack_chunk(base)[ViewModes.CANOPY_TREES]
 		if not trees.is_empty():
 			some_tree = trees[0]
 			break
@@ -203,7 +205,7 @@ func _init() -> void:
 	for y in range(-40, 40):
 		for x in range(-40, 40):
 			var p := Vector2(x + 0.5, y + 0.5)
-			if world._resource_at(p).is_empty():
+			if world._picker.resource_at(p).is_empty():
 				bare = p
 				break
 		if bare != Vector2.INF:
@@ -214,8 +216,8 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 
-	var probe: Dictionary = world._world_gen.sample(3, 5)
-	check(world._color_for(probe, 3, 5) == world._terrain_color(probe, 3, 5), "resources view: base image is the terrain")
+	var probe: Dictionary = world._ctx.world_gen.sample(3, 5)
+	check(world._builder.color_for(probe, 3, 5) == world._builder.terrain_color(probe, 3, 5), "resources view: base image is the terrain")
 
 	# Deposits view (Phase 9): a heatmap plus ore outcrop markers (step 2);
 	# clicking a tile with ore lists it in the inspector.
@@ -224,21 +226,21 @@ func _init() -> void:
 	var ore_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64):
 		for x in range(-64, 64):
-			if not world._deposit_potentials(world._world_gen.sample(x, y), x, y).is_empty():
+			if not world._ctx.deposit_potentials(world._ctx.world_gen.sample(x, y), x, y).is_empty():
 				ore_tile = Vector2i(x, y)
 				break
 		if ore_tile.x != 1 << 30:
 			break
 	world._on_tile_clicked((Vector2(ore_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
-	var ore_sample: Dictionary = world._world_gen.sample(ore_tile.x, ore_tile.y)
+	var ore_sample: Dictionary = world._ctx.world_gen.sample(ore_tile.x, ore_tile.y)
 	var outcrop_count := 0
 	var outcrops_ok := true
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		outcrop_count += m._positions.size()
 		for sh in m._shapes:
 			outcrops_ok = outcrops_ok and sh == world.ResourceMarkerChunkScript.Shape.HEXAGON
 	check(outcrops_ok and ore_tile.x != 1 << 30
-		and world._color_for(ore_sample, ore_tile.x, ore_tile.y) != world._terrain_color(ore_sample, ore_tile.x, ore_tile.y)
+		and world._builder.color_for(ore_sample, ore_tile.x, ore_tile.y) != world._builder.terrain_color(ore_sample, ore_tile.x, ore_tile.y)
 		and world._inspector_panel.label.text.contains("[b]Deposits:[/b]"),
 		"deposits view: only outcrop hexagons (%d); ore tile %s tinted and listed under Deposits in the inspector" % [outcrop_count, ore_tile])
 
@@ -249,16 +251,16 @@ func _init() -> void:
 	var farm_tile := Vector2i(1 << 30, 0)
 	for y in range(-64, 64, 2):
 		for x in range(-64, 64, 2):
-			var st = EnvironmentalState.from_sample(world._world_gen.sample(x, y))
-			if ResourceManager.get_suitability(st, world.FARMLAND, BiomeClassifier.classify_full(world._world_gen.sample(x, y))) > 0.5:
+			var st = EnvironmentalState.from_sample(world._ctx.world_gen.sample(x, y))
+			if ResourceManager.get_suitability(st, world.CONTENT.farmland, BiomeClassifier.classify_full(world._ctx.world_gen.sample(x, y))) > 0.5:
 				farm_tile = Vector2i(x, y)
 				break
 		if farm_tile.x != 1 << 30:
 			break
 	world._on_tile_clicked((Vector2(farm_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
-	var farm_sample: Dictionary = world._world_gen.sample(farm_tile.x, farm_tile.y)
-	check(world._loaded_placements.is_empty() and farm_tile.x != 1 << 30
-		and world._color_for(farm_sample, farm_tile.x, farm_tile.y) != world._terrain_color(farm_sample, farm_tile.x, farm_tile.y)
+	var farm_sample: Dictionary = world._ctx.world_gen.sample(farm_tile.x, farm_tile.y)
+	check(world._presenter.loaded_placements.is_empty() and farm_tile.x != 1 << 30
+		and world._builder.color_for(farm_sample, farm_tile.x, farm_tile.y) != world._builder.terrain_color(farm_sample, farm_tile.x, farm_tile.y)
 		and world._inspector_panel.label.text.contains("[b]Farming potential:[/b]"),
 		"farming potential view: no markers; farmland tile %s tinted, value in the inspector" % farm_tile)
 
@@ -267,13 +269,13 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.SHADE)
 	world.flush_chunk_work()
 	var shade_markers := 0
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		shade_markers += m._positions.size()
 	var shade_tile := Vector2i(1 << 30, 0)
 	var shade_value := 0.0
 	for y in range(-32, 32, 2):
 		for x in range(-32, 32, 2):
-			var s: Dictionary = world._world_gen.sample(x, y)
+			var s: Dictionary = world._ctx.world_gen.sample(x, y)
 			shade_value = ResourceManager.get_shade(EnvironmentalState.from_sample(s), world.world_seed, x, y, BiomeClassifier.classify_full(s))
 			if shade_value > 0.3:
 				shade_tile = Vector2i(x, y)
@@ -281,10 +283,10 @@ func _init() -> void:
 		if shade_tile.x != 1 << 30:
 			break
 	world._on_tile_clicked((Vector2(shade_tile) + Vector2(0.5, 0.5)) * world.TILE_SIZE)
-	var shade_sample: Dictionary = world._world_gen.sample(shade_tile.x, shade_tile.y)
-	var want: Color = world._terrain_color(shade_sample, shade_tile.x, shade_tile.y).lerp(HeatmapColorizer.shade(shade_value), world.HEATMAP_OVERLAY_STRENGTH)
+	var shade_sample: Dictionary = world._ctx.world_gen.sample(shade_tile.x, shade_tile.y)
+	var want: Color = world._builder.terrain_color(shade_sample, shade_tile.x, shade_tile.y).lerp(HeatmapColorizer.shade(shade_value), world._builder.HEATMAP_OVERLAY_STRENGTH)
 	check(shade_markers > 100 and shade_tile.x != 1 << 30
-		and world._color_for(shade_sample, shade_tile.x, shade_tile.y) == want
+		and world._builder.color_for(shade_sample, shade_tile.x, shade_tile.y) == want
 		and world._inspector_panel.label.text.contains("[b]Shade:[/b] %.2f" % shade_value),
 		"shade view: %d understory markers; shaded tile %s colored by its shade %.2f, value in the inspector" % [shade_markers, shade_tile, shade_value])
 
@@ -294,19 +296,19 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var quality_markers := 0
 	var quality_fills := {}
-	for m in world._loaded_placements.values():
+	for m in world._presenter.loaded_placements.values():
 		quality_markers += m._positions.size()
 		for fill in m._fills:
 			quality_fills[fill] = true
 	var q_tree: Dictionary = {}
-	for inst in world._place_stack(Rect2i(-32, -32, 64, 64), 3)[world.CANOPY_TREES]:
+	for inst in world._ctx.place_stack(Rect2i(-32, -32, 64, 64), 3)[ViewModes.CANOPY_TREES]:
 		if inst["id"] != "young_tree":
 			q_tree = inst
 			break
 	var quality_tree_pos: Vector2 = q_tree.get("position", Vector2.ZERO)
 	world._on_tile_clicked((quality_tree_pos.floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE)
-	var tree_quality: float = world._instance_quality(q_tree) if not q_tree.is_empty() else -1.0
-	var q_tier := ResourceManager.get_quality_tier(world._definitions_by_id().get(q_tree.get("id", ""), world.OAK_RESOURCE), tree_quality)
+	var tree_quality: float = world._builder.instance_quality(q_tree) if not q_tree.is_empty() else -1.0
+	var q_tier := ResourceManager.get_quality_tier(world._definitions_by_id().get(q_tree.get("id", ""), ViewModes.OAK_RESOURCE), tree_quality)
 	check(quality_markers > 100 and quality_fills.size() > 20 and tree_quality >= 0.0
 		and world._inspector_panel.label.text.contains("[b]Quality:[/b] %s (%.2f)" % [q_tier, tree_quality])
 		and world._inspector_panel.label.text.contains("[b]State:[/b] available"),
@@ -326,11 +328,11 @@ func _init() -> void:
 	var seed_input: LineEdit = world.get_node("UI/SeedInput")
 	var randomize: Button = world.get_node("UI/RandomizeButton")
 	check(seed_input.visible and randomize.visible and seed_input.text == "4242", "desktop: seed field (showing '%s') and Randomize shown" % seed_input.text)
-	var before := str(world._place_stack_chunk(Vector2i.ZERO))
+	var before := str(world._ctx.place_stack_chunk(Vector2i.ZERO))
 	seed_input.text_submitted.emit("777")
 	world.flush_chunk_work()
-	check(world.world_seed == 777 and world._loaded_chunks.size() == 81 and _all_current(world)
-		and not world._inspector_panel.visible and str(world._place_stack_chunk(Vector2i.ZERO)) != before,
+	check(world.world_seed == 777 and world._presenter.loaded_chunks.size() == 81 and _all_current(world)
+		and not world._inspector_panel.visible and str(world._ctx.place_stack_chunk(Vector2i.ZERO)) != before,
 		"seed field Enter: regenerated as seed 777 - all 81 chunks rebuilt, different objects, stale inspector closed")
 	seed_input.text_submitted.emit("hello")
 	world.flush_chunk_work()
@@ -340,7 +342,7 @@ func _init() -> void:
 	check(seed_input.text == str(world.world_seed) and world.world_seed != "hello".hash(), "Randomize: new seed %s, shown in the field" % seed_input.text)
 	seed_input.text_submitted.emit("4242")
 	world.flush_chunk_work()
-	check(str(world._place_stack_chunk(Vector2i.ZERO)) == before, "back to seed 4242: identical objects (other seeds' caches dropped)")
+	check(str(world._ctx.place_stack_chunk(Vector2i.ZERO)) == before, "back to seed 4242: identical objects (other seeds' caches dropped)")
 
 	# Biome travel menu: picking a biome moves the camera onto it; picking it
 	# again from there moves on to another patch of it.
@@ -362,10 +364,10 @@ func _init() -> void:
 		world.flush_chunk_work()
 		var tile := Vector2i((cam.global_position / world.TILE_SIZE).floor())
 		spots.append(tile)
-		biomes.append(BiomeClassifier.classify(world._world_gen.sample(tile.x, tile.y)))
+		biomes.append(BiomeClassifier.classify(world._ctx.world_gen.sample(tile.x, tile.y)))
 		print("INFO desert trip %d: %s in %d ms" % [trip + 1, tile, Time.get_ticks_msec() - t_find])
 	check(biomes == ["Desert", "Desert"] and Vector2(spots[1] - spots[0]).length() >= BiomeFinder.AVOID_RADIUS
-		and travel.selected == 0 and not travel.disabled and world._loaded_chunks.size() == 81,
+		and travel.selected == 0 and not travel.disabled and world._presenter.loaded_chunks.size() == 81,
 		"biome travel: Desert at %s, then another Desert patch at %s; menu reset" % [spots[0], spots[1]])
 
 	# Without a worker (the web export has no threads) the jobs run on the
@@ -379,12 +381,12 @@ func _init() -> void:
 	inline_world.set_view_mode(CM.ViewMode.MATERIAL)  # so the Resources switch below builds in steps
 	root.add_child(inline_world)
 	var inline_frames := 0
-	while inline_world._loaded_chunks.is_empty() and inline_frames < 60:
+	while inline_world._presenter.loaded_chunks.is_empty() and inline_frames < 60:
 		await process_frame
 		inline_frames += 1
-	var early: int = inline_world._loaded_chunks.size()
+	var early: int = inline_world._presenter.loaded_chunks.size()
 	inline_world.flush_chunk_work()
-	check(inline_world._worker == null and early > 0 and early < 81 and inline_world._loaded_chunks.size() == 81 and _all_current(inline_world),
+	check(inline_world._streamer._worker == null and early > 0 and early < 81 and inline_world._presenter.loaded_chunks.size() == 81 and _all_current(inline_world),
 		"no worker: first chunks after %d frames (%d shown, not all at once), all 81 once flushed" % [inline_frames, early])
 
 	# The main-thread fallback builds a chunk in small steps over several
@@ -400,12 +402,12 @@ func _init() -> void:
 	inline_world.flush_chunk_work()
 	check(stepped > 0 and stepped < 81 and _all_current(inline_world),
 		"no worker: Resources view steps in (%d of 81 chunks after %d frames), all current once flushed" % [stepped, step_frames])
-	var same: bool = inline_world._loaded_placements.size() == 81
+	var same: bool = inline_world._presenter.loaded_placements.size() == 81
 	var markers_total := 0
-	for c in inline_world._loaded_placements:
+	for c in inline_world._presenter.loaded_placements:
 		var one_go := PackedVector2Array()
-		var node = inline_world._loaded_placements[c]
-		for entry in inline_world._placement_chunk(c):
+		var node = inline_world._presenter.loaded_placements[c]
+		for entry in inline_world._builder.placement_chunk(c):
 			for inst in entry[1]:
 				var pos: Vector2 = inst["position"]
 				# Sprites stand on their pivot (resource_marker_chunk.gd), structure
@@ -462,16 +464,16 @@ func _init() -> void:
 ## How many loaded chunks show content built for the current view and LOD.
 func _current_count(world: Node2D) -> int:
 	var n := 0
-	for c in world._loaded_chunks:
-		if world._shown_epoch.get(c, -1) == world._epoch:
+	for c in world._presenter.loaded_chunks:
+		if world._streamer._shown_epoch.get(c, -1) == world._streamer._epoch:
 			n += 1
 	return n
 
 
 ## Every loaded chunk shows content built for the current view and LOD.
 func _all_current(world: Node2D) -> bool:
-	for c in world._loaded_chunks:
-		if world._shown_epoch.get(c, -1) != world._epoch:
+	for c in world._presenter.loaded_chunks:
+		if world._streamer._shown_epoch.get(c, -1) != world._streamer._epoch:
 			return false
 	return true
 
@@ -494,7 +496,7 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 		for tx in tiles:
 			var wx := origin.x + tx
 			var wy := origin.y + ty
-			var c: Color = world._color_for(world._world_gen.sample(wx, wy), wx, wy)
+			var c: Color = world._builder.color_for(world._ctx.world_gen.sample(wx, wy), wx, wy)
 			img.fill_rect(Rect2i(tx * px, ty * px, px, px), c)
 	var markers = world.ResourceMarkerChunkScript
 	var outline: Color = markers.OUTLINE
@@ -502,13 +504,13 @@ func _render_png(world: Node2D, CM, out: String) -> void:
 	var stacks := {}  # chunk base -> {guild: instances}
 	for cy in range(floori(origin.y / 16.0), ceili((origin.y + tiles) / 16.0)):
 		for cx in range(floori(origin.x / 16.0), ceili((origin.x + tiles) / 16.0)):
-			stacks[Vector2i(cx * 16, cy * 16)] = world._place_stack_chunk(Vector2i(cx * 16, cy * 16))
-	for layer in world._placement_layers():
+			stacks[Vector2i(cx * 16, cy * 16)] = world._ctx.place_stack_chunk(Vector2i(cx * 16, cy * 16))
+	for layer in world._builder.placement_layers():
 		var source: Resource = layer[0]
 		var radius: float = source.minimum_spacing * px * 0.35
 		var as_sprites: bool = layer[1] == markers.Shape.SPRITE
-		var colors: Dictionary = world._marker_colors(source, as_sprites)
-		var sprite_tiles: Dictionary = world._sprite_tiles(source)
+		var colors: Dictionary = world._presenter.marker_colors(source, as_sprites)
+		var sprite_tiles: Dictionary = world._presenter.sprite_tiles(source)
 		for base in stacks:
 			for inst in stacks[base][source]:
 				var p: Vector2 = ((inst["position"] as Vector2) - Vector2(origin)) * px

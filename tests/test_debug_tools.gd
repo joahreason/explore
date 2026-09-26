@@ -13,6 +13,7 @@ extends SceneTree
 ## (review W4).
 ## Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
 
 var _fails := 0
@@ -61,7 +62,7 @@ func _init() -> void:
 	# Debug views for pine.
 	var pine: ResourceDefinition = world.debug_resources().filter(func(d): return d.id == "pine")[0]
 	world.set_debug_resource(pine)
-	check(world.debug_guild() == world.CANOPY_TREES, "pine's guild is the canopy")
+	check(world.debug_guild() == ViewModes.CANOPY_TREES, "pine's guild is the canopy")
 	var colours_ok := true
 	var tiles := 0
 	for mode in [CM.ViewMode.DEBUG_SUITABILITY, CM.ViewMode.DEBUG_DENSITY, CM.ViewMode.DEBUG_PATCH]:
@@ -69,12 +70,12 @@ func _init() -> void:
 		world.flush_chunk_work()
 		for y in range(-24, 24, 6):
 			for x in range(-24, 24, 6):
-				var s: Dictionary = world._world_gen.sample(x, y)
-				var v: Dictionary = world._debug_values(x, y)
+				var s: Dictionary = world._ctx.world_gen.sample(x, y)
+				var v: Dictionary = world._builder.debug_values(x, y)
 				var key: String = {CM.ViewMode.DEBUG_SUITABILITY: "score", CM.ViewMode.DEBUG_DENSITY: "density", CM.ViewMode.DEBUG_PATCH: "patch"}[mode]
 				var heat: Color = HeatmapColorizer.resource_suitability(v[key]) if key == "score" else HeatmapColorizer.resource_density(v[key])
-				var want: Color = world._terrain_color(s, x, y).lerp(heat, world.HEATMAP_OVERLAY_STRENGTH)
-				colours_ok = colours_ok and world._color_for(s, x, y) == want
+				var want: Color = world._builder.terrain_color(s, x, y).lerp(heat, world._builder.HEATMAP_OVERLAY_STRENGTH)
+				colours_ok = colours_ok and world._builder.color_for(s, x, y) == want
 				tiles += 1
 	check(colours_ok, "Debug: Suitability / Density / Patch Noise colour each tile by the resource's own value (%d tiles)" % tiles)
 
@@ -83,10 +84,10 @@ func _init() -> void:
 	for y in range(-40, 40, 8):
 		for x in range(-40, 40, 8):
 			var total := 0.0
-			for member in world.CANOPY_TREES.members:
+			for member in ViewModes.CANOPY_TREES.members:
 				world._debug_resource = member
-				total += world._debug_values(x, y)["density"]
-			sums_ok = sums_ok and absf(total - world._guild_density(world.CANOPY_TREES, x, y)) < 1e-6 * maxf(1.0, total)
+				total += world._builder.debug_values(x, y)["density"]
+			sums_ok = sums_ok and absf(total - world._ctx.guild_density(ViewModes.CANOPY_TREES, x, y)) < 1e-6 * maxf(1.0, total)
 	world._debug_resource = pine
 	check(sums_ok, "each member's debug density is its share of the guild density (they add up)")
 
@@ -94,15 +95,15 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var only_pine := true
 	var pines := 0
-	for chunk in world._chunk_placements:
-		for entry in world._chunk_placements[chunk]:
+	for chunk in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[chunk]:
 			for inst in entry[1]:
 				only_pine = only_pine and inst["id"] == "pine"
 				pines += 1
 	var expected := 0
-	for chunk in world._chunk_placements:
-		var stack: Dictionary = world._place_stack_chunk(chunk * world.CHUNK_SIZE, 3)
-		for inst in stack[world.CANOPY_TREES]:
+	for chunk in world._presenter.chunk_placements:
+		var stack: Dictionary = world._ctx.place_stack_chunk(chunk * world.CHUNK_SIZE, 3)
+		for inst in stack[ViewModes.CANOPY_TREES]:
 			expected += int(inst["id"] == "pine")
 	check(only_pine and pines == expected and pines > 0, "Debug: Placement draws exactly the pines of the real stack (%d of %d)" % [pines, expected])
 	var birch: ResourceDefinition = world.debug_resources().filter(func(d): return d.id == "birch")[0]
@@ -110,8 +111,8 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var birches := 0
 	var only_birch := true
-	for chunk in world._chunk_placements:
-		for entry in world._chunk_placements[chunk]:
+	for chunk in world._presenter.chunk_placements:
+		for entry in world._presenter.chunk_placements[chunk]:
 			for inst in entry[1]:
 				only_birch = only_birch and inst["id"] == "birch"
 				birches += 1
@@ -149,8 +150,8 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var count_pines := func() -> int:
 		var n := 0
-		for chunk in world._chunk_placements:
-			for entry in world._chunk_placements[chunk]:
+		for chunk in world._presenter.chunk_placements:
+			for entry in world._presenter.chunk_placements[chunk]:
 				for inst in world._unchanged(entry[1]):
 					n += int(inst["id"] == "pine")
 		return n
@@ -163,8 +164,8 @@ func _init() -> void:
 		curve.set_point_value(i, 0.0)
 	pine.base_density = 0.5
 	ResourceManager._patch_noise_cache["stale"] = null
-	world.clear_generation_caches()
-	world._invalidate_chunks()
+	world._ctx.clear()
+	world._streamer.invalidate()
 	world.flush_chunk_work()
 	var pines_stale: int = count_pines.call()
 	var f5 := InputEventKey.new()
@@ -192,7 +193,7 @@ func _init() -> void:
 	f3.keycode = KEY_F3
 	f3.pressed = true
 	perf._unhandled_input(f3)
-	world._invalidate_chunks()  # something to stream
+	world._streamer.invalidate()  # something to stream
 	var until := Time.get_ticks_msec() + 2000
 	while Time.get_ticks_msec() < until:
 		await process_frame

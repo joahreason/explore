@@ -154,15 +154,15 @@ func _init() -> void:
 	world.flush_chunk_work()
 	var chunk_ok := true
 	var compared := 0
-	for chunk in world._env_chunks:
-		var entry: Array = world._env_chunks[chunk]
+	for chunk in world._ctx._env_chunks:
+		var entry: Array = world._ctx._env_chunks[chunk]
 		for i in entry[0].size():
 			var st = entry[0][i]
 			if st == null or not st.shade_known:
 				continue
 			var x: int = chunk.x * world.CHUNK_SIZE + i % world.CHUNK_SIZE
 			var y: int = chunk.y * world.CHUNK_SIZE + i / world.CHUNK_SIZE
-			var s: Dictionary = world._world_gen.sample(x, y)
+			var s: Dictionary = world._ctx.world_gen.sample(x, y)
 			chunk_ok = chunk_ok and st.shade == ResourceManager.get_shade(EnvironmentalState.from_sample(s), SEED, x, y, BiomeClassifier.classify_full(s))
 			compared += 1
 	check(chunk_ok and compared > 500, "chunk path shade == direct get_shade() (%d tiles)" % compared)

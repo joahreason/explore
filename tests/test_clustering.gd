@@ -18,6 +18,7 @@ extends SceneTree
 ## must be clearly stronger - and counts must stay in a sensible range of
 ## them. Run via tests/run_tests.sh.
 
+const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
 const REGIONS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(18000, 9000), Vector2i(8000, -12000)]
 const HALF := 96
@@ -53,7 +54,7 @@ func _init() -> void:
 	root.add_child(world)
 	await process_frame
 	world.flush_chunk_work()
-	var guilds := [world.ORE_OUTCROPS, world.SURFACE_ROCKS, world.CANOPY_TREES]
+	var guilds := [ViewModes.ORE_OUTCROPS, ViewModes.SURFACE_ROCKS, ViewModes.CANOPY_TREES]
 	var stats := {}  # guild id -> [count, nn sum, neighbour sum, land tiles, isolated count]
 	for guild in guilds:
 		stats[guild.id] = [0, 0.0, 0, 0, 0]
@@ -63,9 +64,9 @@ func _init() -> void:
 		var land := 0
 		for y in range(inner.position.y, inner.end.y):
 			for x in range(inner.position.x, inner.end.x):
-				if world._world_gen.sample(x, y)["water_body"] == "none":
+				if world._ctx.world_gen.sample(x, y)["water_body"] == "none":
 					land += 1
-		var stack: Dictionary = world._place_stack(rect, 3)
+		var stack: Dictionary = world._ctx.place_stack(rect, 3)
 		for guild in guilds:
 			var points := PackedVector2Array()
 			for inst in stack[guild]:
@@ -116,8 +117,8 @@ func _init() -> void:
 		var n := 0
 		for y in range(-400, 400, 5):
 			for x in range(-400, 400, 5):
-				var m := ResourceManager.get_stand_membership(world.CANOPY_TREES, a, SEED, x, y)
-				monotone = monotone and m >= 0.0 and m <= 1.0 and ResourceManager.get_stand_membership(world.CANOPY_TREES, a + 0.05, SEED, x, y) >= m
+				var m := ResourceManager.get_stand_membership(ViewModes.CANOPY_TREES, a, SEED, x, y)
+				monotone = monotone and m >= 0.0 and m <= 1.0 and ResourceManager.get_stand_membership(ViewModes.CANOPY_TREES, a + 0.05, SEED, x, y) >= m
 				inside += m
 				n += 1
 		shares.append("%.2f -> %.3f" % [a, inside / n])
