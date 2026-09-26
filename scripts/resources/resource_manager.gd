@@ -260,17 +260,32 @@ static func _patch_value(id: String, cluster_scale: float, cluster_strength: flo
 
 static func _patch_noise(id: String, cluster_scale: float, world_seed: int) -> FastNoiseLite:
 	var scale := maxf(cluster_scale, 1.0)
-	var key := "%d|%s|%f" % [world_seed, id, scale]
-	if _patch_noise_cache.has(key):
-		return _patch_noise_cache[key]
+	var slot := _noise_slot(_patch_noise_cache, world_seed, id)
+	if slot.has(scale):
+		return slot[scale]
 	var noise := FastNoiseLite.new()
 	noise.seed = ("%d:%s" % [world_seed + WorldGen.RESOURCE_DISTRIBUTION_SEED_OFFSET, id]).hash()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
 	noise.frequency = 1.0 / scale
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	noise.fractal_octaves = 3
-	_patch_noise_cache[key] = noise
+	slot[scale] = noise
 	return noise
+
+
+## The noise objects of one (seed, id) in a cache, by scale: nested
+## Dictionaries, because formatting a "seed|id|scale" String key on every
+## call cost more than the lookup itself (review P1).
+static func _noise_slot(cache: Dictionary, world_seed: int, id: String) -> Dictionary:
+	var by_id: Variant = cache.get(world_seed)
+	if by_id == null:
+		by_id = {}
+		cache[world_seed] = by_id
+	var slot: Variant = by_id.get(id)
+	if slot == null:
+		slot = {}
+		by_id[id] = slot
+	return slot
 
 
 ## Phase 6 of docs/resource-generation-plan.md: "how much of this resource
@@ -487,16 +502,16 @@ static func get_vein_value(definition: ResourceDefinition, world_seed: int, wx: 
 
 static func _vein_noise(id: String, vein_scale: float, world_seed: int) -> FastNoiseLite:
 	var scale := maxf(vein_scale, 1.0)
-	var key := "%d|%s|%f" % [world_seed, id, scale]
-	if _vein_noise_cache.has(key):
-		return _vein_noise_cache[key]
+	var slot := _noise_slot(_vein_noise_cache, world_seed, id)
+	if slot.has(scale):
+		return slot[scale]
 	var noise := FastNoiseLite.new()
 	noise.seed = ("%d:%s" % [world_seed + WorldGen.DEPOSIT_VEIN_SEED_OFFSET, id]).hash()
 	noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	noise.frequency = 1.0 / scale
 	noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 	noise.fractal_octaves = 2
-	_vein_noise_cache[key] = noise
+	slot[scale] = noise
 	return noise
 
 

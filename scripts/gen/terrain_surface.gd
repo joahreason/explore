@@ -34,7 +34,8 @@ const SHADE_LATTICE := 4
 const PATCH_CONTRAST := 1.8
 const _JITTER_SALT := 1
 
-static var _patch_noise_cache: Dictionary = {}
+static var _patch_noise_cache: Dictionary = {}  # seed -> {material id -> FastNoiseLite}
+static var _jitter_seeds: Dictionary = {}  # seed -> the jitter's cell-hash seed
 
 const OCEAN_SHALLOW := Color(0.2, 0.45, 0.8)
 const OCEAN_DEEP := Color(0.05, 0.12, 0.45)
@@ -87,7 +88,10 @@ static func color_for(material: SurfaceMaterial, state: EnvironmentalState, worl
 	color = _tint(color, state, material.tint_field, material.tint_range, material.tint_color)
 	color = _tint(color, state, material.tint2_field, material.tint2_range, material.tint2_color)
 	if material.jitter > 0.0:
-		var seed := ResourcePlacementScript._resource_seed("terrain", world_seed)
+		var seed: Variant = _jitter_seeds.get(world_seed)
+		if seed == null:  # formatting it per tile was a measurable cost (review P1)
+			seed = ResourcePlacementScript._resource_seed("terrain", world_seed)
+			_jitter_seeds[world_seed] = seed
 		var unit: float = ResourcePlacementScript._cell_unit(seed, Vector2i(wx, wy), _JITTER_SALT)
 		var factor := 1.0 + (unit * 2.0 - 1.0) * material.jitter
 		color = Color(color.r * factor, color.g * factor, color.b * factor)
@@ -112,8 +116,11 @@ static func lattice_shade(wx: int, wy: int, corner_fn: Callable) -> float:
 static func _patch(material: SurfaceMaterial, world_seed: int, wx: int, wy: int) -> float:
 	if material.cluster_strength <= 0.0:
 		return 1.0
-	var key := "%d|%s" % [world_seed, material.id]
-	var noise: FastNoiseLite = _patch_noise_cache.get(key)
+	var by_id: Variant = _patch_noise_cache.get(world_seed)
+	if by_id == null:  # no String key per call (review P1)
+		by_id = {}
+		_patch_noise_cache[world_seed] = by_id
+	var noise: FastNoiseLite = by_id.get(material.id)
 	if noise == null:
 		noise = FastNoiseLite.new()
 		noise.seed = ("%d:%s" % [world_seed + WorldGen.SURFACE_PATCH_SEED_OFFSET, material.id]).hash()
@@ -121,7 +128,7 @@ static func _patch(material: SurfaceMaterial, world_seed: int, wx: int, wy: int)
 		noise.frequency = 1.0 / maxf(material.cluster_scale, 1.0)
 		noise.fractal_type = FastNoiseLite.FRACTAL_FBM
 		noise.fractal_octaves = 2
-		_patch_noise_cache[key] = noise
+		by_id[material.id] = noise
 	var patch := clampf(noise.get_noise_2d(wx, wy) * PATCH_CONTRAST * 0.5 + 0.5, 0.0, 1.0)
 	return lerpf(1.0, patch, clampf(material.cluster_strength, 0.0, 1.0))
 
