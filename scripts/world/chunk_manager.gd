@@ -260,6 +260,7 @@ func reload_content() -> int:
 	_ctx.clear()
 	_ctx.mutex.unlock()
 
+	_streamer.forget_images()
 	_streamer.invalidate()
 	print("Reloaded %d content files from %s" % [paths.size(), CONTENT_DIR])
 	return paths.size()

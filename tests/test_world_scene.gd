@@ -216,6 +216,30 @@ func _init() -> void:
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 
+	# Review P4: World and Terrain Only bake the same images, so switching
+	# between them keeps the ones on screen; a view with other images in
+	# between (Temperature) makes the next switch bake them again, right.
+	var shown_textures := {}
+	for c in world._presenter.loaded_chunks:
+		shown_textures[c] = world._presenter.loaded_chunks[c].texture
+	world.set_view_mode(CM.ViewMode.MATERIAL)
+	world.flush_chunk_work()
+	var images_kept := true
+	for c in shown_textures:
+		images_kept = images_kept and world._presenter.loaded_chunks[c].texture == shown_textures[c]
+	world.set_view_mode(CM.ViewMode.TEMPERATURE)
+	world.flush_chunk_work()
+	world.set_view_mode(CM.ViewMode.RESOURCES)
+	world.flush_chunk_work()
+	var images_right := true
+	for c in world._presenter.chunk_images:
+		var padded: Image = world._presenter.chunk_images[c]
+		var n := padded.get_width() - 2
+		var lod := roundi(world._presenter.loaded_chunks[c].scale.x / world.TILE_SIZE)
+		images_right = images_right and padded.get_region(Rect2i(1, 1, n, n)).get_data() == world._builder.build_chunk_image(c, lod).get_data()
+	check(images_kept and images_right and not shown_textures.is_empty(),
+		"World <-> Terrain Only keeps the chunk images; after Temperature, World bakes its own again")
+
 	var probe: Dictionary = world._ctx.world_gen.sample(3, 5)
 	check(world._builder.color_for(probe, 3, 5) == world._builder.terrain_color(probe, 3, 5), "resources view: base image is the terrain")
 

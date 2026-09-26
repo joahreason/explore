@@ -194,6 +194,18 @@ func build_chunk_image(chunk_coord: Vector2i, lod_step: int) -> Image:
 	return img
 
 
+## What a chunk's base image depends on besides the chunk, its LOD and the
+## content: views with equal keys bake identical images (World and Terrain
+## Only; the label views and Quality), so ChunkStreamer keeps the image on
+## screen across a switch between them (review P4).
+func image_key() -> Array:
+	var color := ViewModesScript.color(view_mode)
+	var key := [ViewModesScript.is_tinted(view_mode), color]
+	if not color.is_empty() and color[0] == "debug":
+		key.append(debug_resource)
+	return key
+
+
 func new_image(lod_step: int) -> Image:
 	var cells := CHUNK_SIZE / lod_step
 	# The gameplay views carry water / grass codes in alpha (terrain.gdshader).
@@ -238,10 +250,11 @@ func _warm_env_rows(chunk: Vector2i, y0: int, y1: int) -> void:
 func job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
 	var chunk: Vector2i = data["chunk"]
 	var lod_step: int = data["lod"]
-	var img: Image = data["image"]
+	var img: Image = data["image"]  # null: the image on screen is kept (review P4)
 	var steps: Array[Callable] = []
-	for y0 in range(0, img.get_height(), IMAGE_BAND_ROWS):
-		steps.append(_bake_rows.bind(img, chunk, lod_step, y0, mini(y0 + IMAGE_BAND_ROWS, img.get_height())))
+	if img != null:
+		for y0 in range(0, img.get_height(), IMAGE_BAND_ROWS):
+			steps.append(_bake_rows.bind(img, chunk, lod_step, y0, mini(y0 + IMAGE_BAND_ROWS, img.get_height())))
 	if ViewModesScript.is_label_view(view_mode):
 		steps.append(func() -> void: data["overlay"] = overlay_grids(chunk))
 	if placements_visible_at(lod_step):

@@ -60,6 +60,7 @@ var _last_lod_step: int = -1
 # (under _queue_mutex).
 var _epoch: int = 0
 var _shown_epoch: Dictionary = {}   # Vector2i chunk -> epoch its content was built for (every shown chunk)
+var _shown_image: Dictionary = {}   # Vector2i chunk -> [ChunkBuilder.image_key(), lod] of the image on screen
 var _jobs_dirty: bool = false       # rebuild the job list on the next refresh()
 var _jobs: Array = []               # [chunk, epoch, lod step, area], nearest last (popped from the back)
 var _in_flight: Dictionary = {}     # chunk -> epoch of a job taken but not yet applied
@@ -134,6 +135,11 @@ func refresh() -> void:
 
 ## View or LOD changed: every loaded chunk is stale. It keeps showing its old
 ## content until its rebuild (queued with the missing chunks) replaces it.
+## Content was reloaded: no image on screen can be kept (review P4).
+func forget_images() -> void:
+	_shown_image.clear()
+
+
 func invalidate() -> void:
 	_queue_mutex.lock()
 	_epoch += 1
@@ -224,6 +230,7 @@ static func chunk_of(world_pos: Vector2) -> Vector2i:
 
 func _unload_chunk(chunk_coord: Vector2i) -> void:
 	_shown_epoch.erase(chunk_coord)
+	_shown_image.erase(chunk_coord)
 	_unload.call(chunk_coord)
 
 
@@ -247,11 +254,16 @@ func _update_chunks(center: Vector2i, load_radius: int) -> void:
 	wanted.sort_custom(_farther_first.bind(center))
 	var area := (2 * load_radius + 1) * (2 * load_radius + 1)
 
+	# Review P4: a chunk already showing the image this view would bake (the
+	# same image key and LOD - World and Terrain Only, say) keeps it; its job
+	# builds only the rest.
+	var image_key := _builder.image_key()
 	_queue_mutex.lock()
 	_jobs.clear()
 	for c in wanted:
 		if _in_flight.get(c, -1) != _epoch:
-			_jobs.append([c, _epoch, _last_lod_step, area])
+			var keep_image: bool = _shown_image.get(c) == [image_key, _last_lod_step]
+			_jobs.append([c, _epoch, _last_lod_step, area, image_key, keep_image])
 	var has_jobs := not _jobs.is_empty()
 	_queue_mutex.unlock()
 	if has_jobs and _worker != null:
@@ -318,10 +330,12 @@ func _take_job() -> Array:
 ## by the steps) and step list (planned by the first _step_job(); fine =
 ## the main-thread fallback's finer steps, see ChunkBuilder.job_steps()).
 func _new_job_state(job: Array, fine: bool) -> Dictionary:
-	_ctx.mutex.lock()  # the image format follows the view mode (review C2)
-	var image := _builder.new_image(job[2])
-	_ctx.mutex.unlock()
-	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image}
+	var image: Image = null  # null: keep the image on screen (review P4)
+	if not job[5]:
+		_ctx.mutex.lock()  # the image format follows the view mode (review C2)
+		image = _builder.new_image(job[2])
+		_ctx.mutex.unlock()
+	var data := {"chunk": job[0], "epoch": job[1], "lod": job[2], "area": job[3], "image": image, "image_key": job[4]}
 	return {"data": data, "steps": [], "planned": false, "next": 0, "fine": fine}
 
 
@@ -395,8 +409,13 @@ func _apply_results(budget_usec: int) -> void:
 		_queue_mutex.unlock()
 		if data["epoch"] != _epoch or Vector2(chunk_coord - _last_center).length() > _last_load_radius + UNLOAD_BUFFER:
 			continue
+		var shown_image := [data["image_key"], data["lod"]]
+		if data["image"] == null and _shown_image.get(chunk_coord) != shown_image:
+			_jobs_dirty = true  # the kept image went (the chunk was unloaded): rebuild it whole
+			continue
 		_apply.call(data)
 		_shown_epoch[chunk_coord] = data["epoch"]
+		_shown_image[chunk_coord] = shown_image
 		_chunks_shown += 1
 		if budget_usec >= 0 and Time.get_ticks_usec() >= deadline:
 			break
