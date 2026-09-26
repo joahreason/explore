@@ -35,7 +35,7 @@ float fbm(vec2 p) {
 }
 
 void vertex() {
-	world_tiles = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 12.0;
+	world_tiles = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 16.0;
 }
 
 void fragment() {

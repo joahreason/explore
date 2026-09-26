@@ -13,7 +13,21 @@ extends Node2D
 ## (Phase 8 step 6): its white pixels, tinted by the instance's color, so
 ## coloring stays in data (ResourceDefinition.sprite_color), with a 1 px dark
 ## outline and dark interior detail baked into one texture (outlined_image()),
-## drawn in one call, snapped to whole sprite pixels.
+## drawn in one call, snapped to whole sprite pixels. The sheet art stays at
+## its native 12 px (1 art pixel = 1 world pixel) inside the 16 px tiles,
+## standing on the tile's bottom edge like the pivoted art.
+##
+## Art-style test (16 px tiles): an entry can instead carry its own
+## "texture" (ResourceDefinition.sprite_texture) - art with its outline
+## already drawn and its pivot at the bottom middle, drawn 1:1 with the
+## pivot on the tile's bottom middle (pivot_rect()), so tall art (trees) reaches up
+## into the tiles above.
+##
+## Depth: the drawing is split into one child node per tile row (_Row), at
+## the row's bottom edge y - the sprites' pivot. This node y-sorts them, and
+## as it sits in the y-sorted Resources node (with the Player) every row
+## sorts with the player and the other chunks' rows: whatever stands further
+## south draws in front.
 
 enum Shape { CIRCLE, TRIANGLE, SQUARE, DIAMOND, HEXAGON, SPRITE }
 
@@ -26,13 +40,18 @@ const SPRITE_STRIDE := 13
 
 const DEFAULT_FILL := Color(0.10, 0.32, 0.10)
 const OUTLINE := Color(0.02, 0.06, 0.02)
+## Cast shadows get their sprite's drawn height (px) through the red channel
+## of their draw colour, divided by this (shaders/cast_shadow.gdshader).
+const SHADOW_HEIGHT_SCALE := 64.0
 
 var _positions: PackedVector2Array = PackedVector2Array()
 var _fills: PackedColorArray = PackedColorArray()
 var _radii: PackedFloat32Array = PackedFloat32Array()
 var _shapes: PackedInt32Array = PackedInt32Array()
 var _textures: Array[Texture2D] = []  # per instance; null unless drawn as a sprite
-var _sprite_sizes: PackedFloat32Array = PackedFloat32Array()  # per instance, pixels
+var _rects: Array[Rect2] = []  # per instance: where its sprite is drawn (unused for shapes)
+var _rows: Dictionary = {}  # tile row within the chunk -> _Row
+var _row_of: PackedInt32Array = PackedInt32Array()  # per instance: its tile row within the chunk
 
 static var _sheet: Image
 static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
@@ -44,35 +63,56 @@ static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
 ## (ResourceDefinition.debug_color). shape: TRIANGLE reads as a tree,
 ## SQUARE as a rock, DIAMOND as a wetland plant, HEXAGON as an ore outcrop,
 ## CIRCLE is the plain marker. SPRITE draws sprites[id] = {"tile": sheet
-## tile (Vector2i), "size": width in tiles}; an id without an entry is
+## tile (Vector2i), "size": width in tiles, optional "texture": pivoted art
+## drawn instead of the sheet tile}; an id without an entry is
 ## drawn as `fallback` instead. An instance's own "fill" Color, if it has
 ## one (Phase 14 Quality view), overrides colors.
 func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, footprint_tiles: float, colors: Dictionary = {}, shape: Shape = Shape.CIRCLE, sprites: Dictionary = {}, fallback: Shape = Shape.TRIANGLE) -> void:
 	# Kept under half the minimum spacing (+ outline), so markers of one
 	# layer never overlap.
 	var radius := maxf(footprint_tiles * tile_size * 0.35, 2.0)
+	var first := _positions.size()
 	for inst in instances:
 		var texture: Texture2D = null
-		var sprite_px := 0.0
+		var sprite: Dictionary = sprites.get(inst["id"], {})
 		var inst_shape := shape
-		if shape == Shape.SPRITE:
-			if sprites.has(inst["id"]):
-				texture = sprite_texture(sprites[inst["id"]]["tile"])
-				sprite_px = float(sprites[inst["id"]]["size"]) * tile_size
-			else:
-				inst_shape = fallback
+		if shape == Shape.SPRITE and sprite.is_empty():
+			inst_shape = fallback
+		elif shape == Shape.SPRITE:
+			texture = sprite["texture"] if sprite.get("texture") != null else sprite_texture(sprite["tile"])
 		var pos: Vector2 = inst["position"]
+		var row := floori(pos.y) - origin_tile.y
 		if texture != null:
-			# Sprites sit centred in the tile their instance falls in, on the
-			# terrain grid (the exact position stays in the data).
-			pos = Vector2(pos.floor()) + Vector2(0.5, 0.5)
-		_positions.append((pos - Vector2(origin_tile)) * tile_size)
+			# Sprites stand on the bottom middle of the tile their instance
+			# falls in, on the terrain grid (the exact position stays in the
+			# data).
+			pos = Vector2(pos.floor()) + Vector2(0.5, 1.0)
+		var p := (pos - Vector2(origin_tile)) * tile_size
+		_positions.append(p)
 		_fills.append(inst["fill"] if inst.has("fill") else colors.get(inst["id"], DEFAULT_FILL))
 		_radii.append(radius)
 		_shapes.append(inst_shape)
 		_textures.append(texture)
-		_sprite_sizes.append(sprite_px)
-	queue_redraw()
+		_row_of.append(row)
+		if texture == null:
+			_rects.append(Rect2())
+		elif sprite.get("texture") != null:
+			_rects.append(pivot_rect(p, texture.get_size()))
+		else:
+			var art_px := float(sprite["size"]) * SPRITE_SIZE
+			_rects.append(sprite_rect(p - Vector2(0, art_px * 0.5), art_px))
+	y_sort_enabled = true
+	for i in range(first, _positions.size()):
+		var row := _row_of[i]
+		if not _rows.has(row):
+			var node := _Row.new()
+			node.chunk = self
+			node.use_parent_material = true  # the sway shader
+			node.position = Vector2(0, (row + 1) * tile_size)
+			add_child(node)
+			_rows[row] = node
+		_rows[row].indices.append(i)
+		_rows[row].queue_redraw()
 
 
 ## Cast shadows (polish): the sprites of the instances added from index
@@ -95,9 +135,22 @@ func add_shadows(from: int, material: Material, casts: Array[bool]) -> void:
 		if _shapes[i] != Shape.SPRITE or not casts[i - from]:
 			continue
 		_shadows.textures.append(_textures[i])
-		_shadows.rects.append(sprite_rect(_positions[i], _sprite_sizes[i]))
-		_shadows.colors.append(Color(0, 0, 0, _fills[i].a))
+		_shadows.rects.append(_rects[i])
+		_shadows.colors.append(shadow_color(_rects[i].size.y, _fills[i].a))
 	_shadows.queue_redraw()
+
+
+## One tile row of this chunk's drawing, at the row's bottom edge y so
+## y-sorting puts it in depth order; draws its instances (indices into the
+## chunk's arrays, in the order added) with draw_instance().
+class _Row extends Node2D:
+	var chunk: Node2D
+	var indices: PackedInt32Array = PackedInt32Array()
+
+	func _draw() -> void:
+		draw_set_transform(-position)
+		for i in indices:
+			chunk.draw_instance(self, i)
 
 
 ## Instances added so far (the next add_instances() starts here).
@@ -136,20 +189,32 @@ static func sprite_rect(center: Vector2, size: float) -> Rect2:
 	return Rect2(top_left, Vector2.ONE * size).grow(px * OUTLINE_PAD)
 
 
-func _draw() -> void:
-	for i in _positions.size():
-		if _shapes[i] == Shape.SPRITE:
-			# The outlined texture is the 12 px art plus a 1 px ring (OUTLINE_PAD);
-			# the art stays size x size, snapped to its own pixel grid so every
-			# sprite pixel renders the same width at any zoom. The tint only
-			# darkens the baked outline further.
-			draw_texture_rect(_textures[i], sprite_rect(_positions[i], _sprite_sizes[i]), false, _fills[i])
-		elif _shapes[i] == Shape.CIRCLE:
-			draw_circle(_positions[i], _radii[i] + 1.0, OUTLINE)
-			draw_circle(_positions[i], _radii[i], _fills[i])
-		else:
-			draw_colored_polygon(shape_polygon(_shapes[i], _positions[i], _radii[i] + 1.5), OUTLINE)
-			draw_colored_polygon(shape_polygon(_shapes[i], _positions[i], _radii[i]), _fills[i])
+## Where art of `size` px with its pivot at the bottom middle is drawn, its
+## pivot at `pivot`, snapped to whole pixels.
+static func pivot_rect(pivot: Vector2, size: Vector2) -> Rect2:
+	return Rect2((pivot - Vector2(size.x * 0.5, size.y)).round(), size)
+
+
+## The draw colour of a cast shadow for a sprite `height` px tall, whose
+## sprite's draw alpha (its sway) is `alpha`.
+static func shadow_color(height: float, alpha: float) -> Color:
+	return Color(height / SHADOW_HEIGHT_SCALE, 0, 0, alpha)
+
+
+## Draws instance i on `canvas` (its _Row, transformed to chunk-local).
+func draw_instance(canvas: CanvasItem, i: int) -> void:
+	if _shapes[i] == Shape.SPRITE:
+		# The outlined sheet texture is the 12 px art plus a 1 px ring
+		# (OUTLINE_PAD), snapped to its own pixel grid so every sprite
+		# pixel renders the same width at any zoom. The tint only darkens
+		# the outline further.
+		canvas.draw_texture_rect(_textures[i], _rects[i], false, _fills[i])
+	elif _shapes[i] == Shape.CIRCLE:
+		canvas.draw_circle(_positions[i], _radii[i] + 1.0, OUTLINE)
+		canvas.draw_circle(_positions[i], _radii[i], _fills[i])
+	else:
+		canvas.draw_colored_polygon(shape_polygon(_shapes[i], _positions[i], _radii[i] + 1.5), OUTLINE)
+		canvas.draw_colored_polygon(shape_polygon(_shapes[i], _positions[i], _radii[i]), _fills[i])
 
 
 ## Outline of a marker centered on p, fitting a circle of radius r (a

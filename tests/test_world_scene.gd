@@ -392,9 +392,9 @@ func _init() -> void:
 		for entry in inline_world._placement_chunk(c):
 			for inst in entry[1]:
 				var pos: Vector2 = inst["position"]
-				# Sprites are drawn centred in their tile (resource_marker_chunk.gd).
+				# Sprites stand on their tile's bottom middle (resource_marker_chunk.gd).
 				if node._textures[one_go.size()] != null:
-					pos = Vector2(pos.floor()) + Vector2(0.5, 0.5)
+					pos = Vector2(pos.floor()) + Vector2(0.5, 1.0)
 				one_go.append((pos - Vector2(c * inline_world.CHUNK_SIZE)) * inline_world.TILE_SIZE)
 		var shown: PackedVector2Array = node._positions
 		markers_total += shown.size()

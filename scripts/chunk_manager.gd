@@ -81,7 +81,7 @@ const FARMLAND := preload("res://resources/farmland.tres")
 ## 12) on what open ground remains.
 const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, DESERT_PLANTS, PIONEER_PLANTS, GROUND_COVER]
 
-const TILE_SIZE := 12          # screen pixels per tile
+const TILE_SIZE := 16          # screen pixels per tile
 const CHUNK_SIZE := 16         # tiles per chunk edge
 const MIN_LOAD_RADIUS := 4     # floor on load radius even when zoomed in
 const UNLOAD_BUFFER := 2       # extra chunks beyond load radius before freeing (hysteresis)
@@ -286,6 +286,7 @@ var _guild_of_member: Dictionary = {}
 ## Phase 13.5: the default "live game" view is the terrain with every placed
 ## resource on it (RESOURCES); MATERIAL is the bare terrain.
 var _view_mode: ViewMode = ViewMode.RESOURCES
+var _sprite_images: Dictionary = {}  # sprite_texture -> its Image, for _sprite_covers()
 var _last_center: Vector2i = Vector2i(1 << 30, 1 << 30)  # force first update
 var _last_load_radius: int = -1
 var _last_lod_step: int = -1
@@ -333,7 +334,7 @@ func _ready() -> void:
 	_structures = StructureSitesScript.new(_world_gen, world_seed)
 	if player_path != NodePath():
 		_player = get_node(player_path)
-		_player.set_shadow_material(shadow_material)
+		_player.set_shadow_material(shadow_material, shadows_root)
 	_load_gameplay_state()
 
 	# A guild's warnings include its members' (oak among them).
@@ -1568,7 +1569,10 @@ func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
 ## one whose tile is the clicked tile (sprites are drawn filling their tile,
 ## see resource_marker_chunk.gd), else the nearest instance whose debug
 ## marker covers the point (marker radius = 0.35 x its guild's spacing).
-## Works in any view - instances exist whether or not their markers are
+## In the World view (sprites) the fallback is instead the frontmost sprite
+## whose drawn art covers the point (_sprite_covers()) - a tree's canopy
+## reaching into the tile above picks the tree, and a click in the tile
+## below a resource is never pulled onto it. Works in any view - instances exist whether or not their markers are
 ## drawn. Adds "guild_name" and "name" for display, and "entity": its
 ## ResourceInstance (Phase 15: quality, size, health, harvest state).
 ## include_harvested = false skips what the player harvested (Phase 16:
@@ -1579,6 +1583,7 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
 	var best := {}
 	var best_dist := INF
+	var sprites := _view_mode == ViewMode.RESOURCES
 	for guild in GUILD_STACK:
 		var reach := maxf(guild.minimum_spacing * 0.35, 0.5)
 		for inst in stack[guild]:
@@ -1586,9 +1591,15 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 				continue
 			var pos: Vector2 = inst["position"]
 			var in_tile := Vector2i(pos.floor()) == tile
-			# An instance in the clicked tile always beats one merely in reach.
+			# An instance in the clicked tile always beats one merely in reach
+			# (or, over sprites, one whose art covers the point: the frontmost,
+			# southernmost, wins).
 			var dist := point.distance_to(pos) - (1000.0 if in_tile else 0.0)
-			if (in_tile or dist <= reach) and dist < best_dist:
+			var near := dist <= reach
+			if sprites and not in_tile:
+				near = _sprite_covers(inst, point)
+				dist = -floorf(pos.y)
+			if (in_tile or near) and dist < best_dist:
 				best = inst.duplicate()
 				best_dist = dist
 	if not best.is_empty():
@@ -1596,6 +1607,24 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 		best["guild_name"] = String(best["guild"]).capitalize()
 		best["entity"] = get_resource_instance(best)
 	return best
+
+
+## Whether the World view draws an opaque pixel of `inst`'s pivoted art
+## (ResourceDefinition.sprite_texture) at `point` (tile units): the art
+## standing on its tile's bottom middle, as ResourceMarkerChunk draws it.
+func _sprite_covers(inst: Dictionary, point: Vector2) -> bool:
+	var definition: ResourceDefinition = _definitions_by_id().get(inst["id"])
+	if definition == null or definition.sprite_tile.x < 0 or definition.sprite_texture == null:
+		return false
+	var texture := definition.sprite_texture
+	var base := ((inst["position"] as Vector2).floor() + Vector2(0.5, 1.0)) * TILE_SIZE
+	var rect := ResourceMarkerChunkScript.pivot_rect(base, texture.get_size())
+	var px := Vector2i((point * TILE_SIZE - rect.position).floor())
+	if not Rect2i(Vector2i.ZERO, Vector2i(rect.size)).has_point(px):
+		return false
+	if not _sprite_images.has(texture):
+		_sprite_images[texture] = texture.get_image()
+	return (_sprite_images[texture] as Image).get_pixelv(px).a > 0.5
 
 
 ## place_guild_in_rect() for any rect, assembled from per-chunk placements
@@ -1697,7 +1726,7 @@ func _sprite_tiles(source: Resource) -> Dictionary:
 	var tiles := {}
 	for member in (source.members if source is ResourceGuild else [source]):
 		if member.sprite_tile.x >= 0:
-			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size}
+			tiles[member.id] = {"tile": member.sprite_tile, "size": member.sprite_size, "texture": member.sprite_texture}
 	return tiles
 
 
@@ -1745,9 +1774,11 @@ func _spawn_harvest_effect(entity) -> void:
 	var effect := HarvestEffectScript.new()
 	var has_sprite := definition.sprite_tile.x >= 0
 	var texture: Texture2D = ResourceMarkerChunkScript.sprite_texture(definition.sprite_tile) if has_sprite else null
+	if has_sprite and definition.sprite_texture != null:
+		texture = definition.sprite_texture
 	var color: Color = sprite_fill(definition) if has_sprite else definition.debug_color
-	effect.setup(texture, color, definition.sprite_size * TILE_SIZE, entity.key)
-	effect.position = (entity.world_position.floor() + Vector2(0.5, 0.5)) * TILE_SIZE
+	effect.setup(texture, color, definition.sprite_size * ResourceMarkerChunkScript.SPRITE_SIZE, entity.key, definition.sprite_texture != null)
+	effect.position = (entity.world_position.floor() + Vector2(0.5, 1.0)) * TILE_SIZE
 	effect.name = "HarvestEffect"
 	resources_root.add_child(effect)
 
@@ -1953,8 +1984,9 @@ func enter_tent(tile: Vector2i) -> void:
 			tent_sheet = part["tile"]
 	_tent_effect = TentSleepEffectScript.new()
 	_tent_effect.name = "TentSleep"
-	_tent_effect.setup(ResourceMarkerChunkScript.sprite_texture(tent_sheet), def.kind_colors["tent"], TILE_SIZE)
-	_tent_effect.position = (Vector2(tile) + Vector2(0.5, 0.5)) * TILE_SIZE
+	_tent_effect.setup(ResourceMarkerChunkScript.sprite_texture(tent_sheet), def.kind_colors["tent"], ResourceMarkerChunkScript.SPRITE_SIZE)
+	# Its tent stands on the tile's bottom edge, as the marker's does.
+	_tent_effect.position = (Vector2(tile) + Vector2(0.5, 1.0)) * TILE_SIZE - Vector2(0, ResourceMarkerChunkScript.SPRITE_SIZE * 0.5)
 	resources_root.add_child(_tent_effect)
 	clock.sleep()
 

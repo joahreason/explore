@@ -12,20 +12,23 @@ shader_type canvas_item;
 
 uniform vec2 cast_dir = vec2(0.0, 0.3);
 uniform float darkness = 0.3;
-// Drawn sprite height in pixels (12 px art + the 1 px outline ring each side).
+// Drawn sprite height in pixels (12 px sheet art + the 1 px outline ring
+// each side), unless the draw colour's red channel carries it
+// (ResourceMarkerChunk.shadow_color(): height / 64).
 uniform float sprite_px = 14.0;
 
 void vertex() {
 	float sway = decode_sway(COLOR.a);
+	float px = COLOR.r > 0.0 ? COLOR.r * 64.0 : sprite_px;
 	// Height of this vertex above the sprite's base: 0 at the bottom edge.
-	float h = (1.0 - UV.y) * sprite_px;
-	vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 12.0;
+	float h = (1.0 - UV.y) * px;
+	vec2 tile = (MODEL_MATRIX * vec4(VERTEX, 0.0, 1.0)).xy / 16.0;
 	// Flatten onto the ground from the base (top ends up furthest away),
 	// then lean with the wind like the sprite does.
 	vec2 base = VERTEX + vec2(0.0, h);
 	vec2 p = base + cast_dir * h;
 	if (sway > 0.0 && h > 0.0) {
-		p += wind_dir * wind_bend(sway, tile) * (h / sprite_px);
+		p += wind_dir * wind_bend(sway, tile) * (h / px);
 	}
 	VERTEX = round(p);
 	COLOR = vec4(0.0, 0.0, 0.0, 1.0);

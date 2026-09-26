@@ -26,7 +26,7 @@ func check(cond: bool, msg: String) -> void:
 func _init() -> void:
 	_clean()
 	var world: Node2D = await _world()
-	var player: Node2D = world.get_node("Player")
+	var player: Node2D = world.get_node("Resources/Player")
 	player.walk_speed = 60.0  # headless frames are short; same paths, sooner
 	var rig: Node2D = world.get_node("CameraRig")
 	# The same placed resource: species and exact position.
@@ -98,8 +98,39 @@ func _init() -> void:
 	var fs: AudioStreamPlayer = player.get_node("Footstep")
 	check(varied and fs.stream != null and fs.stream.get_length() > 0.05 and fs.stream.get_length() < 0.2 and fs.volume_db < -8.0,
 		"footsteps vary in pitch (%.2f..%.2f, never within %.2f of the last) at a faint volume (%.1f dB, %.0f ms sound)" % [pitches.min(), pitches.max(), player.FOOTSTEP_MIN_PITCH_CHANGE, fs.volume_db, fs.stream.get_length() * 1000.0])
-	check(on_grid and player.position == player.feet_point(goal) and player.hop() == 0.0 and player.sprite_rect().end.y > 0.0 and player.sprite_rect().end.y < 2.0,
-		"movement is locked to tiles: each step goes straight or diagonally to a neighbouring tile, and the player comes to rest with the pivot at their feet - the tile's bottom centre (%s), the sprite standing on it" % player.position)
+	check(on_grid and player.position == player.feet_point(goal) and player.hop() == 0.0 and player.sprite_rect().end.y == 0.0 and player.sprite_rect().get_center().x == 0.0,
+		"movement is locked to tiles: each step goes straight or diagonally to a neighbouring tile, and the player comes to rest with the pivot at their feet - the tile's bottom middle (%s), the sprite standing on it" % player.position)
+	var rows_at_pivots := true
+	var row_count := 0
+	for markers in world._loaded_placements.values():
+		rows_at_pivots = rows_at_pivots and markers.y_sort_enabled
+		for row in markers.get_children():
+			row_count += 1
+			rows_at_pivots = rows_at_pivots and fposmod(row.position.y, world.TILE_SIZE) == 0.0
+	check(row_count > 0 and rows_at_pivots and world.resources_root.y_sort_enabled and player.get_parent() == world.resources_root,
+		"sprites depth-sort with the player: markers draw in tile rows at the pivot y (%d rows), y-sorted together with the player" % row_count)
+	# Picking follows the drawn sprites: a tree with empty tiles above and
+	# below is picked through its canopy in the tile above, never from the
+	# top of the tile below.
+	var occupied := {}
+	var trees := []
+	for placements in world._chunk_placements.values():
+		for entry in placements:
+			for inst in entry[1]:
+				occupied[Vector2i((inst["position"] as Vector2).floor())] = true
+				if inst.get("id", "") in ["oak", "birch"]:
+					trees.append(inst)
+	var lone := {}
+	for inst in trees:
+		var t := Vector2i((inst["position"] as Vector2).floor())
+		if not (occupied.has(t + Vector2i(0, -1)) or occupied.has(t + Vector2i(0, 1)) or occupied.has(t + Vector2i(0, 2))):
+			lone = inst
+			break
+	var lone_base: Vector2 = (lone.get("position", Vector2.ZERO) as Vector2).floor()
+	var by_canopy: bool = same.call(world.hover_target(lone_base + Vector2(0.5, -0.3)), lone)
+	var below_free: bool = world.hover_target(lone_base + Vector2(0.5, 1.1)).is_empty()
+	check(not lone.is_empty() and by_canopy and below_free,
+		"a click on a tree's canopy (tile above) picks it; one just below its tile doesn't (%s)" % lone.get("id", "none found"))
 
 	# Tapping a resource: walks up to it and harvests it on arrival.
 	var target := {}
@@ -173,7 +204,8 @@ func _init() -> void:
 	var marker_hidden := true
 	if markers != null:
 		for k in markers.instance_count():
-			marker_hidden = marker_hidden and Vector2i((markers._positions[k] / world.TILE_SIZE).floor()) + chunk * world.CHUNK_SIZE != tent_tile
+			var marker_tile := Vector2i(floori(markers._positions[k].x / world.TILE_SIZE), markers._row_of[k])
+			marker_hidden = marker_hidden and marker_tile + chunk * world.CHUNK_SIZE != tent_tile
 	check(world.is_tent(tent_tile) and world.is_in_tent() and not player.visible and effect != null and marker_hidden and world.clock.sleeping,
 		"tapping a camp tent (%s) walks the player in: hidden, the tent's marker swapped for the bouncing one, time asleep" % tent_tile)
 	var heights := {}
@@ -201,7 +233,7 @@ func _init() -> void:
 	world.queue_free()
 	await process_frame
 	var world2: Node2D = await _world()
-	var player2: Node2D = world2.get_node("Player")
+	var player2: Node2D = world2.get_node("Resources/Player")
 	check(player2.position.is_equal_approx(saved) and world2.get_node("CameraRig").global_position == player2.position,
 		"a reloaded world puts the player back where they stood (%s), camera on them" % player2.tile())
 

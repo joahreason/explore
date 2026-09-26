@@ -1,11 +1,12 @@
 extends Node2D
 
-## The player character: a sprite from the Urizen sheet that moves tile by
+## The player character: a sprite (assets/sprites/player.png, pivot at its
+## bottom middle) that moves tile by
 ## tile along a path (ChunkManager.find_path(), started by a tap / left
 ## click - see ChunkManager._on_map_tapped()), diagonals included. Its
 ## position (the node's origin, the pivot for the hop and the facing flip)
-## is its feet: the bottom centre of the tile it stands on (feet_point()),
-## the sprite drawn above. Each step glides to the next tile's feet point
+## is its feet: the bottom middle of the tile it stands on (feet_point()),
+## the sprite's pivot, the sprite drawn above. Each step glides to the next tile's feet point
 ## with a small hop. tile() is the tile it stands on - or, mid-step, the one it
 ## is stepping onto (a new walk starts from there once the step is done).
 ## Walking runs in real time (not the game clock: a paused clock doesn't
@@ -19,8 +20,8 @@ extends Node2D
 
 const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
 
-const TILE_SIZE := 12
-const SPRITE_TILE := Vector2i(104, 0)
+const TILE_SIZE := 16
+const SPRITE := preload("res://assets/sprites/player.png")
 const COLOR := Color(1.0, 0.86, 0.6)
 ## Hop height (world px) at the middle of each step.
 const HOP_PX := 2.0
@@ -54,7 +55,7 @@ var _shadow: Node2D
 
 
 func _ready() -> void:
-	_texture = ResourceMarkerChunkScript.sprite_texture(SPRITE_TILE)
+	_texture = SPRITE
 	_footstep_player = AudioStreamPlayer.new()
 	_footstep_player.name = "Footstep"
 	_footstep_player.stream = FOOTSTEP
@@ -67,9 +68,18 @@ func _ready() -> void:
 	add_child(_shadow)
 
 
-## The world's cast-shadow material (set by ChunkManager).
-func set_shadow_material(material: Material) -> void:
+## The world's cast-shadow material (set by ChunkManager), and the layer
+## the plants' shadows are drawn in, under every sprite: the player's shadow
+## moves there (following the player), so it never darkens the trees the
+## player is depth-sorted in front of.
+func set_shadow_material(material: Material, layer: Node = null) -> void:
 	_shadow.material = material
+	if layer != null:
+		_shadow.show_behind_parent = false
+		_shadow.reparent(layer, false)
+		visibility_changed.connect(_redraw)
+		tree_exiting.connect(func(): if is_instance_valid(_shadow): _shadow.queue_free())
+		_redraw()
 
 
 func tile() -> Vector2i:
@@ -81,7 +91,7 @@ static func tile_center(t: Vector2i) -> Vector2:
 
 
 ## Where the player's feet (its position) are when standing on tile `t`:
-## the tile's bottom centre.
+## the tile's bottom middle, where sprites stand their pivot.
 static func feet_point(t: Vector2i) -> Vector2:
 	return (Vector2(t) + Vector2(0.5, 1.0)) * TILE_SIZE
 
@@ -98,7 +108,7 @@ func walk(tiles: Array[Vector2i], on_arrive := Callable()) -> void:
 
 
 ## Stands on the tile holding `world_pos` at once (feet at its bottom
-## centre), walk cancelled.
+## middle), walk cancelled.
 func teleport(world_pos: Vector2) -> void:
 	_queue.clear()
 	_on_arrive = Callable()
@@ -170,6 +180,9 @@ func _finish() -> void:
 func _redraw() -> void:
 	queue_redraw()
 	if _shadow != null:
+		if _shadow.get_parent() != self:
+			_shadow.global_position = global_position
+			_shadow.visible = is_visible_in_tree()
 		_shadow.queue_redraw()
 
 
@@ -184,11 +197,10 @@ func _draw() -> void:
 	draw_set_transform(Vector2.ZERO)
 
 
-## The sprite's rect, standing on the player's position (its feet): the
-## same framing as the placed resources' sprites, one tile up from the tile
-## centre framing by half a tile.
+## The sprite's rect, its pivot on the player's position (its feet), as
+## the placed resources' sprites stand on their tile's bottom middle.
 func sprite_rect() -> Rect2:
-	return ResourceMarkerChunkScript.sprite_rect(Vector2(0, -TILE_SIZE * 0.5), float(TILE_SIZE))
+	return ResourceMarkerChunkScript.pivot_rect(Vector2.ZERO, _texture.get_size())
 
 
 func texture() -> Texture2D:
@@ -206,5 +218,5 @@ class _Shadow extends Node2D:
 
 	func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2(-1, 1) if player.is_facing_left() else Vector2.ONE)
-		draw_texture_rect(player.texture(), player.sprite_rect(), false, Color(0, 0, 0, 1))
+		draw_texture_rect(player.texture(), player.sprite_rect(), false, ResourceMarkerChunkScript.shadow_color(player.sprite_rect().size.y, 1.0))
 		draw_set_transform(Vector2.ZERO)

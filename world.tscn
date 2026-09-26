@@ -22,15 +22,16 @@
 [node name="World" type="Node2D" unique_id=1158263506]
 script = ExtResource("1")
 target_path = NodePath("CameraRig")
-player_path = NodePath("Player")
+player_path = NodePath("Resources/Player")
 
 [node name="Chunks" type="Node2D" parent="."]
 
 [node name="ShadowLayer" type="Node2D" parent="."]
 
 [node name="Resources" type="Node2D" parent="."]
+y_sort_enabled = true
 
-[node name="Player" type="Node2D" parent="."]
+[node name="Player" type="Node2D" parent="Resources"]
 script = ExtResource("18")
 
 [node name="CloudShadows" type="ColorRect" parent="."]
@@ -51,7 +52,7 @@ script = ExtResource("12")
 [node name="CameraRig" type="Node2D" parent="."]
 script = ExtResource("2")
 ui_root_path = NodePath("../UI")
-player_path = NodePath("../Player")
+player_path = NodePath("../Resources/Player")
 
 [node name="Camera2D" type="Camera2D" parent="CameraRig"]
 zoom = Vector2(4, 4)

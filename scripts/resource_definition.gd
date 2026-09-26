@@ -196,8 +196,16 @@ var curve_plan = null
 ## sheet's white pixels are tinted by sprite_color.
 @export var sprite_tile: Vector2i = Vector2i(-1, -1)
 @export var sprite_color: Color = Color(1, 1, 1)
-## Drawn width in tiles. Whole multiples of 1 keep the 12 px art crisp.
+## Drawn width of the sheet art, in multiples of its 12 px (whole numbers
+## keep it crisp).
 @export var sprite_size: float = 1.0
+## Art-style test (16 px tiles): art drawn instead of the sheet tile, 1 art
+## pixel per world pixel, its outline already drawn and its pivot at its
+## bottom middle, which stands on the tile's bottom middle
+## (ResourceMarkerChunk).
+## Tinted like the sheet art. sprite_tile must still be set (it marks the
+## resource as having a sprite).
+@export var sprite_texture: Texture2D
 ## How much the sprite bends in the wind (0 = rigid: rocks, ore, logs; 1 =
 ## grass). The sway shader (shaders/sway.gdshader) bends the sprite's top,
 ## its base stays planted; Wind (scripts/wind.gd) sets direction and gusts.

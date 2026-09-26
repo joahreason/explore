@@ -101,7 +101,7 @@ func _init() -> void:
 	var click: Vector2 = ((target["position"] as Vector2).floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
 	var e = world._on_harvest_clicked(click)
 	var effects: Array = world.resources_root.get_children().filter(func(n): return n.name.begins_with("HarvestEffect"))
-	var at_object: bool = effects.size() == 1 and effects[0].position == (e.world_position.floor() + Vector2(0.5, 0.5)) * world.TILE_SIZE
+	var at_object: bool = effects.size() == 1 and effects[0].position == (e.world_position.floor() + Vector2(0.5, 1.0)) * world.TILE_SIZE
 	await create_timer(0.5).timeout
 	var left: Array = world.resources_root.get_children().filter(func(n): return is_instance_valid(n) and n.name.begins_with("HarvestEffect"))
 	check(e != null and at_object and left.is_empty(), "harvesting spawns one pop effect at the object, which frees itself")

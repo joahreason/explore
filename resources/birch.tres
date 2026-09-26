@@ -1,6 +1,7 @@
 [gd_resource type="Resource" script_class="ResourceDefinition" format=3]
 
 [ext_resource type="Script" path="res://scripts/resource_definition.gd" id="1_def"]
+[ext_resource type="Texture2D" path="res://assets/sprites/birch.png" id="art"]
 [ext_resource type="Resource" path="res://resources/quality/tree_age.tres" id="q_profile"]
 
 [sub_resource type="Curve" id="Curve_temperature"]
@@ -63,6 +64,7 @@ debug_color = Color(0.78, 0.86, 0.62, 1)
 sprite_tile = Vector2i(1, 34)
 sprite_color = Color(0.78, 0.86, 0.62, 1)
 sprite_size = 1.0
+sprite_texture = ExtResource("art")
 quality_profile = ExtResource("q_profile")
 sway = 0.25
 season_class = "deciduous"

@@ -77,7 +77,7 @@ func _init() -> void:
 		control.visible = false
 	rig = world.get_node("CameraRig")
 	cam = rig.get_node("Camera2D")
-	player = world.get_node("Player")
+	player = world.get_node("Resources/Player")
 	rig.map_tapped.connect(func(_p): clicks += 1)
 	rig.info_clicked.connect(func(_p): infos += 1)
 	var center: Vector2 = root.get_viewport().get_visible_rect().size * 0.5
