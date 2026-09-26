@@ -89,6 +89,9 @@ func _init() -> void:
 					bound_ok = bound_ok and ResourceManager.get_guild_density(st, guild, SEED, x, y, cl) <= ResourceManager.get_guild_density_bound(guild)
 				bound_ok = bound_ok and ResourceManager.get_density(st, world.OAK_RESOURCE, SEED, x, y, cl) <= ResourceManager.get_density_bound(world.OAK_RESOURCE)
 	check(bound_ok, "density never exceeds its placement bound (%d tiles x %d guilds + oak)" % [bound_tiles, world.GUILD_STACK.size()])
+	var drawn: Array = world.CONTENT.world_view_placement_layers().map(func(layer: Array): return layer[0])
+	check(drawn.size() == world.GUILD_STACK.size() and world.GUILD_STACK.all(func(g): return drawn.count(g) == 1),
+		"the World view draws each of the %d stack guilds once (resources/world_content.tres)" % drawn.size())
 
 	# Order pass: the golden areas and ORDER_AREAS, chunk by chunk, here and
 	# in reverse order from a fresh world with no worker.

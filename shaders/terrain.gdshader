@@ -5,7 +5,7 @@
 // near the coast, FOAM_CODE + shape for open sea on the shoreline,
 // WASH_CODE + shape for ground on a sea shore (WASH_GRASS_CODE + shape
 // for grass, tinted first), GRASS_CODE for grass ground; anything else is
-// opaque 255. A shape is 1 + an index into SHORE_SHAPES (ChunkManager's
+// opaque 255. A shape is 1 + an index into SHORE_SHAPES (TerrainCodes'
 // list): a mask of the neighbours across the shoreline - edges 1 -x, 2 +x,
 // 4 -y, 8 +y, diagonal corners 16 (-x,-y), 32 (+x,-y), 64 (-x,+y), 128
 // (+x,+y) - so bands follow the shore round corners instead of stepping.

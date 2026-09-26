@@ -21,23 +21,9 @@ extends RefCounted
 const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
 const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
 
-## In priority order for exact ties (practically never); dirt is the
-## fallback when nothing scores.
-const MATERIALS := [
-	preload("res://resources/terrain/grass.tres"),
-	preload("res://resources/terrain/dry_grass.tres"),
-	preload("res://resources/terrain/dirt.tres"),
-	preload("res://resources/terrain/forest_floor.tres"),
-	preload("res://resources/terrain/mud.tres"),
-	preload("res://resources/terrain/marsh.tres"),
-	preload("res://resources/terrain/sand.tres"),
-	preload("res://resources/terrain/beach_sand.tres"),
-	preload("res://resources/terrain/gravel.tres"),
-	preload("res://resources/terrain/rock.tres"),
-	preload("res://resources/terrain/snow.tres"),
-	preload("res://resources/terrain/burnt_ground.tres"),
-]
-const FALLBACK := 2  # dirt
+## The ground materials, in priority order for exact ties, and the fallback
+## when nothing scores: WorldContent.terrain_materials / terrain_fallback.
+const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 
 ## Shade (Phase 13 canopy cover) costs ~50 us per tile - far more than the
 ## rest of the choice - so the terrain samples it every SHADE_LATTICE tiles
@@ -83,7 +69,7 @@ static func water_color(s: Dictionary) -> Variant:
 static func material_at(state: EnvironmentalState, world_seed: int, wx: int, wy: int) -> SurfaceMaterial:
 	var best: SurfaceMaterial = null
 	var best_score := 0.0
-	for material in MATERIALS:
+	for material in CONTENT.terrain_materials:
 		var suitability: float = ResourceManagerScript.get_suitability(state, material) * material.base_density
 		if suitability <= best_score:
 			continue  # patch <= 1, so it can't win
@@ -91,7 +77,7 @@ static func material_at(state: EnvironmentalState, world_seed: int, wx: int, wy:
 		if score > best_score:
 			best = material
 			best_score = score
-	return best if best != null else MATERIALS[FALLBACK]
+	return best if best != null else CONTENT.terrain_fallback
 
 
 ## The tile's colour for a material: its base (per geology where given),

@@ -21,11 +21,8 @@ extends RefCounted
 ## cached per cell.
 
 const CELL_SIZE := 64
-const DEFINITIONS := [
-	preload("res://resources/structures/camp.tres"),
-	preload("res://resources/structures/standing_stones.tres"),
-	preload("res://resources/structures/ruins.tres"),
-]
+## The structure types: WorldContent.structures.
+const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 ## Water probe: rays in 8 directions, a sample every this many tiles.
 const WATER_PROBE_STEP := 3
 const OPEN_WATER := ["ocean", "sea", "lake", "river"]
@@ -58,7 +55,7 @@ var _site_seed: int
 var _cache: Dictionary = {}  # Vector2i cell -> site Dictionary ({} = none)
 
 
-func _init(world_gen: WorldGen, seed_value: int, defs: Array = DEFINITIONS) -> void:
+func _init(world_gen: WorldGen, seed_value: int, defs: Array = CONTENT.structures) -> void:
 	_world_gen = world_gen
 	world_seed = seed_value
 	definitions = defs

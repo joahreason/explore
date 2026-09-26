@@ -62,27 +62,14 @@ const DESERT_PLANTS := preload("res://resources/desert_plants.tres")
 const GROUND_COVER := preload("res://resources/ground_cover.tres")
 ## Phase 9 step 2: placed outcrops where an ore deposit is exposed.
 const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
-## Phase 9 ore deposits (and Phase 10 clay): per-tile fields (exists /
-## exposed) - see ResourceManager.get_deposit_potential(); ORE_OUTCROPS
-## places the exposed part.
-const ORE_DEPOSITS := [
-	preload("res://resources/iron.tres"),
-	preload("res://resources/copper.tres"),
-	preload("res://resources/coal.tres"),
-	preload("res://resources/clay.tres"),
-	preload("res://resources/salt.tres"),
-]
-## Phase 10 floodplains: a suitability field only (Farming Potential view,
-## inspector), nothing placed.
-const FARMLAND := preload("res://resources/farmland.tres")
-## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
-## ore outcrops and rocks are geology and were there first, then trees,
-## then wetland plants (Phase 10) that own the wet margins, then shore
-## features (shells, beach grass, mud flats), then deadwood left by the
-## disturbance (Phase 11), the shrubs that fill in around all of them, then
-## cacti on dry ground, and last the pioneer plants and ground cover (Phase
-## 12) on what open ground remains.
-const GUILD_STACK := [ORE_OUTCROPS, SURFACE_ROCKS, CANOPY_TREES, WETLAND_PLANTS, SHORE_FEATURES, DEADWOOD, SHRUBS, DESERT_PLANTS, PIONEER_PLANTS, GROUND_COVER]
+## What the world is made of - guild stack, World-view layers, deposits,
+## farmland, ground materials, structures - as data (review A3).
+const CONTENT: WorldContent = preload("res://resources/world_content.tres")
+## Forwarded for the tests until §4.1 step 9.
+var GUILD_STACK: Array[ResourceGuild]:
+	get: return CONTENT.guilds
+var FARMLAND: ResourceDefinition:
+	get: return CONTENT.farmland
 
 const TILE_SIZE := GameConstants.TILE_SIZE  # world pixels per tile (scripts/game_constants.gd)
 const CHUNK_SIZE := 16         # tiles per chunk edge
@@ -131,38 +118,22 @@ const IMAGE_BAND_ROWS := 2
 ## Tile rows per density-warming step ahead of a guild's chunk placement in
 ## the no-thread fallback (_warm_guild_density): 4 bands per chunk.
 const WARM_DENSITY_ROWS := 4
-## Polish pass 2: tile codes in the gameplay views' chunk images (alpha,
-## out of 255) that shaders/terrain.gdshader reads - water shimmers, grass
-## ground takes the season's tint - and the ground materials that count as
-## grass. Water codes run WATER_CODE_ICE..WATER_CODE for how liquid it is
-## (0..1); solid ice carries no code and stays still. Surf is for the coast
-## only (ocean and sea, not lakes or rivers): shallow open sea near the
-## coast carries SHALLOW_CODE + 0..7 (shallower = higher) for whitecaps,
-## open sea on the shoreline FOAM_CODE + a shore shape, and any ground on a
-## sea shore WASH_CODE (WASH_GRASS_CODE for grass, which also takes the
-## season's tint) + a shore shape - surf foam and swash. A shape (_shore_shape()) is 1 + the index in
-## SHORE_SHAPES of the mask of neighbours across the shoreline: edges 1 -x,
-## 2 +x, 4 -y, 8 +y and diagonal corners 16 (-x,-y), 32 (+x,-y), 64 (-x,+y),
-## 128 (+x,+y), a corner only when neither edge beside it is set (it would
-## be covered) - 46 shapes, mirrored in shaders/terrain.gdshader.
-const FOAM_CODE := 50
-const WASH_CODE := 100
-const WASH_GRASS_CODE := 150
-const WATER_CODE_ICE := 200
-const WATER_CODE := 220
-const SHALLOW_CODE := 240
-const GRASS_CODE := 253
-const SHORE_SHAPES := [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 24, 26, 32, 33, 40, 41, 48, 56, 64, 66, 68, 70, 80, 82, 96, 112, 128, 129, 132, 133, 144, 160, 161, 176, 192, 196, 208, 224, 240]
-## Neighbour steps for the mask bits, and the edge bits beside each corner.
-const SHORE_STEPS := [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, -1), Vector2i(1, -1), Vector2i(-1, 1), Vector2i(1, 1)]
-const CORNER_EDGES := [1 | 4, 2 | 4, 1 | 8, 2 | 8]
-## Only tiles this close to sea level can border the shoreline (elevation
-## changes by under 0.01 per tile) - a cheap gate before _shore_shape().
-## Sea shallower than SHALLOW_DEPTH gets whitecaps.
-const SHORE_ELEVATION_MARGIN := 0.03
-const SEA_BODIES := ["ocean", "sea"]
-const SHALLOW_DEPTH := 0.008
-const GRASS_GROUND := ["grass", "dry_grass"]
+## Tile codes and shore shapes: scripts/world/terrain_codes.gd. Forwarded
+## for the tests until §4.1 step 9.
+const TerrainCodes := preload("res://scripts/world/terrain_codes.gd")
+const FOAM_CODE := TerrainCodes.FOAM_CODE
+const WASH_CODE := TerrainCodes.WASH_CODE
+const WASH_GRASS_CODE := TerrainCodes.WASH_GRASS_CODE
+const WATER_CODE_ICE := TerrainCodes.WATER_CODE_ICE
+const WATER_CODE := TerrainCodes.WATER_CODE
+const SHALLOW_CODE := TerrainCodes.SHALLOW_CODE
+const GRASS_CODE := TerrainCodes.GRASS_CODE
+const SHORE_SHAPES := TerrainCodes.SHORE_SHAPES
+const SHORE_STEPS := TerrainCodes.SHORE_STEPS
+const CORNER_EDGES := TerrainCodes.CORNER_EDGES
+const SEA_BODIES := TerrainCodes.SEA_BODIES
+const SHALLOW_DEPTH := TerrainCodes.SHALLOW_DEPTH
+const GRASS_GROUND := TerrainCodes.GRASS_GROUND
 const TERRAIN_SHADER := preload("res://shaders/terrain.gdshader")
 const SeasonsScript := preload("res://scripts/seasons.gd")
 ## Seconds a newly streamed-in chunk's label overlay takes to fade in.
@@ -274,7 +245,6 @@ var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource mar
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
 var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
-var _definitions: Dictionary = {} # instance id -> ResourceDefinition (see _definitions_by_id)
 ## Phase 16: the player's changes to generated objects (harvested ones),
 ## for the current seed - written on the main thread under _gen_mutex, read
 ## by generation under it and by marker building on the main thread.
@@ -292,10 +262,9 @@ var terrain_material := ShaderMaterial.new()
 var _season_day: int = -1
 var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
-## Phase 18: the resource the Debug views show (a GUILD_STACK member; read
-## by generation under _gen_mutex), and member id -> its guild.
+## Phase 18: the resource the Debug views show (a guild member; read by
+## generation under _gen_mutex).
 var _debug_resource: ResourceDefinition = OAK_RESOURCE
-var _guild_of_member: Dictionary = {}
 ## Phase 13.5: the default "live game" view is the terrain with every placed
 ## resource on it (RESOURCES); MATERIAL is the bare terrain.
 var _view_mode: ViewMode = ViewMode.RESOURCES
@@ -356,10 +325,9 @@ func _ready() -> void:
 	_load_gameplay_state()
 
 	# A guild's warnings include its members' (oak among them).
-	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
-		for warning in source.get_curve_domain_warnings():
-			push_warning(warning)
-	ResourceManagerScript.build_curve_plans(_content_definitions())
+	for warning in CONTENT.curve_warnings():
+		push_warning(warning)
+	CONTENT.prepare()
 
 	if _seed_text != "":
 		_seed_input.text = _seed_text
@@ -457,12 +425,6 @@ func regenerate(seed_text: String) -> void:
 		_target.snap_to_player()
 
 
-## Every definition generation reads (curve plans are built for these).
-func _content_definitions() -> Array:
-	return (_definitions_by_id().values() + ORE_DEPOSITS + [FARMLAND]
-		+ TerrainSurfaceScript.MATERIALS + StructureSitesScript.DEFINITIONS)
-
-
 ## Desktop tuning (review X3, F5): re-reads every content .tres under
 ## CONTENT_DIR from disk into the already loaded instances
 ## (CACHE_MODE_REPLACE refreshes them in place, so the preloaded consts see
@@ -489,15 +451,7 @@ func reload_content() -> int:
 	ResourceManagerScript._patch_noise_cache.clear()
 	ResourceManagerScript._vein_noise_cache.clear()
 	TerrainSurfaceScript._patch_noise_cache.clear()
-	for guild in GUILD_STACK:
-		guild.members = guild.members  # resets its cached reads_shade()
-	_definitions.clear()
-	var definitions := _content_definitions()
-	for definition in definitions:
-		definition.curve_plan = null
-		if definition.quality_profile != null:
-			definition.quality_profile.curve_plan = null
-	ResourceManagerScript.build_curve_plans(definitions)
+	CONTENT.prepare(true)
 	clear_generation_caches()
 	_gen_mutex.unlock()
 
@@ -574,11 +528,11 @@ func cancel_biome_travel() -> void:
 
 
 ## The search for a travel target, not yet run: BiomeFinder, or for a
-## structure's display name (StructureSites.DEFINITIONS) a StructureSites
+## structure's display name (WorldContent.structures) a StructureSites
 ## search - the nearest site of that type other than one at the start or
 ## already visited - instead of scanning tiles. Both step() until done.
 func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
-	for def in StructureSitesScript.DEFINITIONS:
+	for def in StructureSitesScript.CONTENT.structures:
 		if def.display_name == biome:
 			if _finder_sites == null or _finder_sites.world_seed != _finder_seed:
 				_finder_sites = StructureSitesScript.new(_finder_gen, _finder_seed)
@@ -801,7 +755,7 @@ func _on_tile_clicked(world_pos: Vector2) -> void:
 	var potentials := _deposit_potentials(sample, tile.x, tile.y)
 	for ore in potentials:
 		deposits[String(ore.id).capitalize()] = Vector2(potentials[ore], ResourceManagerScript.get_exposure(state, ore))
-	var farming: float = ResourceManagerScript.get_suitability(state, FARMLAND, classified)
+	var farming: float = ResourceManagerScript.get_suitability(state, CONTENT.farmland, classified)
 	var shade: float = ResourceManagerScript.get_shade(state, world_seed, tile.x, tile.y, classified)
 	var resource := _resource_at(world_pos / TILE_SIZE)
 	var ground := _surface_at(sample, tile.x, tile.y)
@@ -1016,44 +970,29 @@ func _terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 		var liquid := TerrainSurfaceScript.water_liquid(sample)
 		# Frozen water gets no code: no waves, no glints.
 		if coded and liquid > 0.0:
-			w.a = (WATER_CODE_ICE + roundf(liquid * (WATER_CODE - WATER_CODE_ICE))) / 255.0
+			w.a = (TerrainCodes.WATER_CODE_ICE + roundf(liquid * (TerrainCodes.WATER_CODE - TerrainCodes.WATER_CODE_ICE))) / 255.0
 			var depth: float = _world_gen.sea_level - sample["elevation"]
-			if liquid >= 1.0 and depth < SHORE_ELEVATION_MARGIN and SEA_BODIES.has(sample["water_body"]):
-				var shape := _shore_shape(wx, wy, true)
+			if liquid >= 1.0 and depth < TerrainCodes.SHORE_ELEVATION_MARGIN and TerrainCodes.SEA_BODIES.has(sample["water_body"]):
+				var shape := TerrainCodes.shore_shape(_world_gen, wx, wy, true)
 				if shape > 0:
-					w.a = (FOAM_CODE + shape) / 255.0
-				elif depth < SHALLOW_DEPTH:
-					w.a = (SHALLOW_CODE + roundi(7.0 * (1.0 - depth / SHALLOW_DEPTH))) / 255.0
+					w.a = (TerrainCodes.FOAM_CODE + shape) / 255.0
+				elif depth < TerrainCodes.SHALLOW_DEPTH:
+					w.a = (TerrainCodes.SHALLOW_CODE + roundi(7.0 * (1.0 - depth / TerrainCodes.SHALLOW_DEPTH))) / 255.0
 		return w
 	var state := _surface_state(sample, wx, wy)
 	var material := TerrainSurfaceScript.material_at(state, world_seed, wx, wy)
 	var color := TerrainSurfaceScript.color_for(material, state, world_seed, wx, wy)
 	if not coded:
 		return color
-	var grass := GRASS_GROUND.has(material.id)
+	var grass := TerrainCodes.GRASS_GROUND.has(material.id)
 	if grass:
-		color.a = GRASS_CODE / 255.0
+		color.a = TerrainCodes.GRASS_CODE / 255.0
 	# A sea shore: near sea level, facing salt water (not a lake), not frozen.
-	if sample["elevation"] < _world_gen.sea_level + SHORE_ELEVATION_MARGIN and sample["shore_salinity"] > 0.0 and TerrainSurfaceScript.shore_liquid(sample) >= 1.0:
-		var shape := _shore_shape(wx, wy, false)
+	if sample["elevation"] < _world_gen.sea_level + TerrainCodes.SHORE_ELEVATION_MARGIN and sample["shore_salinity"] > 0.0 and TerrainSurfaceScript.shore_liquid(sample) >= 1.0:
+		var shape := TerrainCodes.shore_shape(_world_gen, wx, wy, false)
 		if shape > 0:
-			color.a = ((WASH_GRASS_CODE if grass else WASH_CODE) + shape) / 255.0
+			color.a = ((TerrainCodes.WASH_GRASS_CODE if grass else TerrainCodes.WASH_CODE) + shape) / 255.0
 	return color
-
-
-## The shore shape of a tile (see SHORE_SHAPES), 0 off the shoreline: which
-## neighbours lie across the shoreline from it - ground around a water tile
-## (`water`), water around a ground tile. Elevation against sea level
-## decides it, so it is exact across chunk borders.
-func _shore_shape(wx: int, wy: int, water: bool) -> int:
-	var mask := 0
-	for i in SHORE_STEPS.size():
-		if i >= 4 and mask & CORNER_EDGES[i - 4]:
-			continue
-		var n: Vector2i = SHORE_STEPS[i]
-		if (_world_gen.elevation(wx + n.x, wy + n.y) < _world_gen.sea_level) != water:
-			mask |= 1 << i
-	return SHORE_SHAPES.find(mask) + 1
 
 
 ## The ground material of a tile, or null on a water body (inspector, tests).
@@ -1139,7 +1078,7 @@ func _heatmap_color_for(sample: Dictionary, wx: int, wy: int):
 		ViewMode.DEBUG_PATCH:
 			return HeatmapColorizerScript.resource_density(_debug_values(wx, wy, sample)["patch"])
 		ViewMode.FARMING_POTENTIAL:
-			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, FARMLAND))
+			return HeatmapColorizerScript.resource_suitability(_resource_suitability(sample, CONTENT.farmland))
 		_:
 			return null
 
@@ -1252,12 +1191,12 @@ func _density_memo(id: String, chunk: Vector2i) -> PackedFloat64Array:
 	return densities
 
 
-## Phase 9: every ORE_DEPOSITS entry's potential at a tile -> {definition: potential}
+## Phase 9: every deposit (WorldContent.deposits)'s potential at a tile -> {definition: potential}
 ## (zero entries left out).
 func _deposit_potentials(sample: Dictionary, wx: int, wy: int) -> Dictionary:
 	var state = EnvironmentalStateScript.from_sample(sample)
 	var result := {}
-	for ore in ORE_DEPOSITS:
+	for ore in CONTENT.deposits:
 		var potential: float = ResourceManagerScript.get_deposit_potential(state, ore, world_seed, wx, wy)
 		if potential > 0.0:
 			result[ore] = potential
@@ -1348,7 +1287,7 @@ func _chunk_job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
 		steps.append(func() -> void: data["overlay"] = _overlay_grids(chunk))
 	if _placements_visible_at(lod_step):
 		var depth := _stack_depth(_placement_layers())
-		var margins: Array = ResourcePlacementScript.stack_margins(GUILD_STACK.slice(0, depth))
+		var margins: Array = ResourcePlacementScript.stack_margins(CONTENT.guilds.slice(0, depth))
 		var rect := Rect2i(chunk * CHUNK_SIZE, Vector2i(CHUNK_SIZE, CHUNK_SIZE))
 		if fine and depth > 0:
 			for c in _chunks_in_rect(rect.grow(margins.max())):
@@ -1358,8 +1297,8 @@ func _chunk_job_steps(data: Dictionary, fine: bool) -> Array[Callable]:
 			for c in _chunks_in_rect(rect.grow(margins[i])):
 				if fine:
 					for y0 in range(0, CHUNK_SIZE, WARM_DENSITY_ROWS):
-						steps.append(_warm_guild_density.bind(GUILD_STACK[i], c, y0))
-				steps.append(_raw_guild_chunk.bind(GUILD_STACK[i], c))
+						steps.append(_warm_guild_density.bind(CONTENT.guilds[i], c, y0))
+				steps.append(_raw_guild_chunk.bind(CONTENT.guilds[i], c))
 		steps.append(func() -> void: data["placements"] = _placement_chunk(chunk))
 	return steps
 
@@ -1550,18 +1489,7 @@ func _placement_layers() -> Array:
 		ViewMode.DEBUG_PLACEMENT:
 			return [[debug_guild(), circle]]
 		ViewMode.RESOURCES:
-			return [
-				[ORE_OUTCROPS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.HEXAGON],
-				[SURFACE_ROCKS, ResourceMarkerChunkScript.Shape.SPRITE],
-				[WETLAND_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE, ResourceMarkerChunkScript.Shape.DIAMOND],
-				[SHORE_FEATURES, ResourceMarkerChunkScript.Shape.SPRITE, circle],
-				[GROUND_COVER, ResourceMarkerChunkScript.Shape.SPRITE],
-				[PIONEER_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
-				[DEADWOOD, ResourceMarkerChunkScript.Shape.SPRITE],
-				[DESERT_PLANTS, ResourceMarkerChunkScript.Shape.SPRITE],
-				[SHRUBS, ResourceMarkerChunkScript.Shape.SPRITE, circle],
-				[CANOPY_TREES, ResourceMarkerChunkScript.Shape.SPRITE],
-			]
+			return CONTENT.world_view_placement_layers()
 		_:
 			return []
 
@@ -1640,24 +1568,20 @@ func _instance_quality(inst: Dictionary) -> float:
 	return ResourceManagerScript.get_quality(env[0], definition, world_seed, wx, wy, roll, env[1])
 
 
-## Instance id -> ResourceDefinition for every member of GUILD_STACK (and
-## Oak Placement's single definition), built on first use.
+## Instance id -> ResourceDefinition for every guild member (and Oak
+## Placement's single definition) - WorldContent.definitions_by_id().
 func _definitions_by_id() -> Dictionary:
-	if _definitions.is_empty():
-		_definitions[OAK_RESOURCE.id] = OAK_RESOURCE
-		for guild in GUILD_STACK:
-			for member in guild.members:
-				_definitions[member.id] = member
-	return _definitions
+	return CONTENT.definitions_by_id()
 
 
-## A guild's instances depend only on the guilds above it in GUILD_STACK, so
+## A guild's instances depend only on the guilds above it in the stack, so
 ## a view places the stack only down to the lowest guild it draws: that many
 ## guilds (0 = none, e.g. Oak Placement's single definition).
 func _stack_depth(layers: Array) -> int:
 	var depth := 0
 	for layer in layers:
-		depth = maxi(depth, GUILD_STACK.find(layer[0]) + 1)
+		if layer[0] is ResourceGuild:  # not a lone definition (Oak Placement)
+			depth = maxi(depth, CONTENT.guilds.find(layer[0]) + 1)
 	return depth
 
 
@@ -1705,17 +1629,17 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 	return markers
 
 
-## Phase 8 step 5: the first `depth` guilds of GUILD_STACK for one chunk,
+## Phase 8 step 5: the first `depth` guilds of the stack for one chunk,
 ## after the cross-guild footprint check -> {guild: instances}. A guild's
 ## instances are the same whatever the depth (only higher guilds affect it),
 ## so each guild's view shows exactly what the Resources view does.
-func _place_stack_chunk(base: Vector2i, depth: int = GUILD_STACK.size()) -> Dictionary:
+func _place_stack_chunk(base: Vector2i, depth: int = CONTENT.guilds.size()) -> Dictionary:
 	return _place_stack(Rect2i(base, Vector2i(CHUNK_SIZE, CHUNK_SIZE)), depth)
 
 
 ## Same as _place_stack_chunk() for any tile rect.
-func _place_stack(rect: Rect2i, depth: int = GUILD_STACK.size()) -> Dictionary:
-	var guilds := GUILD_STACK.slice(0, depth)
+func _place_stack(rect: Rect2i, depth: int = CONTENT.guilds.size()) -> Dictionary:
+	var guilds := CONTENT.guilds.slice(0, depth)
 	var raw_fn := func(i: int, r: Rect2i) -> Array:
 		return _raw_guild_in_rect(guilds[i], r)
 	var placed: Array = ResourcePlacementScript.place_stack_with(guilds, rect, raw_fn)
@@ -1744,7 +1668,7 @@ func _resource_at(point: Vector2, include_harvested: bool = true) -> Dictionary:
 	var tile := Vector2i(floori(point.x), floori(point.y))
 	var stack := _place_stack(Rect2i(tile - Vector2i(2, 2), Vector2i(5, 5)))
 	var candidates := []
-	for guild in GUILD_STACK:
+	for guild in CONTENT.guilds:
 		candidates.append([guild, stack[guild]])
 	var best := _pick(point, candidates, include_harvested)
 	if not best.is_empty():
@@ -1886,7 +1810,7 @@ func _warm_guild_density(guild: ResourceGuild, chunk: Vector2i, y0: int) -> void
 func _raw_guild_chunk(guild: ResourceGuild, chunk: Vector2i) -> Array:
 	var key := [guild.id, chunk]
 	if not _raw_guild_chunks.has(key):
-		if _raw_guild_chunks.size() > 8 * GUILD_STACK.size() * _gen_area:
+		if _raw_guild_chunks.size() > 8 * CONTENT.guilds.size() * _gen_area:
 			_raw_guild_chunks.clear()
 		var density_fn := func(wx: int, wy: int) -> float:
 			return _guild_density(guild, wx, wy)
@@ -2034,11 +1958,11 @@ func is_debug_view(mode: ViewMode = _view_mode) -> bool:
 	return mode in [ViewMode.DEBUG_SUITABILITY, ViewMode.DEBUG_DENSITY, ViewMode.DEBUG_PATCH, ViewMode.DEBUG_PLACEMENT]
 
 
-## Every resource the Debug views can show: each GUILD_STACK member, in
+## Every resource the Debug views can show: each stack member, in
 ## stack order.
 func debug_resources() -> Array[ResourceDefinition]:
 	var list: Array[ResourceDefinition] = []
-	for guild in GUILD_STACK:
+	for guild in CONTENT.guilds:
 		for member in guild.members:
 			list.append(member)
 	return list
@@ -2050,11 +1974,7 @@ func debug_resource() -> ResourceDefinition:
 
 ## The guild the debug resource is placed with.
 func debug_guild() -> ResourceGuild:
-	if _guild_of_member.is_empty():
-		for guild in GUILD_STACK:
-			for member in guild.members:
-				_guild_of_member[member.id] = guild
-	return _guild_of_member[_debug_resource.id]
+	return CONTENT.guild_of(_debug_resource)
 
 
 ## Picks the resource the Debug views show; rebuilds them if one is showing.

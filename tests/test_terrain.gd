@@ -48,10 +48,10 @@ func _init() -> void:
 	# 1. Data.
 	var ids := {}
 	var warnings := PackedStringArray()
-	for m in TS.MATERIALS:
+	for m in TS.CONTENT.terrain_materials:
 		ids[m.id] = true
 		warnings.append_array(m.get_curve_domain_warnings())
-	check(ids.size() == TS.MATERIALS.size() and TS.MATERIALS.all(func(m): return m.display_name != ""), "%d materials, unique ids, all named" % ids.size())
+	check(ids.size() == TS.CONTENT.terrain_materials.size() and TS.CONTENT.terrain_materials.all(func(m): return m.display_name != ""), "%d materials, unique ids, all named" % ids.size())
 	check(warnings.is_empty(), "no curve-domain warnings %s" % warnings)
 
 	# 2. Sample blocks across the world: mixture per biome, coherence, causes.
