@@ -241,10 +241,17 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 
 var _target: Node2D
 var _player: Node2D
-## Tile -> whether the player can stand there (not open water; frozen water
-## is walkable). Filled for free wherever a chunk image is baked tile by
-## tile, else sampled on demand (is_walkable()); guarded by _gen_mutex.
+## Chunk -> whether the player can stand on each of its tiles (not open
+## water; frozen water is walkable): a PackedByteArray of CHUNK_SIZE x
+## CHUNK_SIZE, 0 = not known yet, WALKABLE / BLOCKED. Filled for free
+## wherever a chunk image is baked tile by tile, else sampled on demand
+## (is_walkable()); guarded by _gen_mutex. At most WALKABLE_CHUNKS chunks,
+## oldest dropped first (review W3: a Dictionary entry per tile grew by
+## ~200 KB per chunk walked).
 var _walkable: Dictionary = {}
+const WALKABLE_CHUNKS := 4096  # ~1.5 MB
+const WALKABLE := 1
+const BLOCKED := 2
 ## Chunk -> the shown image padded with a 1-texel border (_padded_image()):
 ## the border holds the loaded neighbours' edge tiles (_share_borders()), so
 ## terrain.gdshader can blend ground across chunk borders.
@@ -1211,7 +1218,7 @@ func _bake_rows(img: Image, chunk_coord: Vector2i, lod_step: int, y0: int, y1: i
 			var sample := _world_gen.sample(wx, wy)
 			img.set_pixel(lx, ly, _color_for(sample, wx, wy))
 			if lod_step == 1:
-				_walkable[Vector2i(wx, wy)] = _walkable_sample(sample)
+				_set_walkable(Vector2i(wx, wy), _walkable_sample(sample))
 
 
 ## Fills _tile_env() for tile rows y0..y1-1 of a chunk (a warm-up job step).
@@ -2347,14 +2354,34 @@ static func _heap_pop(f: Array[float], t: Array[Vector2i]) -> Vector2i:
 ## Whether the player can stand on a tile: anything but open water (a sea,
 ## lake or river that isn't frozen solid). Call with _gen_mutex held.
 func is_walkable(tile: Vector2i) -> bool:
-	var known = _walkable.get(tile)
-	if known != null:
-		return known
-	if _walkable.size() > 400000:
-		_walkable.clear()
+	var cells: PackedByteArray = _walkable.get(_chunk_of_tile(tile), PackedByteArray())
+	if not cells.is_empty():
+		var known := cells[_walkable_index(tile)]
+		if known != 0:
+			return known == WALKABLE
 	var walkable := _walkable_sample(_world_gen.sample(tile.x, tile.y))
-	_walkable[tile] = walkable
+	_set_walkable(tile, walkable)
 	return walkable
+
+
+func _set_walkable(tile: Vector2i, walkable: bool) -> void:
+	var chunk := _chunk_of_tile(tile)
+	var cells: PackedByteArray = _walkable.get(chunk, PackedByteArray())
+	_walkable.erase(chunk)  # one owner while it's written; re-added as newest
+	if cells.is_empty():
+		cells.resize(CHUNK_SIZE * CHUNK_SIZE)
+		if _walkable.size() >= WALKABLE_CHUNKS:
+			_walkable.erase(_walkable.keys()[0])  # the oldest (insertion order)
+	cells[_walkable_index(tile)] = WALKABLE if walkable else BLOCKED
+	_walkable[chunk] = cells
+
+
+static func _chunk_of_tile(tile: Vector2i) -> Vector2i:
+	return Vector2i(floori(float(tile.x) / CHUNK_SIZE), floori(float(tile.y) / CHUNK_SIZE))
+
+
+static func _walkable_index(tile: Vector2i) -> int:
+	return posmod(tile.y, CHUNK_SIZE) * CHUNK_SIZE + posmod(tile.x, CHUNK_SIZE)
 
 
 static func _walkable_sample(sample: Dictionary) -> bool:
