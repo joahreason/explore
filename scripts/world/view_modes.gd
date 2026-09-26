@@ -1,10 +1,9 @@
 extends RefCounted
 
-## Every view of the map in one table (review A2, §4.1 step 4): its
-## dropdown label, how its base image is coloured, which placement layers
-## it draws, and its flags. ChunkManager builds and draws chunks from it and
-## the view dropdown lists its labels, so a view is added or changed here.
-## Constants only; any thread.
+## Every view of the map in one table: its dropdown label, how its base image
+## is coloured, which placement layers it draws, and its flags. ChunkManager
+## builds and draws chunks from it and the view dropdown lists its labels, so
+## a view is added or changed here. Constants only; any thread.
 
 const ResourceMarkerChunkScript := preload("res://scripts/render/resource_marker_chunk.gd")
 const ResourceManagerScript := preload("res://scripts/resources/resource_manager.gd")

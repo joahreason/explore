@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const ChunkStreamer := preload("res://scripts/world/chunk_streamer.gd")
@@ -12,14 +12,6 @@ const ResourceMarkerChunk := preload("res://scripts/render/resource_marker_chunk
 ## for visual inspection - OUT_TILES tiles wide, centered on OUT_CENTER="x,y"
 ## (default the origin), OUT_PX pixels per tile (default 5; 12 = native
 ## sprite size). Run via tests/run_tests.sh.
-
-var _fails := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	print(("PASS " if cond else "FAIL ") + msg)
-	if not cond:
-		_fails += 1
 
 
 func _init() -> void:
@@ -349,8 +341,8 @@ func _init() -> void:
 	# rebuilds cheap; the placements are compared directly.
 	world.set_view_mode(CM.ViewMode.MATERIAL)
 	world.flush_chunk_work()
-	var seed_input: LineEdit = world.get_node("UI/SeedInput")
-	var randomize: Button = world.get_node("UI/RandomizeButton")
+	var seed_input: LineEdit = world.get_node("UI/Menu/SeedInput")
+	var randomize: Button = world.get_node("UI/Menu/RandomizeButton")
 	check(seed_input.visible and randomize.visible and seed_input.text == "4242", "desktop: seed field (showing '%s') and Randomize shown" % seed_input.text)
 	var before := str(world._ctx.place_stack_chunk(Vector2i.ZERO))
 	seed_input.text_submitted.emit("777")
@@ -370,7 +362,7 @@ func _init() -> void:
 
 	# Biome travel menu: picking a biome moves the camera onto it; picking it
 	# again from there moves on to another patch of it.
-	var travel: OptionButton = world.get_node("UI/BiomeTravelDropdown")
+	var travel: OptionButton = world.get_node("UI/Menu/BiomeTravelDropdown")
 	var desert := -1
 	for i in travel.item_count:
 		if travel.get_item_text(i) == "Desert":
@@ -466,7 +458,7 @@ func _init() -> void:
 		search_frames += 1
 	check(searching and outcomes == [["Beach", true, false]] and inline_world._player.tile() == beach,
 		"no threads: Go to Beach from %s steps over %d frames (longest %.1f ms) to %s, as a one-go search does" % [from, search_frames, longest / 1000.0, beach])
-	var menu: OptionButton = inline_world.get_node("UI/BiomeTravelDropdown")
+	var menu: OptionButton = inline_world.get_node("UI/Menu/BiomeTravelDropdown")
 	var frozen := -1
 	for i in menu.item_count:
 		if menu.get_item_text(i) == "Frozen Sea":
@@ -481,8 +473,7 @@ func _init() -> void:
 	check(still and outcomes == [["Frozen Sea", false, true]] and not inline_world.is_finding_biome() and menu.get_item_text(0) == "Go to..." and menu.selected == 0,
 		"no threads: a long search can be cancelled from the menu (%s)" % [outcomes])
 
-	print("RESULT %s" % ("PASS" if _fails == 0 else "%d FAILED" % _fails))
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 ## How many loaded chunks show content built for the current view and LOD.

@@ -48,7 +48,7 @@ func _init() -> void:
 					for guild in CONTENT.guilds:
 						values.append(ResourceManager.get_guild_density(state, guild, SEED, wx, wy, classified))
 					var t5 := Time.get_ticks_usec()
-					if TerrainSurface.water_color(s) == null:
+					if TerrainSurface.water_color(s, gen.sea_level) == null:
 						ResourceManager.get_shade(state, SEED, wx, wy, classified)
 						var material := TerrainSurface.material_at(state, SEED, wx, wy)
 						var color := TerrainSurface.color_for(material, state, SEED, wx, wy)

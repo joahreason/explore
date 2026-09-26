@@ -3,9 +3,9 @@ extends RefCounted
 
 ## Phase 15 of docs/resource-generation-plan.md: one placed resource as a
 ## gameplay entity - the generic record later mechanics (harvesting,
-## destruction, respawning, growth, persistence) read and, eventually,
-## change. Pure data: rendering stays in resource_marker_chunk.gd, which
-## still draws from placement output.
+## destruction, respawning, growth, persistence) read and change. Pure data:
+## rendering stays in resource_marker_chunk.gd, which draws from placement
+## output.
 ##
 ## Built on demand from a ResourcePlacement instance (ChunkManager.
 ## get_resource_instance()) - for the instances that are inspected or

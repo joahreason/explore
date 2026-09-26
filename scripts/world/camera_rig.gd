@@ -29,7 +29,7 @@ const FOLLOW_ZONE := 0.2
 const FOLLOW_EASE := 6.0
 @export var player_path: NodePath
 
-## Direct children of this node are treated as "UI" for _is_over_ui() below -
+## This node's Controls are treated as "UI" for is_over_ui() below -
 ## a press/tap starting on one of them (or on a currently-open popup, e.g.
 ## the view-mode dropdown's list) is never treated as a map tap / pinch. This
 ## is necessary because raw touch events (InputEventScreenTouch/Drag) are
@@ -101,21 +101,30 @@ func _unhandled_input(event: InputEvent) -> void:
 ## True if a currently-hovered Control claims this point (best-effort - GUI
 ## hover tracking from touch isn't guaranteed to have updated yet by the
 ## time the parallel raw touch event reaches here), or if it falls inside
-## one of _ui_root's own Control children, or if any dropdown's popup list
-## is currently open (that popup lives outside _ui_root's children and can
+## one of _ui_root's Control children (or inside a mouse-ignoring Container
+## child, one of its children), or if any dropdown's popup list is currently
+## open (that popup lives outside _ui_root's children and can
 ## render anywhere on screen, so its open/closed state - not screen_pos -
 ## is what decides it: this makes the whole gesture that opened it, and any
 ## gesture while it stays open, unconditionally "over UI").
-func _is_over_ui(screen_pos: Vector2) -> bool:
+func is_over_ui(screen_pos: Vector2) -> bool:
 	if get_viewport().gui_get_hovered_control() != null:
 		return true
-	if _ui_root == null:
-		return false
-	for child in _ui_root.get_children():
+	return _ui_root != null and _claims(_ui_root, screen_pos)
+
+
+func _claims(parent: Node, screen_pos: Vector2) -> bool:
+	for child in parent.get_children():
 		if child is OptionButton and child.get_popup().visible:
 			return true
-		# Mouse-ignoring Controls (the position readout) don't block the map.
-		if child is Control and child.visible and child.mouse_filter != Control.MOUSE_FILTER_IGNORE and child.get_global_rect().has_point(screen_pos):
+		if not (child is Control and child.visible):
+			continue
+		# Mouse-ignoring Controls (the position readout) don't block the map,
+		# but a mouse-ignoring Container (the menu column) holds ones that do.
+		if child.mouse_filter != Control.MOUSE_FILTER_IGNORE:
+			if child.get_global_rect().has_point(screen_pos):
+				return true
+		elif child is Container and _claims(child, screen_pos):
 			return true
 	return false
 
@@ -123,7 +132,7 @@ func _is_over_ui(screen_pos: Vector2) -> bool:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			if _is_over_ui(event.position):
+			if is_over_ui(event.position):
 				return
 			SeedReloadScript.close_keyboard(self)
 			_pressed = true
@@ -133,7 +142,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if event.position.distance_to(_press_position) < CLICK_DRAG_THRESHOLD:
 				map_tapped.emit(get_global_mouse_position())
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed and not _is_over_ui(event.position):
+		if event.pressed and not is_over_ui(event.position):
 			info_clicked.emit(get_global_mouse_position())
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		_ease_zoom(zoom_factor)
@@ -143,7 +152,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 func _handle_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
-		var over_ui := _is_over_ui(event.position)
+		var over_ui := is_over_ui(event.position)
 		_touch_over_ui[event.index] = over_ui
 		if over_ui:
 			return

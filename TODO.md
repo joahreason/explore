@@ -4,7 +4,7 @@ Keep this list actionable and current.
 
 ## Current Task
 
-- [ ] Code review follow-up (`docs/reviews/2026-09-26-code-review.md`): batches 1-5 merged into `review-followup`, batch 6 (docs, X2) in review, batch 7 next - see "Review follow-up" below. Then one PR from `review-followup` to `main`.
+- [ ] Code review follow-up (`docs/reviews/2026-09-26-code-review.md`): all 7 batches merged into `review-followup`; the PR from `review-followup` to `main` waits for the user's review. D4 is a question for the user (PROJECT_STATE "Open questions").
 
 ## Review follow-up
 
@@ -15,8 +15,8 @@ Works through `docs/reviews/2026-09-26-code-review.md`, one batch per session. E
 - [x] 3. Small fixes: D2, W6, W5, C1, C2, C5, X4, W3, unused PNG from O1 - merged into review-followup
 - [x] 4. Before feature work: C3, C4, X3, W4 - merged into review-followup
 - [x] 5. chunk_manager.gd split, §4.1 steps 1-9 (A2 in view modes, A3 in content, A4 and T4 throughout, O1 folders in step 9) - PRs #45-#53 (merged into review-followup)
-- [ ] 6. Docs restructure: X2, per §4.2
-- [ ] 7. Remaining: P1, P3, P4, then P2 (using W4's numbers); Q1-Q6, T2's coverage additions, T6, D3, D4
+- [x] 6. Docs restructure: X2, per §4.2 - PR #54 (merged into review-followup)
+- [x] 7. Remaining: P1, P3, P4, P2 (measured, kept) - PR #55; Q1-Q6, T6, D3, T2's coverage additions (merged into review-followup); D4 left as a question for the user
 
 ## Next (after the review)
 

@@ -1,9 +1,8 @@
 class_name TerrainSurface
 extends RefCounted
 
-## Phase 13.5 terrain surface layer: which ground a tile shows (one discrete
-## SurfaceMaterial per land tile) and its colour. Replaces the old averaged
-## Material blend, which made large areas one uniform, biome-coloured tone.
+## Terrain surface layer: which ground a tile shows (one discrete
+## SurfaceMaterial per land tile) and its colour.
 ##
 ## Choice: every material scores suitability (ResourceManager.get_suitability
 ## over the tile's EnvironmentalState, x its base_density prevalence) times
@@ -32,6 +31,11 @@ const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 const SHADE_LATTICE := 4
 
 const PATCH_CONTRAST := 1.8
+## The per-tile brightness jitter rolls ResourcePlacement's cell hash under
+## this id, so no resource or guild may use it (test_terrain checks). It
+## keeps the placement seed offset rather than a new one, since a new
+## offset would change every tile's jitter (review Q4).
+const JITTER_SEED_ID := "terrain"
 const _JITTER_SALT := 1
 
 static var _patch_noise_cache: Dictionary = {}  # seed -> {material id -> FastNoiseLite}
@@ -45,21 +49,20 @@ const LAKE_SHALLOW := Color(0.3, 0.66, 0.72)
 const LAKE_DEEP := Color(0.16, 0.46, 0.56)
 const RIVER_WATER := Color(0.32, 0.62, 0.8)
 const ICE := Color(0.75, 0.85, 0.95)
-const SEA_LEVEL := -0.1
 
 
 ## Water-body colour for a WorldGen sample, or null for ground (land and
-## swamp).
-static func water_color(s: Dictionary) -> Variant:
+## swamp). sea_level is the WorldGen's, which depth is measured from.
+static func water_color(s: Dictionary, sea_level: float) -> Variant:
 	var elevation: float = s["elevation"]
 	var temperature: float = s["temperature"]
 	match s["water_body"]:
 		"ocean":
-			return _water(elevation, temperature, 0.6, OCEAN_SHALLOW, OCEAN_DEEP)
+			return _water(elevation, sea_level, temperature, 0.6, OCEAN_SHALLOW, OCEAN_DEEP)
 		"sea":
-			return _water(elevation, temperature, 0.3, SEA_SHALLOW, SEA_DEEP)
+			return _water(elevation, sea_level, temperature, 0.3, SEA_SHALLOW, SEA_DEEP)
 		"lake":
-			return _water(elevation, temperature, 0.15, LAKE_SHALLOW, LAKE_DEEP)
+			return _water(elevation, sea_level, temperature, 0.15, LAKE_SHALLOW, LAKE_DEEP)
 		"river":
 			return RIVER_WATER
 	return null
@@ -90,9 +93,9 @@ static func color_for(material: SurfaceMaterial, state: EnvironmentalState, worl
 	if material.jitter > 0.0:
 		var seed: Variant = _jitter_seeds.get(world_seed)
 		if seed == null:  # formatting it per tile was a measurable cost (review P1)
-			seed = ResourcePlacementScript._resource_seed("terrain", world_seed)
+			seed = ResourcePlacementScript.seed_for(JITTER_SEED_ID, world_seed)
 			_jitter_seeds[world_seed] = seed
-		var unit: float = ResourcePlacementScript._cell_unit(seed, Vector2i(wx, wy), _JITTER_SALT)
+		var unit: float = ResourcePlacementScript.cell_unit(seed, Vector2i(wx, wy), _JITTER_SALT)
 		var factor := 1.0 + (unit * 2.0 - 1.0) * material.jitter
 		color = Color(color.r * factor, color.g * factor, color.b * factor)
 	return color
@@ -140,8 +143,8 @@ static func _tint(color: Color, state: EnvironmentalState, field: String, field_
 	return Color(lerpf(color.r, tint.r, amount), lerpf(color.g, tint.g, amount), lerpf(color.b, tint.b, amount))
 
 
-static func _water(elevation: float, temperature: float, depth_range: float, shallow: Color, deep: Color) -> Color:
-	var depth_t := clampf(inverse_lerp(SEA_LEVEL, SEA_LEVEL - depth_range, elevation), 0.0, 1.0)
+static func _water(elevation: float, sea_level: float, temperature: float, depth_range: float, shallow: Color, deep: Color) -> Color:
+	var depth_t := clampf(inverse_lerp(sea_level, sea_level - depth_range, elevation), 0.0, 1.0)
 	var color := shallow.lerp(deep, depth_t)
 	return color.lerp(ICE, _frozen(temperature))
 

@@ -1,12 +1,12 @@
 class_name ResourceDefinition
 extends Resource
 
-## Phase 2 of docs/resource-generation-plan.md: data-driven description of one
-## placeable resource's environmental preferences (a tree species, an ore
-## type, etc.) - no spawning logic lives here or anywhere else yet. Follows
-## the same pattern as WorldGen (Resource + @export, tunable/saveable as a
-## .tres in the Inspector), the project's existing precedent for a large
-## configurable data object.
+## Data-driven description of one placeable resource's environmental
+## preferences (a tree species, an ore type, etc.)
+## (docs/resource-generation-plan.md, Phase 2); ResourcePlacement does the
+## placing. Follows the same pattern as WorldGen (Resource + @export,
+## tunable/saveable as a .tres in the Inspector), the project's existing
+## precedent for a large configurable data object.
 ##
 ## Curves use Godot's built-in Curve resource (matches the plan's own
 ## "temperature_curve.sample(temperature)" language exactly) rather than a
@@ -253,26 +253,32 @@ var curve_plan = null
 @export var max_health: float = 100.0
 
 
-## Real value range of the EnvironmentalState field each curve samples
-## (docs/architecture.md §2). slope has no fixed upper bound, so only its
-## lower end is checked (INF = unchecked).
-const CURVE_FIELD_RANGES := {
-	"temperature_curve": Vector2(-1.0, 1.0),
-	"moisture_curve": Vector2(0.0, 1.0),
-	"fertility_curve": Vector2(0.0, 1.0),
-	"elevation_curve": Vector2(-1.0, 1.0),
-	"slope_curve": Vector2(0.0, INF),
-	"drainage_curve": Vector2(0.0, 1.0),
-	"erosion_curve": Vector2(0.0, 1.0),
-	"river_curve": Vector2(0.0, 1.0),
-	"shore_curve": Vector2(0.0, 1.0),
-	"deposition_curve": Vector2(0.0, 1.0),
-	"salinity_curve": Vector2(0.0, 1.0),
-	"succession_curve": Vector2(0.0, 1.0),
-	"rock_exposure_curve": Vector2(0.0, 1.0),
-	"shade_curve": Vector2(0.0, 1.0),
-	"vegetation_curve": Vector2(0.0, 1.0),
-	"wind_exposure_curve": Vector2(0.0, 1.0),
+## Every environmental curve: the EnvironmentalState field it samples and
+## that field's real value range (docs/architecture.md §2) - the one table
+## ResourceManager's curve plan and get_curve_domain_warnings() both read
+## (review Q1). slope has no fixed upper bound, so only its lower end is
+## checked (INF = unchecked). The order is the curve plan's, which sets the
+## order suitability multiplies factors in: append new curves at the end.
+## A new curve also needs its @export above (a setter that clears
+## curve_plan) and its field on EnvironmentalState; test_resource_guild
+## checks all three agree.
+const CURVES := {
+	"temperature_curve": ["temperature", Vector2(-1.0, 1.0)],
+	"moisture_curve": ["moisture", Vector2(0.0, 1.0)],
+	"fertility_curve": ["soil_fertility", Vector2(0.0, 1.0)],
+	"elevation_curve": ["elevation", Vector2(-1.0, 1.0)],
+	"slope_curve": ["slope", Vector2(0.0, INF)],
+	"drainage_curve": ["drainage", Vector2(0.0, 1.0)],
+	"erosion_curve": ["erosion", Vector2(0.0, 1.0)],
+	"river_curve": ["river", Vector2(0.0, 1.0)],
+	"shore_curve": ["shore_proximity", Vector2(0.0, 1.0)],
+	"deposition_curve": ["deposition", Vector2(0.0, 1.0)],
+	"salinity_curve": ["shore_salinity", Vector2(0.0, 1.0)],
+	"succession_curve": ["succession", Vector2(0.0, 1.0)],
+	"rock_exposure_curve": ["rock_exposure", Vector2(0.0, 1.0)],
+	"shade_curve": ["shade", Vector2(0.0, 1.0)],
+	"vegetation_curve": ["vegetation", Vector2(0.0, 1.0)],
+	"wind_exposure_curve": ["exposure", Vector2(0.0, 1.0)],
 }
 
 
@@ -284,11 +290,11 @@ const CURVE_FIELD_RANGES := {
 ## sub-zero tile the same score - exactly how oak ended up densest in Tundra.
 func get_curve_domain_warnings() -> PackedStringArray:
 	var warnings := PackedStringArray()
-	for curve_name in CURVE_FIELD_RANGES:
+	for curve_name in CURVES:
 		var curve: Curve = get(curve_name)
 		if curve == null:
 			continue
-		var field_range: Vector2 = CURVE_FIELD_RANGES[curve_name]
+		var field_range: Vector2 = CURVES[curve_name][1]
 		var covers_min := curve.min_domain <= field_range.x
 		var covers_max := is_inf(field_range.y) or curve.max_domain >= field_range.y
 		if not (covers_min and covers_max):
@@ -304,7 +310,7 @@ func get_curve_domain_warnings() -> PackedStringArray:
 			id, exposure_curve.min_domain, exposure_curve.max_domain
 		])
 	for curve_name in required_curves:
-		if not CURVE_FIELD_RANGES.has(curve_name):
+		if not CURVES.has(curve_name):
 			warnings.append("ResourceDefinition '%s': required_curves names unknown curve '%s'" % [id, curve_name])
 	if quality_profile != null:
 		if quality_profile.has_method("tier_for"):

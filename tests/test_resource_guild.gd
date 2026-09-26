@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 8 guild invariants: species shares, one shared placement grid per
 ## guild (spacing holds across species, chunk seams), deterministic species
@@ -14,18 +14,6 @@ const ROCKS := preload("res://resources/guilds/surface_rocks.tres")
 const SHRUBS := preload("res://resources/guilds/shrubs.tres")
 const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
 const CHUNK := 16
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func const_density(v: float) -> Callable:
@@ -52,6 +40,33 @@ func min_pair_dist(arr: Array) -> float:
 
 
 func _init() -> void:
+	# 0. Review Q1: ResourceDefinition.CURVES, its @export curves and
+	# EnvironmentalState agree - a curve missing from one of them would be
+	# silently never sampled or never range-checked.
+	var definition := ResourceDefinition.new()
+	var exported := []
+	for prop in definition.get_property_list():
+		if String(prop["name"]).ends_with("_curve") and prop["type"] == TYPE_OBJECT and prop["usage"] & PROPERTY_USAGE_STORAGE:
+			exported.append(prop["name"])
+	var fields := []
+	for prop in EnvironmentalState.new().get_property_list():
+		fields.append(prop["name"])
+	var curve_problems := []
+	for curve_name in ResourceDefinition.CURVES:
+		if not exported.has(curve_name):
+			curve_problems.append("%s is not an exported curve" % curve_name)
+		if not fields.has(ResourceDefinition.CURVES[curve_name][0]):
+			curve_problems.append("%s samples '%s', which EnvironmentalState lacks" % [curve_name, ResourceDefinition.CURVES[curve_name][0]])
+		definition.curve_plan = []
+		definition.set(curve_name, Curve.new())
+		if definition.curve_plan != null:
+			curve_problems.append("setting %s keeps a stale curve_plan" % curve_name)
+	var not_environmental := ["cluster_curve", "exposure_curve", "cover_curve", "density_curve"]
+	for curve_name in exported:
+		if not ResourceDefinition.CURVES.has(curve_name) and not not_environmental.has(curve_name):
+			curve_problems.append("%s is exported but not in CURVES" % curve_name)
+	check(curve_problems.is_empty(), "every environmental curve is in CURVES, exported, cleared from the plan when set, and on EnvironmentalState %s" % [curve_problems])
+
 	# 1. Species shares.
 	var sh := ResourceManager.get_species_shares(PackedFloat32Array([0.8, 0.4, 0.0]), 4.0)
 	check(is_equal_approx(sh[0] + sh[1] + sh[2], 1.0) and sh[2] == 0.0 and sh[0] > 0.9,
@@ -326,8 +341,7 @@ func _init() -> void:
 	check(is_equal_approx(before, 0.5) and is_equal_approx(required, 0.25) and is_equal_approx(reassigned, 1.0),
 		"suitability follows curve / required_curves reassignment after first use (%.3f, %.3f, %.3f)" % [before, required, reassigned])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func cross_min_dist(a: Array, b: Array) -> float:

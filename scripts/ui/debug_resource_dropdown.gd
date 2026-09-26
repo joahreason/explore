@@ -6,18 +6,11 @@ extends OptionButton
 ## "Oak (Canopy Trees)". Only visible while a Debug view is showing; sits
 ## just below the "Go to biome" menu.
 
-const SPACING := 8
-
-@onready var _world := get_node("../..")
+@onready var _world := get_node("../../..")
 var _resources: Array[ResourceDefinition] = []
 
 
 func _ready() -> void:
-	var above := get_node_or_null("../BiomeTravelDropdown") as Control
-	if above:
-		var height := offset_bottom - offset_top
-		offset_top = above.offset_bottom + SPACING
-		offset_bottom = offset_top + height
 	_resources = _world.debug_resources()
 	var guild_names := {}
 	for guild in _world.CONTENT.guilds:

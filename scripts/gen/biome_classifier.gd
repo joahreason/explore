@@ -32,6 +32,42 @@ const GRASS_VEG := Vector2(0.2, 0.3)
 ## Temperature ramp (start, full) from Barrens to Desert. Cacti need
 ## >= 0.05 (cactus.tres); Desert only wins from about -0.1 up.
 const BARRENS_TEMP := Vector2(-0.2, 0.05)
+## The other thresholds, as smoothstep ramps from _START to _FULL (review
+## Q3). Plain floats, not Vector2, so every value stays exactly as tuned.
+## Water: a colder ocean is Frozen Sea; nearer the shore than this is Beach.
+const FROZEN_SEA_TEMP := -0.4
+const BEACH_SHORE := 0.5
+## Alpine Snow: high and cold (elevation 0..1 here).
+const ALPINE_ELEV_START := 0.55
+const ALPINE_ELEV_FULL := 0.85
+const ALPINE_WARM_START := 0.0
+const ALPINE_WARM_FULL := 0.3
+## Badlands: eroded, or steep.
+const BADLANDS_EROSION_START := 0.15
+const BADLANDS_EROSION_FULL := 0.45
+const BADLANDS_SLOPE_START := 0.004
+const BADLANDS_SLOPE_FULL := 0.009
+## Rainforest: hot and wet. Savanna: hot and dry (dryness ramps down).
+const HOT_WET_TEMP_START := 0.05
+const HOT_WET_TEMP_FULL := 0.2
+const HOT_WET_MOIST_START := 0.4
+const HOT_WET_MOIST_FULL := 0.55
+const HOT_DRY_TEMP_START := 0.1
+const HOT_DRY_TEMP_FULL := 0.25
+const HOT_DRY_MOIST_START := 0.35
+const HOT_DRY_MOIST_FULL := 0.5
+## Wetland: wet, and poorly drained (drainage ramps down).
+const WATERLOGGED_MOIST_START := 0.5
+const WATERLOGGED_MOIST_FULL := 0.65
+const WATERLOGGED_DRAINAGE_START := 0.42
+const WATERLOGGED_DRAINAGE_FULL := 0.55
+## Desert/Barrens: dry and bare (both ramp down).
+const ARID_MOIST_START := 0.15
+const ARID_MOIST_FULL := 0.3
+const ARID_VEG_START := 0.1
+const ARID_VEG_FULL := 0.2
+## Plains' constant score: the floor every other biome must beat.
+const PLAINS_FLOOR := 0.2
 
 const BIOME_COLORS := {
 	"Ocean": Color(0.15, 0.35, 0.75, 0.55),
@@ -81,7 +117,7 @@ static func classify_detailed(s: Dictionary) -> Dictionary:
 
 	match water_body:
 		"ocean":
-			var name := "Frozen Sea" if temperature < -0.4 else "Ocean"
+			var name := "Frozen Sea" if temperature < FROZEN_SEA_TEMP else "Ocean"
 			return {"base_biome": name, "scores": {}, "confidence": 1.0}
 		"sea":
 			return {"base_biome": "Sea", "scores": {}, "confidence": 1.0}
@@ -92,7 +128,7 @@ static func classify_detailed(s: Dictionary) -> Dictionary:
 		"river":
 			return {"base_biome": "River", "scores": {}, "confidence": 1.0}
 
-	if shore_proximity > 0.5:
+	if shore_proximity > BEACH_SHORE:
 		return {"base_biome": "Beach", "scores": {}, "confidence": 1.0}
 
 	var scores := _score_land_biomes(s)
@@ -123,27 +159,27 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 	var drainage: float = s["drainage"]
 	var wooded := smoothstep(FOREST_VEG.x, FOREST_VEG.y, vegetation)
 	var grassy := smoothstep(GRASS_VEG.x, GRASS_VEG.y, vegetation)
-	var hot_wet := smoothstep(0.05, 0.2, temperature) * smoothstep(0.4, 0.55, moisture)
-	var hot_dry := smoothstep(0.1, 0.25, temperature) * (1.0 - smoothstep(0.35, 0.5, moisture))
+	var hot_wet := smoothstep(HOT_WET_TEMP_START, HOT_WET_TEMP_FULL, temperature) * smoothstep(HOT_WET_MOIST_START, HOT_WET_MOIST_FULL, moisture)
+	var hot_dry := smoothstep(HOT_DRY_TEMP_START, HOT_DRY_TEMP_FULL, temperature) * (1.0 - smoothstep(HOT_DRY_MOIST_START, HOT_DRY_MOIST_FULL, moisture))
 	# Wetland = wet AND poorly drained ground, not "wet but sparse": under
 	# the current vegetation formula wet ground is always lush, so a
 	# vegetation cap left Wetland at <1%. Waterlogging also halves the
 	# wooded/grassy biomes so Wetland wins where it's full.
-	var waterlogged := smoothstep(0.5, 0.65, moisture) * (1.0 - smoothstep(0.42, 0.55, drainage))
+	var waterlogged := smoothstep(WATERLOGGED_MOIST_START, WATERLOGGED_MOIST_FULL, moisture) * (1.0 - smoothstep(WATERLOGGED_DRAINAGE_START, WATERLOGGED_DRAINAGE_FULL, drainage))
 	var not_wet := 1.0 - 0.5 * waterlogged
 	# Dry, bare ground splits by warmth: a third of it used to be frozen or
 	# too cool for cacti yet was labeled Desert (cold ground is sparse
 	# anyway, and high ground is both cold and wind-dried).
-	var arid := (1.0 - smoothstep(0.15, 0.3, moisture)) * (1.0 - smoothstep(0.1, 0.2, vegetation))
+	var arid := (1.0 - smoothstep(ARID_MOIST_START, ARID_MOIST_FULL, moisture)) * (1.0 - smoothstep(ARID_VEG_START, ARID_VEG_FULL, vegetation))
 	var warm := smoothstep(BARRENS_TEMP.x, BARRENS_TEMP.y, temperature)
 	var tundra := smoothstep(TUNDRA_COLD_START, TUNDRA_COLD_FULL, -temperature)
 
 	return {
 		# Needs cold as well as height - by elevation alone, hot highlands
 		# (median temperature +0.22) were labeled snow.
-		"Alpine Snow": smoothstep(0.55, 0.85, elev01) * (1.0 - smoothstep(0.0, 0.3, temperature)),
+		"Alpine Snow": smoothstep(ALPINE_ELEV_START, ALPINE_ELEV_FULL, elev01) * (1.0 - smoothstep(ALPINE_WARM_START, ALPINE_WARM_FULL, temperature)),
 		"Tundra": tundra,
-		"Badlands": maxf(smoothstep(0.15, 0.45, erosion), smoothstep(0.004, 0.009, slope)),
+		"Badlands": maxf(smoothstep(BADLANDS_EROSION_START, BADLANDS_EROSION_FULL, erosion), smoothstep(BADLANDS_SLOPE_START, BADLANDS_SLOPE_FULL, slope)),
 		"Desert": arid * warm,
 		# Halved where Tundra is full so the deep cold goes to Tundra rather
 		# than being decided by dictionary order.
@@ -162,5 +198,5 @@ static func _score_land_biomes(s: Dictionary) -> Dictionary:
 		# Constant floor so something always wins in "boring middle ground"
 		# tiles where nothing else clears its threshold - matches the old
 		# code's final "else: return Plains" fallback.
-		"Plains": 0.2,
+		"Plains": PLAINS_FLOOR,
 	}

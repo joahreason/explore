@@ -260,7 +260,8 @@ var _configured_seed: int = 0
 # +17 per-resource distribution/patch noise (not owned here - see
 # ResourceManager.get_patch_modifier(), which derives one seed per
 # ResourceDefinition.id from world_seed + this offset), +18 per-resource
-# placement rolls (likewise not owned here - see ResourcePlacement),
+# placement rolls (likewise not owned here - see ResourcePlacement; also
+# TerrainSurface's per-tile jitter, under the reserved id JITTER_SEED_ID),
 # +19 per-deposit vein noise (not owned here - see
 # ResourceManager.get_vein_value()).
 # +20 surface-material patch noise (Phase 13.5; not owned here - see

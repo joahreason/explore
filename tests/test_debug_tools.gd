@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 18 (developer tooling): the Debug views and the factor breakdown.
 ## Checks: ResourceManager.explain_suitability() rebuilds exactly the real
@@ -15,18 +15,6 @@ extends SceneTree
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -125,9 +113,19 @@ func _init() -> void:
 	var text: String = world._inspector_panel.label.text
 	check(text.contains("[b]Pine[/b] (Canopy Trees)") and text.contains("suitability:") and text.contains("species share:") and text.contains("pine density:"),
 		"inspector shows the breakdown in a Debug view")
-	var dropdown: OptionButton = world.get_node("UI/DebugResourceDropdown")
+	var dropdown: OptionButton = world.get_node("UI/Menu/DebugResourceDropdown")
 	await process_frame
 	var shown_in_debug := dropdown.visible
+	# The menu column lays itself out (review Q6): without the web-only
+	# Reload button the controls below close up into its slot, 36 px tall
+	# and 8 apart, as the old hand-placed offsets did; and the camera treats
+	# them as UI.
+	var tops := []
+	for control in world.get_node("UI/Menu").get_children():
+		if control.visible:
+			tops.append([String(control.name), control.get_global_rect().position.y, control.size.y])
+	check(str(tops) == str([["SeedInput", 12.0, 36.0], ["RandomizeButton", 56.0, 36.0], ["ViewModeDropdown", 100.0, 36.0], ["BiomeTravelDropdown", 144.0, 36.0], ["DebugResourceDropdown", 188.0, 36.0]]), "menu layout: %s" % str(tops))
+	check(world.get_node("CameraRig").is_over_ui(dropdown.get_global_rect().get_center()), "a menu control counts as UI for the camera")
 	world.set_view_mode(CM.ViewMode.RESOURCES)
 	world.flush_chunk_work()
 	await process_frame
@@ -211,5 +209,4 @@ func _init() -> void:
 	perf._unhandled_input(f3)
 	check(idle["longest_step_usec"] == 0 and idle["queued"] == 0 and not perf.visible, "the longest step resets once read; F3 hides the overlay again")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

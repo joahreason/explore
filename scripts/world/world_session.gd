@@ -1,11 +1,10 @@
 extends RefCounted
 
-## The player's session on one seed (§4.1 step 3, moved out of
-## chunk_manager.gd): the in-game clock, the saved changes (harvests, time,
-## position), when the clock is next saved, and the tent the player sleeps
-## in. No scene tree: ChunkManager moves the player and draws the tent.
-## Main thread; generation reads `changes` under ChunkManager's _gen_mutex,
-## so harvest() is called with it held.
+## The player's session on one seed: the in-game clock, the saved changes
+## (harvests, time, position), when the clock is next saved, and the tent the
+## player sleeps in. No scene tree: ChunkManager moves the player and draws
+## the tent. Main thread; generation reads `changes` under the generation
+## mutex (GenerationContext.mutex), so harvest() is called with it held.
 
 const WorldChangesScript := preload("res://scripts/world/world_changes.gd")
 const GameClockScript := preload("res://scripts/world/game_clock.gd")

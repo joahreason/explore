@@ -1,0 +1,6 @@
+[gd_resource type="Resource" script_class="WorldGen" format=3]
+
+[ext_resource type="Script" uid="uid://cxw4wd5tyrf3a" path="res://scripts/gen/world_gen.gd" id="1"]
+
+[resource]
+script = ExtResource("1")

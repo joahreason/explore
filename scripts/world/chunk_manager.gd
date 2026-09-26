@@ -1,19 +1,18 @@
 extends Node2D
 
 ## Infinite chunk-based procedural world, deterministic per world_seed.
-## Rendering here is a debug visualization only (flat colored tiles per
-## WorldGen field sample) - the art tileset is intentionally not used yet;
-## see scripts/gen/world_gen.gd and scripts/gen/terrain_surface.gd for the actual
-## generation/coloring logic. This file ties the world's modules together
-## (review §4.1): ChunkStreamer decides which chunks to build and runs their
-## jobs (scripts/world/chunk_streamer.gd), ChunkBuilder builds each one's
-## content, ChunkPresenter shows it. Threading rule: everything
-## generation touches - _world_gen (and its water topology cache), the
-## generation caches, the view mode, ResourceManager's static noise caches,
-## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex
-## (held per job step), and the scene tree only on the main
-## thread. Tests that call generation functions directly do it after
-## flush_chunk_work(), which leaves the worker idle.
+## Generation lives in scripts/gen (WorldGen samples the fields,
+## TerrainSurface colours the ground) and scripts/resources (what grows and
+## where it is placed). This file ties the world's modules together (review
+## §4.1): ChunkStreamer decides which chunks to build and runs their jobs
+## (scripts/world/chunk_streamer.gd), ChunkBuilder builds each one's content,
+## ChunkPresenter shows it. Threading rule: everything generation touches -
+## the WorldGen (and its water topology cache), the generation caches, the
+## view mode, ResourceManager's static noise caches,
+## ResourceDefinition.curve_plan - is only used while holding _ctx.mutex (held
+## per job step), and the scene tree only on the main thread. Tests that call
+## generation functions directly do it after flush_chunk_work(), which leaves
+## the worker idle.
 
 const TerrainSurfaceScript := preload("res://scripts/gen/terrain_surface.gd")
 const BiomeClassifierScript := preload("res://scripts/gen/biome_classifier.gd")
@@ -55,8 +54,11 @@ const SeasonsScript := preload("res://scripts/render/seasons.gd")
 ## scripts/world/view_modes.gd (review A2).
 const ViewMode := ViewModesScript.ViewMode
 
-## Assign a saved WorldGen.tres preset here to tune generation in the
-## Inspector; if left empty a default-tuned WorldGen is created at runtime.
+## The WorldGen tuning, editable in the Inspector: world.tscn assigns
+## resources/default_world_gen.tres, which holds only the values changed from
+## WorldGen's code defaults (review Q3). Each world uses its own copy, so
+## worlds never share generation state. If left empty a default-tuned
+## WorldGen is created at runtime.
 @export var world_gen_params: WorldGen
 @export var world_seed: int = 1337
 @export var target_path: NodePath
@@ -80,7 +82,7 @@ const DEFAULT_CHANGES_DIR := "user://world_changes"
 ## Every chunk's cast shadows, drawn under all resource sprites.
 @onready var shadows_root: Node2D = $ShadowLayer
 @onready var _inspector_panel := $UI/TileInspector
-@onready var _seed_input: LineEdit = $UI/SeedInput
+@onready var _seed_input: LineEdit = $UI/Menu/SeedInput
 
 var _target: Node2D
 var _player: Node2D
@@ -142,7 +144,7 @@ func _ready() -> void:
 	_picker = ResourcePickerScript.new(_ctx, _builder, _presenter, session, get_resource_instance)
 	world_seed = _resolve_world_seed()
 	if world_gen_params != null:
-		_ctx.world_gen = world_gen_params
+		_ctx.world_gen = world_gen_params.duplicate()
 	_ctx.configure(world_seed)
 	if player_path != NodePath():
 		_player = get_node(player_path)
@@ -203,9 +205,17 @@ func _resolve_world_seed() -> int:
 ## A purely numeric seed is used directly (matches the exported int seed
 ## behavior everywhere else in this project); anything else (letters/spaces)
 ## is hashed to a deterministic int, so the same text always regenerates the
-## same world.
+## same world. So is a number outside -2^31..2^32 (review D3): the noise keeps
+## only 32 bits of a seed while placement hashes all of it, so such a seed
+## could share another's terrain but not its objects, and above 2^53 its save
+## (JSON numbers are doubles) never matched it again. Every seed that fits is
+## unchanged, and the result always fits.
 static func _seed_from_text(text: String) -> int:
-	return int(text) if text.is_valid_int() else text.hash()
+	if text.is_valid_int():
+		var value := int(text)
+		if value >= -0x80000000 and value < 0x100000000:
+			return value
+	return text.hash()
 
 
 ## Desktop seed UI (SeedInput's Enter, RandomizeButton - via

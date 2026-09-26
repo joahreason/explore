@@ -1,11 +1,11 @@
 class_name WorldContent
 extends Resource
 
-## What the world is made of, as data (review A3, §4.1 step 1):
-## resources/world_content.tres lists the guilds in stack order, how the
-## World view draws them, the ore deposits, farmland, the ground materials
-## and the landmark structures. New content is a .tres edit, not code.
-## Read-only once prepare() has run, so any thread may read it.
+## What the world is made of, as data: resources/world_content.tres lists the
+## guilds in stack order, how the World view draws them, the ore deposits,
+## farmland, the ground materials and the landmark structures. New content is
+## a .tres edit, not code. Read-only once prepare() has run, so any thread may
+## read it.
 
 ## Guilds sharing the ground, in collision priority order (Phase 8 step 5):
 ## ore outcrops and rocks are geology and were there first, then trees,

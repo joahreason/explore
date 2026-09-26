@@ -1,5 +1,9 @@
 canopy_trees 821 5a7b0af944b8ff7aafc47139388c2460
 deadwood 153 4fc95a0606a521034cdd3c8acc39aa0c
+dry/canopy_trees 70 6f16bf229a231a6ac3001002e5fe5c29
+dry/desert_plants 47 232cb86e0a4dfcfcc04aca8f19f742d9
+dry/ground_cover 15 d9a894777247a4efa3da8cf37ab888a5
+dry/surface_rocks 292 34ff844d4591aa3b23f4e83f6522dc43
 ground_cover 118 34b5b3ebacf8ac6b057cd9e3ef8c448f
 image_deposits 14 1b77d6e0e7db0b007a1d7dc91cdf2d07
 image_material 14 2cf7fd76290db0622086a4fcf21a1221
@@ -11,5 +15,6 @@ ore_outcrops 35 adcedcc3692e4b2213776f0a1b5313af
 pioneer_plants 201 481800c13b889844b6461b057b0b2deb
 shore_features 148 2eb93cbc80a8fb0df6eb51315e2074eb
 shrubs 147 2e4ba92f194cb106d52919868e5c368e
+structure_parts 66 90ab8667f3bfcdcbd48ec8da7db2dbfb
 surface_rocks 753 22147e623bbf59aba635d81402a0b2ca
 wetland_plants 271 60f0e9ba25bb1bee925a4e2023cfbe05

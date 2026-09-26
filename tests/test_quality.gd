@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 14 (resource quality): every placed instance of a resource with a
 ## QualityProfile gets a 0..1 quality and a tier (tree age, berry yield, ore
@@ -22,18 +22,6 @@ const HALF := 96
 ## Members without a quality on purpose: young_tree is itself the sapling
 ## stage of recovering scars (Phase 11), so it has no age tiers.
 const NO_QUALITY := ["young_tree"]
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -162,8 +150,7 @@ func _init() -> void:
 	var ores: Array = samples["ore_richness"]
 	check(_r(ores, "deposit") > 0.8 and _r(ores, "vein") > 0.3, "ore richness follows the deposit potential and its seams (r %.2f, %.2f)" % [_r(ores, "deposit"), _r(ores, "vein")])
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _mean(rows: Array) -> float:

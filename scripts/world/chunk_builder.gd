@@ -1,13 +1,12 @@
 extends RefCounted
 
-## One chunk's content for the current view, as plain data (§4.1 step 6,
-## moved out of chunk_manager.gd): its image, its biome label grids and its
-## placement instances, built in small steps (job_steps()) so the main-thread
-## fallback can spread a chunk over several frames. Runs on the chunk worker
-## or inline on the main thread, never touches the scene tree, and reads
-## generation only through the GenerationContext. Every step runs holding
-## ctx.mutex, so view_mode and debug_resource, which generation reads, are
-## only changed holding it too.
+## One chunk's content for the current view, as plain data: its image, its
+## biome label grids and its placement instances, built in small steps
+## (job_steps()) so the main-thread fallback can spread a chunk over several
+## frames. Runs on the chunk worker or inline on the main thread, never
+## touches the scene tree, and reads generation only through the
+## GenerationContext. Every step runs holding ctx.mutex, so view_mode and
+## debug_resource, which generation reads, are only changed holding it too.
 
 const TerrainSurfaceScript := preload("res://scripts/gen/terrain_surface.gd")
 const HeatmapColorizerScript := preload("res://scripts/render/heatmap_colorizer.gd")
@@ -71,7 +70,7 @@ func color_for(sample: Dictionary, wx: int, wy: int) -> Color:
 ## material (TerrainSurface) coloured by its fields.
 func terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 	var coded := ViewModesScript.is_tinted(view_mode)
-	var water: Variant = TerrainSurfaceScript.water_color(sample)
+	var water: Variant = TerrainSurfaceScript.water_color(sample, ctx.world_gen.sea_level)
 	if water != null:
 		var w: Color = water
 		var liquid := TerrainSurfaceScript.water_liquid(sample)
@@ -104,7 +103,7 @@ func terrain_color(sample: Dictionary, wx: int, wy: int) -> Color:
 
 ## The ground material of a tile, or null on a water body (inspector, tests).
 func surface_at(sample: Dictionary, wx: int, wy: int) -> SurfaceMaterial:
-	if TerrainSurfaceScript.water_color(sample) != null:
+	if TerrainSurfaceScript.water_color(sample, ctx.world_gen.sea_level) != null:
 		return null
 	return TerrainSurfaceScript.material_at(_surface_state(sample, wx, wy), ctx.world_seed, wx, wy)
 

@@ -1,11 +1,10 @@
 extends RefCounted
 
-## Walking on the tile grid (§4.1 step 2, moved out of chunk_manager.gd):
-## A* over tiles, string-pulling a walk, the nearest walkable tile. Pure:
-## every function takes `walkable`, a Callable(tile: Vector2i) -> bool, so
-## the caller decides what blocks (open water today; walls later:
-## `is_walkable(t) and not structures.blocks(t)`) and holds whatever lock
-## that needs.
+## Walking on the tile grid: A* over tiles, string-pulling a walk, the nearest
+## walkable tile. Pure: every function takes `walkable`, a Callable(tile:
+## Vector2i) -> bool, so the caller decides what blocks (open water today;
+## walls later: `is_walkable(t) and not structures.blocks(t)`) and holds
+## whatever lock that needs.
 
 ## Max tiles A* expands per path: enough to route round a lake across the
 ## screen; beyond it the player heads for the closest tile found.

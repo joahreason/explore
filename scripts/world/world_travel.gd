@@ -1,12 +1,12 @@
 extends RefCounted
 
-## The "Go to" menu's searches (§4.1 step 8, moved out of chunk_manager.gd):
-## the nearest tile of a biome (BiomeFinder) or the nearest landmark of a
-## type (StructureSites), away from where the player stands and from the
-## places already traveled to. A search can take seconds, so it runs on its
-## own thread with its own WorldGen copy - sharing nothing with chunk
-## generation - or, without threads, a slice per frame from poll() (review
-## W1). ChunkManager starts searches and moves the player to the result.
+## The "Go to" menu's searches: the nearest tile of a biome (BiomeFinder) or
+## the nearest landmark of a type (StructureSites), away from where the player
+## stands and from the places already traveled to. A search can take seconds,
+## so it runs on its own thread with its own WorldGen copy - sharing nothing
+## with chunk generation - or, without threads, a slice per frame from poll()
+## (review W1). ChunkManager starts searches and moves the player to the
+## result.
 
 const BiomeFinderScript := preload("res://scripts/gen/biome_finder.gd")
 const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")

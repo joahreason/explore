@@ -3,9 +3,7 @@
 Measured distributions, counts and benchmark numbers, newest first, with the
 change they belong to (`CHANGELOG_DEV.md` has the change itself). Numbers are
 per 100 tiles unless noted; "4 seeds x 4 regions" is `tests/resource_by_biome.gd`
-(4 regions of 300x300 per seed, up to 28k tiles apart). The
-`tests/bench_views.gd` header still says its numbers are quoted in
-PROJECT_STATE.md: they are here now.
+(4 regions of 300x300 per seed, up to 28k tiles apart).
 
 Timings depend on the machine: the cloud container is slower than the local
 Windows desktop, and Windows headless frame times floor at the OS timer tick

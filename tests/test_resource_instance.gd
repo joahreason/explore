@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## Phase 15 (gameplay entities): every placed instance can be turned into a
 ## ResourceInstance record - stable key, resource id, position, quality and
@@ -13,18 +13,6 @@ extends SceneTree
 const SEED := 4242
 const REGIONS := [Vector2i(0, 0), Vector2i(8000, -12000)]
 const HALF := 48
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -123,5 +111,4 @@ func _init() -> void:
 	var unknown = world.get_resource_instance({"id": "no_such_resource", "cell": Vector2i.ZERO, "position": Vector2.ZERO})
 	check(unknown == null, "unknown resource id -> no record")
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()

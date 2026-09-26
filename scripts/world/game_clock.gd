@@ -17,6 +17,19 @@ const MINUTES_PER_SECOND := 1.0
 ## A new world starts in the morning of its first day.
 const START_MINUTES := 8.0 * 60.0
 
+## The day cycle, in hours (0..24), in one place (review Q3): the daylight
+## tint (LIGHT_KEYS), the sun and moon (SunShadow), sleeping in a tent
+## (SLEEP_* below) and the night and day creatures (AmbientParticles).
+const SUNRISE_HOUR := 6.0
+const SUNSET_HOUR := 18.0
+## Sleep ends at the next of these.
+const DAWN_START_HOUR := 6.0
+const NIGHT_START_HOUR := 19.5
+## Creature bands: [fading in from, full from, full until, faded out by],
+## wrapping past midnight when the first hour is the later.
+const NIGHT_CREATURE_HOURS: Array[float] = [20.0, 22.0, 3.0, 5.0]
+const DAY_CREATURE_HOURS: Array[float] = [7.0, 9.0, 17.0, 19.0]
+
 ## Daylight tint by hour (0..24), linear between: blue night, warm dawn and
 ## dusk, untinted day. The ends match so midnight is seamless.
 const LIGHT_KEYS: Array[float] = [0.0, 4.5, 6.0, 7.5, 17.0, 18.5, 20.0, 24.0]
@@ -37,13 +50,11 @@ const LIGHT_COLORS: Array[Color] = [
 const SPEEDS: Array[float] = [4.0, 16.0, 64.0]
 
 ## Sleeping in a camp tent (ChunkManager.enter_tent()) passes time until
-## the next night start or dawn (the light's night and dawn keys above),
-## whichever comes first at least SLEEP_MIN_MINUTES away. Time speeds up to
+## the next NIGHT_START_HOUR or DAWN_START_HOUR (above), whichever comes
+## first at least SLEEP_MIN_MINUTES away. Time speeds up to
 ## SLEEP_SPEED over SLEEP_EASE_IN real seconds, then slows back to normal
 ## speed over the last SLEEP_EASE_OUT_MINUTES, stopping the sleep exactly
 ## at wake_minutes.
-const NIGHT_START_HOUR := 19.5
-const DAWN_START_HOUR := 6.0
 const SLEEP_MIN_MINUTES := 60.0
 const SLEEP_SPEED := 300.0
 const SLEEP_EASE_IN := 0.4

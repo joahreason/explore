@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## In-game time: GameClock's clock and calendar, the daylight tint, and the
 ## scene wiring - DayNight tints the gameplay views by the clock (data views
@@ -8,18 +8,6 @@ extends SceneTree
 
 const SEED := 4242
 const DIR := "user://test_game_clock"
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -191,8 +179,7 @@ func _init() -> void:
 	await process_frame
 
 	_clean()
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
 
 
 func _world(dir: String) -> Node2D:

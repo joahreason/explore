@@ -1,11 +1,10 @@
 extends RefCounted
 
-## Main thread: which placed resource is under a point (§4.1 step 8, moved
-## out of chunk_manager.gd) - for the inspector (resource_at(), which
-## places the stack around the point), and for hovering and harvesting
-## (hover_target(), which only looks at what ChunkPresenter shows, so it
-## never generates: review W2). In the World view only a sprite's opaque
-## pixels count (sprite_drawn(), sprite_image()).
+## Main thread: which placed resource is under a point - for the inspector
+## (resource_at(), which places the stack around the point), and for hovering
+## and harvesting (hover_target(), which only looks at what ChunkPresenter
+## shows, so it never generates: review W2). In the World view only a sprite's
+## opaque pixels count (sprite_drawn(), sprite_image()).
 
 const GameConstants := preload("res://scripts/game_constants.gd")
 const GenerationContextScript := preload("res://scripts/world/generation_context.gd")

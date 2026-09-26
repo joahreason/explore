@@ -11,24 +11,23 @@ extends RefCounted
 ## Deliberately NOT a blind product of every factor - the plan warns this
 ## makes a single weak factor crater every resource's score. Curve-based
 ## factors (temperature/moisture/fertility/elevation/slope/drainage/erosion,
-## plus river/shore/deposition/salinity since Phase 10, succession since
-## Phase 11, rock_exposure since Phase 12, shade since Phase 13) not listed in required_curves, plus geology/water_body weights
-## and the succession-gated disturbance_type weight, are combined via
-## GEOMETRIC MEAN: still
-## meaningfully penalizes a genuinely bad match (one factor at 0 still zeroes
-## the result - a true requirement), without each additional so-so factor
-## multiplicatively compounding the penalty the way straight multiplication
-## would. Biome/subtype are separate WEIGHTED MODIFIERS multiplied in after
-## the core mean. River/shore/disturbance affinities are ADDITIVE bonuses.
-## This mixes multiplicative/weighted/additive per the plan's own guidance,
-## while staying fully generic - no per-resource-type branching here.
+## river/shore/deposition/salinity, succession, rock_exposure, shade) not
+## listed in required_curves, plus geology/water_body weights and the
+## succession-gated disturbance_type weight, are combined via GEOMETRIC MEAN:
+## still meaningfully penalizes a genuinely bad match (one factor at 0 still
+## zeroes the result - a true requirement), without each additional so-so
+## factor multiplicatively compounding the penalty the way straight
+## multiplication would. Biome/subtype are separate WEIGHTED MODIFIERS
+## multiplied in after the core mean. River/shore/disturbance affinities are
+## ADDITIVE bonuses. This mixes multiplicative/weighted/additive per the
+## plan's own guidance, while staying fully generic - no per-resource-type
+## branching here.
 ##
-## Plan Phase 3 amendment (2026-09-22): curves named in
-## definition.required_curves are the resource's TOLERANCE ENVELOPE and are
-## taken out of the mean - the lowest of them multiplies the result (the
-## scarcest requirement limits growth), so being outside any one of them
-## means absent instead of merely ~20% less, as a mean of ~6 factors gives.
-## Biome weights are applied against the tile's normalized biome SCORES
+## Curves named in definition.required_curves are the resource's TOLERANCE
+## ENVELOPE and are taken out of the mean - the lowest of them multiplies the
+## result (the scarcest requirement limits growth), so being outside any one
+## of them means absent instead of merely ~20% less, as a mean of ~6 factors
+## gives. Biome weights are applied against the tile's normalized biome SCORES
 ## (membership), not its argmax label, so a strong biome preference still
 ## changes smoothly across a boundary instead of speckling where the label
 ## flickers tile to tile.
@@ -58,25 +57,6 @@ const PATCH_AREA_THRESHOLDS: Array[float] = [1.1, 0.903, 0.826, 0.723, 0.640, 0.
 ## the leading biome dominant while staying continuous.
 const BIOME_MEMBERSHIP_SHARPNESS := 4.0
 
-## ResourceDefinition curve -> the EnvironmentalState field it samples.
-const CURVE_STATE_FIELDS := {
-	"temperature_curve": "temperature",
-	"moisture_curve": "moisture",
-	"fertility_curve": "soil_fertility",
-	"elevation_curve": "elevation",
-	"slope_curve": "slope",
-	"drainage_curve": "drainage",
-	"erosion_curve": "erosion",
-	"river_curve": "river",
-	"shore_curve": "shore_proximity",
-	"deposition_curve": "deposition",
-	"salinity_curve": "shore_salinity",
-	"succession_curve": "succession",
-	"rock_exposure_curve": "rock_exposure",
-	"shade_curve": "shade",
-	"vegetation_curve": "vegetation",
-	"wind_exposure_curve": "exposure",
-}
 
 ## Phase 13 (correlated ecosystems): the guild whose density IS canopy
 ## shade - see get_shade(). Named once here so every shade-reading resource
@@ -144,17 +124,17 @@ static func get_suitability(
 
 
 ## [curve, EnvironmentalState field, required] for each non-null curve of
-## the definition, in CURVE_STATE_FIELDS order - cached on the definition
+## the definition, in ResourceDefinition.CURVES order - cached on the definition
 ## (ResourceDefinition.curve_plan, reset when a curve is reassigned), which
 ## saves looking up all 13 curve properties by name on every call.
 static func _curve_plan(definition: ResourceDefinition) -> Array:
 	if definition.curve_plan != null:
 		return definition.curve_plan
 	var plan := []
-	for curve_name in CURVE_STATE_FIELDS:
+	for curve_name in ResourceDefinition.CURVES:
 		var curve: Curve = definition.get(curve_name)
 		if curve != null:
-			plan.append([curve, StringName(CURVE_STATE_FIELDS[curve_name]), definition.required_curves.has(curve_name)])
+			plan.append([curve, StringName(ResourceDefinition.CURVES[curve_name][0]), definition.required_curves.has(curve_name)])
 	definition.curve_plan = plan
 	return plan
 

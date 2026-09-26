@@ -1,4 +1,4 @@
-extends SceneTree
+extends "res://tests/harness.gd"
 
 ## First polish pass: cast shadows (silhouettes thrown by the sun / moon
 ## under trees, rocks, ore, shrubs, deadwood - not grass), chunk fade-in, the harvest pop effect, drifting
@@ -8,18 +8,6 @@ extends SceneTree
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const SEED := 4242
-
-var _fails := 0
-var _passes := 0
-
-
-func check(cond: bool, msg: String) -> void:
-	if cond:
-		_passes += 1
-		print("PASS ", msg)
-	else:
-		_fails += 1
-		print("FAIL ", msg)
 
 
 func _init() -> void:
@@ -201,5 +189,4 @@ func _init() -> void:
 	world.set_view_mode(world.get_script().ViewMode.RESOURCES)
 	world.flush_chunk_work()
 
-	print("RESULT %d passed, %d failed" % [_passes, _fails])
-	quit(1 if _fails > 0 else 0)
+	finish()
