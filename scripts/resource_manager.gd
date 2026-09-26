@@ -159,6 +159,17 @@ static func _curve_plan(definition: ResourceDefinition) -> Array:
 	return plan
 
 
+## Builds the curve plans of `definitions` and of their quality profiles
+## now. _curve_plan() fills them lazily, which is a write two threads could
+## race on (the chunk worker and the "Go to" thread share definitions), so
+## the world builds them all before any thread starts (review C5).
+static func build_curve_plans(definitions: Array) -> void:
+	for definition in definitions:
+		_curve_plan(definition)
+		if definition.quality_profile != null:
+			_curve_plan(definition.quality_profile)
+
+
 ## Membership-weighted biome modifier (see BIOME_MEMBERSHIP_SHARPNESS).
 ## Water/Beach tiles carry no scores - they are categorical facts decided
 ## upstream - so they fall back to the label's weight.

@@ -348,6 +348,8 @@ func _ready() -> void:
 	for source in GUILD_STACK + ORE_DEPOSITS + [FARMLAND]:
 		for warning in source.get_curve_domain_warnings():
 			push_warning(warning)
+	ResourceManagerScript.build_curve_plans(_definitions_by_id().values() + ORE_DEPOSITS + [FARMLAND]
+		+ TerrainSurfaceScript.MATERIALS + StructureSitesScript.DEFINITIONS)
 
 	if _seed_text != "":
 		_seed_input.text = _seed_text
