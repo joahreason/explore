@@ -251,6 +251,21 @@ func _init() -> void:
 			drawn_autumn = drawn_autumn or (absf(f.r - oak_autumn.r) < 0.01 and absf(f.g - oak_autumn.g) < 0.01 and absf(f.b - oak_autumn.b) < 0.01)
 	check(oak_autumn != oak_summer and oak_autumn.r > oak_autumn.g and world._presenter.sprite_fill(pine).is_equal_approx(pine_summer) and world._presenter.sprite_fill(granite) == rock_summer and drawn_autumn,
 		"oaks turn orange in autumn and the World view redraws them; pines and rocks don't change")
+	# Review P3: a new day recolours the marker nodes in place, to exactly
+	# the fills a rebuild would give.
+	var shown_markers: Dictionary = world._presenter.loaded_placements.duplicate()
+	world.clock.minutes = 83 * GameClock.MINUTES_PER_DAY + 12 * 60
+	world._presenter.update_seasons()
+	var kept := true
+	var same_fills := true
+	for chunk in shown_markers:
+		kept = kept and world._presenter.loaded_placements.get(chunk) == shown_markers[chunk]
+		var rebuilt: Node2D = world._presenter.marker_node(chunk * world.CHUNK_SIZE, world._presenter.chunk_placements[chunk])
+		same_fills = same_fills and rebuilt._fills == shown_markers[chunk]._fills
+		if rebuilt.shadow_layer() != null:
+			rebuilt.shadow_layer().free()
+		rebuilt.free()
+	check(kept and same_fills and not shown_markers.is_empty(), "a new day recolours markers in place, as a rebuild would")
 
 	# Particles.
 	var particles: Node2D = world.get_node("AmbientParticles")

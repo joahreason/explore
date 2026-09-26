@@ -262,11 +262,11 @@ func redraw_markers(chunk_coord: Vector2i) -> void:
 	loaded_placements[chunk_coord] = markers
 
 
-## Polish pass 2: sprites take their season colour (Seasons, per
+## Sprites take their season colour (Seasons, per
 ## ResourceDefinition.season_class) when their markers are built; once per
-## in-game day every loaded chunk's markers are redrawn from their stored
-## placements (no generation), so colours drift through the year. Only the
-## World view draws sprites.
+## in-game day every loaded marker node is recoloured in place
+## (ResourceMarkerChunk.recolor(), review P3), so colours drift through the
+## year. Only the World view draws sprites.
 func update_seasons() -> void:
 	var day: int = _session.clock.day_index()
 	if day == season_day:
@@ -274,5 +274,9 @@ func update_seasons() -> void:
 	season_day = day
 	if _builder.view_mode != ViewModesScript.ViewMode.RESOURCES:
 		return
-	for chunk in chunk_placements.keys():
-		redraw_markers(chunk)
+	var colors := {}
+	for definition in CONTENT.definitions_by_id().values():
+		if definition.sprite_tile.x >= 0:
+			colors[definition.id] = sprite_fill(definition)
+	for markers in loaded_placements.values():
+		markers.recolor(colors)

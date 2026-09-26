@@ -55,6 +55,8 @@ var _textures: Array[Texture2D] = []  # per instance; null unless drawn as a spr
 var _rects: Array[Rect2] = []  # per instance: where its sprite is drawn (unused for shapes)
 var _rows: Dictionary = {}  # pivot y (whole px, chunk-local) -> _Row
 var _tiles: Array[Vector2i] = []  # per instance: the tile it was placed in (world tiles)
+var _ids: PackedStringArray = PackedStringArray()  # per instance: its resource id
+var _recolorable: PackedInt32Array = PackedInt32Array()  # sprites filled from their layer's colours (recolor())
 
 static var _sheet: Image
 static var _sprite_cache: Dictionary = {}  # Vector2i tile -> ImageTexture
@@ -92,6 +94,9 @@ func add_instances(instances: Array, origin_tile: Vector2i, tile_size: int, foot
 			p = p.round()
 		_positions.append(p)
 		_fills.append(inst["fill"] if inst.has("fill") else colors.get(inst["id"], DEFAULT_FILL))
+		_ids.append(inst["id"])
+		if inst_shape == Shape.SPRITE and not inst.has("fill") and colors.has(inst["id"]):
+			_recolorable.append(_positions.size() - 1)
 		_radii.append(radius)
 		_shapes.append(inst_shape)
 		_textures.append(texture)
@@ -172,6 +177,22 @@ class _Row extends Node2D:
 ## Instances added so far (the next add_instances() starts here).
 func instance_count() -> int:
 	return _positions.size()
+
+
+## Gives the sprites whose fill came from their layer's `colors` the fill
+## in `colors` (id -> Color) instead, in place: a new season needs only new
+## colours, not new nodes (review P3). Shadows keep theirs - they read only
+## the fill's alpha, the sway, which the season doesn't change.
+func recolor(colors: Dictionary) -> void:
+	var changed := false
+	for i in _recolorable:
+		var fill: Variant = colors.get(_ids[i])
+		if fill != null and fill != _fills[i]:
+			_fills[i] = fill
+			changed = true
+	if changed:
+		for row in _rows.values():
+			row.queue_redraw()
 
 
 var _shadows: _ShadowLayer = null
