@@ -4,7 +4,7 @@ extends RefCounted
 ## Debug render-method views: each function maps one WorldGen sample() field
 ## to a flat color via a simple ramp (same lerp technique as
 ## TerrainSurface._water). ChunkManager blends this on top of the
-## terrain (see ChunkManager._color_for/HEATMAP_OVERLAY_STRENGTH)
+## terrain (see ChunkBuilder.color_for()/HEATMAP_OVERLAY_STRENGTH)
 ## rather than swapping it out entirely, so terrain stays visible as context
 ## for how the field affects generation - still just one Sprite2D per chunk,
 ## no extra node/layer needed.
