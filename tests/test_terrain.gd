@@ -149,6 +149,10 @@ func _init() -> void:
 		var mb: SurfaceMaterial = TS.material_at(sb, SEED, x, y)
 		same = same and ma == mb and TS.color_for(ma, sa, SEED, x, y) == TS.color_for(mb, sb, SEED, x, y)
 	check(same, "deterministic: same material and colour from a fresh WorldGen")
+	# The jitter's cell-hash id is reserved (review Q4).
+	TS.CONTENT.prepare()
+	var taken := TS.CONTENT.definitions_by_id().has(TS.JITTER_SEED_ID) or TS.CONTENT.guilds.any(func(g): return g.id == TS.JITTER_SEED_ID)
+	check(not taken, "no resource or guild uses the terrain jitter's id \"%s\"" % TS.JITTER_SEED_ID)
 	# Water depth is measured from the WorldGen's sea level (review Q3).
 	var at_surface := {"water_body": "ocean", "elevation": 0.2, "temperature": 0.5}
 	var deep_below := {"water_body": "ocean", "elevation": -0.4, "temperature": 0.5}

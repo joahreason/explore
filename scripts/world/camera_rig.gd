@@ -29,7 +29,7 @@ const FOLLOW_ZONE := 0.2
 const FOLLOW_EASE := 6.0
 @export var player_path: NodePath
 
-## Direct children of this node are treated as "UI" for _is_over_ui() below -
+## Direct children of this node are treated as "UI" for is_over_ui() below -
 ## a press/tap starting on one of them (or on a currently-open popup, e.g.
 ## the view-mode dropdown's list) is never treated as a map tap / pinch. This
 ## is necessary because raw touch events (InputEventScreenTouch/Drag) are
@@ -106,7 +106,7 @@ func _unhandled_input(event: InputEvent) -> void:
 ## render anywhere on screen, so its open/closed state - not screen_pos -
 ## is what decides it: this makes the whole gesture that opened it, and any
 ## gesture while it stays open, unconditionally "over UI").
-func _is_over_ui(screen_pos: Vector2) -> bool:
+func is_over_ui(screen_pos: Vector2) -> bool:
 	if get_viewport().gui_get_hovered_control() != null:
 		return true
 	if _ui_root == null:
@@ -123,7 +123,7 @@ func _is_over_ui(screen_pos: Vector2) -> bool:
 func _handle_mouse_button(event: InputEventMouseButton) -> void:
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			if _is_over_ui(event.position):
+			if is_over_ui(event.position):
 				return
 			SeedReloadScript.close_keyboard(self)
 			_pressed = true
@@ -133,7 +133,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 			if event.position.distance_to(_press_position) < CLICK_DRAG_THRESHOLD:
 				map_tapped.emit(get_global_mouse_position())
 	elif event.button_index == MOUSE_BUTTON_RIGHT:
-		if event.pressed and not _is_over_ui(event.position):
+		if event.pressed and not is_over_ui(event.position):
 			info_clicked.emit(get_global_mouse_position())
 	elif event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		_ease_zoom(zoom_factor)
@@ -143,7 +143,7 @@ func _handle_mouse_button(event: InputEventMouseButton) -> void:
 
 func _handle_touch(event: InputEventScreenTouch) -> void:
 	if event.pressed:
-		var over_ui := _is_over_ui(event.position)
+		var over_ui := is_over_ui(event.position)
 		_touch_over_ui[event.index] = over_ui
 		if over_ui:
 			return

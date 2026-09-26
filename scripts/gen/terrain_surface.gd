@@ -32,6 +32,11 @@ const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 const SHADE_LATTICE := 4
 
 const PATCH_CONTRAST := 1.8
+## The per-tile brightness jitter rolls ResourcePlacement's cell hash under
+## this id, so no resource or guild may use it (test_terrain checks). It
+## keeps the placement seed offset rather than a new one, since a new
+## offset would change every tile's jitter (review Q4).
+const JITTER_SEED_ID := "terrain"
 const _JITTER_SALT := 1
 
 static var _patch_noise_cache: Dictionary = {}  # seed -> {material id -> FastNoiseLite}
@@ -89,9 +94,9 @@ static func color_for(material: SurfaceMaterial, state: EnvironmentalState, worl
 	if material.jitter > 0.0:
 		var seed: Variant = _jitter_seeds.get(world_seed)
 		if seed == null:  # formatting it per tile was a measurable cost (review P1)
-			seed = ResourcePlacementScript._resource_seed("terrain", world_seed)
+			seed = ResourcePlacementScript.seed_for(JITTER_SEED_ID, world_seed)
 			_jitter_seeds[world_seed] = seed
-		var unit: float = ResourcePlacementScript._cell_unit(seed, Vector2i(wx, wy), _JITTER_SALT)
+		var unit: float = ResourcePlacementScript.cell_unit(seed, Vector2i(wx, wy), _JITTER_SALT)
 		var factor := 1.0 + (unit * 2.0 - 1.0) * material.jitter
 		color = Color(color.r * factor, color.g * factor, color.b * factor)
 	return color

@@ -79,12 +79,12 @@ static func place_in_rect(
 static func place_guild_in_rect(
 	guild: ResourceGuild, world_seed: int, tile_rect: Rect2i, density_fn: Callable, shares_fn: Callable, density_bound: float = 1.0
 ) -> Array[Dictionary]:
-	var guild_seed := _resource_seed(guild.id, world_seed)
+	var guild_seed := seed_for(guild.id, world_seed)
 	var result: Array[Dictionary] = []
 	for inst in _place(guild.id, guild.minimum_spacing, world_seed, tile_rect, density_fn, density_bound):
 		var pos: Vector2 = inst["position"]
 		var shares: PackedFloat32Array = shares_fn.call(floori(pos.x), floori(pos.y))
-		var member := _pick(shares, _cell_unit(guild_seed, inst["cell"], _SALT_SPECIES))
+		var member := _pick(shares, cell_unit(guild_seed, inst["cell"], _SALT_SPECIES))
 		if member < 0:
 			continue
 		inst["guild"] = guild.id
@@ -101,7 +101,7 @@ static func place_guild_in_rect(
 ## (seed, key): the same instance gets the same roll in any chunk or order.
 static func instance_roll(inst: Dictionary, world_seed: int) -> float:
 	var key_id: String = inst.get("guild", inst["id"])
-	return _cell_unit(_resource_seed(key_id, world_seed), inst["cell"], _SALT_QUALITY)
+	return cell_unit(seed_for(key_id, world_seed), inst["cell"], _SALT_QUALITY)
 
 
 ## Phase 8 step 5: several guilds sharing the ground, e.g. [rocks, trees,
@@ -213,7 +213,7 @@ static func _place(
 	id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_fn: Callable, density_bound: float = 1.0
 ) -> Array[Dictionary]:
 	var spacing := maxf(minimum_spacing, 0.5)
-	var resource_seed := _resource_seed(id, world_seed)
+	var resource_seed := seed_for(id, world_seed)
 	var cells := _cell_range(spacing, tile_rect)
 
 	# Candidates for every cell the rect touches plus a one-cell ring (the
@@ -224,7 +224,7 @@ static func _place(
 			# Accept roll first: jitter and priority are only hashed for
 			# candidates that can still pass.
 			var cell := Vector2i(cx, cy)
-			var accept := _cell_unit(resource_seed, cell, _SALT_ACCEPT)
+			var accept := cell_unit(resource_seed, cell, _SALT_ACCEPT)
 			if accept >= density_bound:
 				continue  # can't pass: density_fn never exceeds density_bound
 			var pos := _jittered(resource_seed, spacing, cell)
@@ -256,13 +256,13 @@ static func _place(
 ## reads it back. Same seed/spacing/rect/bound as the placement call.
 static func candidate_tiles(id: String, minimum_spacing: float, world_seed: int, tile_rect: Rect2i, density_bound: float = 1.0) -> Array[Vector2i]:
 	var spacing := maxf(minimum_spacing, 0.5)
-	var resource_seed := _resource_seed(id, world_seed)
+	var resource_seed := seed_for(id, world_seed)
 	var cells := _cell_range(spacing, tile_rect)
 	var tiles: Array[Vector2i] = []
 	for cy in range(cells.position.y, cells.end.y):
 		for cx in range(cells.position.x, cells.end.x):
 			var cell := Vector2i(cx, cy)
-			if _cell_unit(resource_seed, cell, _SALT_ACCEPT) < density_bound:
+			if cell_unit(resource_seed, cell, _SALT_ACCEPT) < density_bound:
 				tiles.append(Vector2i(_jittered(resource_seed, spacing, cell).floor()))
 	return tiles
 
@@ -304,20 +304,24 @@ static func _outranks(a: Dictionary, b: Dictionary) -> bool:
 ## The cell's one candidate position, jittered inside it (tile units).
 static func _jittered(resource_seed: int, spacing: float, cell: Vector2i) -> Vector2:
 	var jitter := Vector2(
-		_cell_unit(resource_seed, cell, _SALT_JITTER_X), _cell_unit(resource_seed, cell, _SALT_JITTER_Y)
+		cell_unit(resource_seed, cell, _SALT_JITTER_X), cell_unit(resource_seed, cell, _SALT_JITTER_Y)
 	)
 	return (Vector2(cell) + jitter) * spacing
 
 
+## The cell hash below is the determinism core, shared with TerrainSurface's
+## jitter and StructureSites (review Q4): seed_for() gives an id's seed and
+## cell_unit() a repeatable 0..1 roll per cell and salt.
+##
 ## Same derivation style as ResourceManager's patch noise (world_seed +
 ## reserved offset, mixed with the unique resource id), but its own offset
 ## so placement rolls are decorrelated from the patch field.
-static func _resource_seed(id: String, world_seed: int) -> int:
+static func seed_for(id: String, world_seed: int) -> int:
 	return ("%d:%s" % [world_seed + WorldGen.RESOURCE_PLACEMENT_SEED_OFFSET, id]).hash() & _MASK32
 
 
 ## 0..1 (exclusive of 1) from the low 24 bits of the cell hash.
-static func _cell_unit(resource_seed: int, cell: Vector2i, salt: int) -> float:
+static func cell_unit(resource_seed: int, cell: Vector2i, salt: int) -> float:
 	return float(_cell_hash(resource_seed, cell, salt) & 0xFFFFFF) / 16777216.0
 
 

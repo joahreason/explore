@@ -37,7 +37,7 @@ func _input(event: InputEvent) -> void:
 
 func _process(_delta: float) -> void:
 	var mouse_screen := get_viewport().get_mouse_position()
-	if not _mouse_mode or _rig._is_over_ui(mouse_screen):
+	if not _mouse_mode or _rig.is_over_ui(mouse_screen):
 		_set_target(false, Vector2i.ZERO, [])
 		_pixel = Vector2i(1 << 30, 0)
 		return

@@ -317,7 +317,7 @@ static func _rotated(at: Vector2i, quarter_turns: int) -> Vector2i:
 
 
 func _unit(cell: Vector2i, salt: int) -> float:
-	return ResourcePlacementScript._cell_unit(_site_seed, cell, salt)
+	return ResourcePlacementScript.cell_unit(_site_seed, cell, salt)
 
 
 static func _near_any(tile: Vector2i, points: Array) -> bool:
