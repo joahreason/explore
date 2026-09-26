@@ -19,18 +19,16 @@
 // ground and foam specks at its front, and drains - the first row always
 // stays washed, so water and ground meet in white instead of a hard edge.
 // Grass ground takes the season's grass tint (Seasons). With ground_detail
-// (the gameplay views), ground (plain - grass and GRASS_CODE-less ground,
-// 253 / 255 - or sea-washed) meets a different neighbouring ground tile
-// along a hard but wavy edge: every tile edge line bends into a smooth
-// curve up to EDGE_PX
-// off the grid (edge_curve(), the same for the tiles on both sides), and a
-// pixel past the curve takes the neighbour's ground - one clean border,
-// no dithering, islands or notches; outer corners are rounded off
-// (CORNER_PX) - and ground (and swashed
-// ground) gets a subtle grain and mottle. The chunk image has a 1-texel
-// border holding the neighbouring chunks' edge tiles
-// (ChunkManager._share_borders()), so edges cross chunk borders. The output is always opaque. Other views bake plain opaque RGB images, which pass
-// through unchanged.
+// (the gameplay views) ground (and swashed ground) gets a subtle grain and
+// mottle. Every tile edge bumps in or out a little (EDGE_PX), so the tiles
+// form one wobbly grid - every pixel belongs to
+// exactly one tile and shows its ground (invisible between tiles of one
+// ground) - outer corners of a ground are rounded (CORNER_PX), decided
+// from the four tiles round the corner so all of them agree, and now and
+// then a small splotch sits just off a border (edge_blob()). Land never
+// takes a water tile's colour. What happens on top (swash, waves, foam)
+// stays each pixel's own tile's. The output is always opaque. Other
+// views bake plain opaque RGB images, which pass through unchanged.
 shader_type canvas_item;
 
 #include "res://shaders/game_constants.gdshaderinc"
@@ -54,31 +52,31 @@ uniform float water_phase = 0.0;
 uniform vec4 grass_tint = vec4(0.0);  // rgb target, a = strength
 uniform vec2 wave_dir = vec2(1.0, 0.0);
 uniform bool ground_detail = false;
-// How far (pixels) ground edges wander from the tile grid (under half a
-// tile, so only direct neighbours meet), and the length (pixels) of one
-// wiggle along an edge.
-const float EDGE_PX = 2.0;
-const float EDGE_WAVE = 26.0;
-// Radius (pixels) of the rounded outer corners of ground areas (at most
+// Ground borders: each tile edge bumps up to EDGE_PX in or out (whole
+// pixels); outer corners cut along a quarter circle of CORNER_PX (at most
 // half a tile).
+const float EDGE_PX = 2.0;
 const float CORNER_PX = 8.0;
+// Splotches: each tile edge between two different grounds has this chance
+// of one small round splotch near its middle, just off the border on a
+// random side, showing the ground across it; radius range in pixels.
+const float BLOB_CHANCE = 0.35;
+const vec2 BLOB_RADIUS = vec2(1.9, 2.2);  // bump + gap + 2 radii stays under half a tile
 // Different ground (ground_differs()): a hue gap (colour proportions) or a
 // brightness ratio beyond what one material's per-tile jitter gives.
 const float GROUND_HUE = 0.025;
 const float GROUND_BRIGHTNESS = 1.15;
-// Splotches along ground borders (edge_pick()): one per BLOB_SLOT px of
-// edge at most, with this chance; radius range (px); and how far from the
-// edge line they can reach (EDGE_PX + largest radius + gap), which must
-// stay under half a tile.
-const float BLOB_SLOT = 7.0;
-const float BLOB_CHANCE = 0.15;
-const vec2 BLOB_RADIUS = vec2(1.2, 2.0);
-const float BLOB_REACH = EDGE_PX + 3.0 + BLOB_RADIUS.y;
-
 varying vec2 world_px;
 
+// Pseudo-random 0..1 per point. No sin(): the usual fract(sin(x) * 43758)
+// hash falls apart on 32-bit GPU floats at large world coordinates (far
+// from the origin its values clump into streaks). Wrapped to a 4096 px
+// period first to keep full precision - repeats far too rarely to notice,
+// and exactly periodic, so value noise lattices stay seamless.
 float hash(vec2 p) {
-	return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453);
+	vec3 p3 = fract(vec3(mod(p, 4096.0).xyx) * 0.1031);
+	p3 += dot(p3, p3.yzx + 33.33);
+	return fract((p3.x + p3.y) * p3.z);
 }
 
 // Smooth value noise, 0..1.
@@ -194,7 +192,7 @@ bool plain_ground(float code) {
 }
 
 // Any ground: plain, or washed by the sea (WASH_CODE / WASH_GRASS_CODE +
-// shape) - what ground borders bend between.
+// shape) - what borders bend between and gets the grain.
 bool is_ground(float code) {
 	return plain_ground(code) || (code > WASH_CODE && code <= WASH_GRASS_CODE + 46.0);
 }
@@ -205,7 +203,7 @@ bool is_grass(float code) {
 }
 
 // Whether two ground tiles are different ground (a border between them),
-// not the same material's per-tile variation: grass on one side only, a
+// not one material's per-tile variation: grass on one side only, a
 // different hue (colour proportions - the brightness jitter,
 // SurfaceMaterial.jitter up to 6%, leaves them alone), or a brightness gap
 // beyond GROUND_BRIGHTNESS.
@@ -218,73 +216,32 @@ bool ground_differs(vec4 a, vec4 b) {
 	return distance(a.rgb / sa, b.rgb / sb) > GROUND_HUE || ratio > GROUND_BRIGHTNESS || ratio < 1.0 / GROUND_BRIGHTNESS;
 }
 
-// How far (pixels, either way) the ground border along the tile edge line
-// at world coordinate `line` sits off it, `along` pixels along the line: a
-// sine whose phase drifts with slow noise, so it always wiggles (never
-// runs straight on the grid) without repeating, smooth enough to step in
-// clean runs of whole pixels (no single-pixel nubs). Depends only on the
-// line, so the tiles on both sides draw the same border.
-float edge_curve(float line, float along) {
-	float drift = vnoise(vec2(along / (EDGE_WAVE * 2.5), line * 0.173 + 11.0));
-	return round(EDGE_PX * sin(along * 6.2832 / EDGE_WAVE + drift * 9.0 + line * 0.71));
+// How far (whole pixels, either way) the tile edge line `key` wobbles off
+// the grid, `along` pixels along it: one smooth bump per tile edge, in or
+// out at random, fading to nothing at the tile corners - so corners stay
+// on the grid and their rounding (CORNER_PX up to half a tile) always fits.
+// Depends only on the line, so the tiles on both sides draw the same edge.
+float edge_offset(float key, float along) {
+	float segment = floor(along / tile_px);
+	float bump = sin(3.14159 * (along / tile_px - segment));
+	return round(EDGE_PX * bump * (hash(vec2(key, segment + 5.1)) < 0.5 ? 1.0 : -1.0));
 }
 
-// Which side of the tile edge line at world coordinate `line` (`key` tells
-// x and y lines apart) a pixel centre `across` / `along` it takes its
-// ground from: +1 the tile past the line, -1 the one before. Past the
-// border curve (edge_curve()) is +1 - except inside a splotch: now and then
-// (BLOB_CHANCE per BLOB_SLOT px of edge) a small round blob sits just off
-// the curve on one side and shows the other side's ground. Everything
-// depends only on the line, so the tiles on both sides agree.
-float edge_pick(float line, float key, float across, float along, bool blobs) {
-	float pick = across > line + edge_curve(key, along) ? 1.0 : -1.0;
-	if (!blobs || abs(across - line) > BLOB_REACH)
-		return pick;
-	float slot = floor(along / BLOB_SLOT);
-	for (float k = -1.0; k <= 1.0; k += 1.0) {
-		vec2 id = vec2(key * 0.37 + 3.3, slot + k);
-		if (hash(id) >= BLOB_CHANCE)
-			continue;
-		float r = mix(BLOB_RADIUS.x, BLOB_RADIUS.y, hash(id + 1.7));
-		float b_along = (slot + k + hash(id + 2.9)) * BLOB_SLOT;
-		float dir = hash(id + 4.1) < 0.5 ? -1.0 : 1.0;
-		float b_across = line + edge_curve(key, b_along) + dir * (r + 1.0 + 2.0 * hash(id + 6.3));
-		// A little longer along the edge than across it.
-		vec2 d = vec2(across - b_across, (along - b_along) / 1.3);
-		if (dot(d, d) <= r * r)
-			pick = -dir;
-	}
-	return pick;
-}
-
-// Which tile's ground pixel `p` shows, relative to its own (-1..1 each
-// axis), by the wavy seams (edge_pick()) of its tile's edges to a ground
-// neighbour of another colour (`seam`: -x, +x, -y, +y) - the rest are
-// skipped. Only borders to a different ground (`active`, ground_differs())
-// get splotches and rounded corners; seams within one ground just wave, so
-// its per-tile colour jitter doesn't line up on the grid.
-vec2 edge_side(vec2 p, bvec4 seam, bvec4 active) {
-	vec2 c = p + 0.5;  // pixel centre
-	vec2 lo = floor(p / tile_px) * tile_px;  // this tile's top-left edge lines
-	vec2 hi = lo + tile_px;
-	vec2 side = vec2(0.0);
-	if (seam.x && edge_pick(lo.x, lo.x, c.x, c.y, active.x) < 0.0) side.x = -1.0;
-	else if (seam.y && edge_pick(hi.x, hi.x, c.x, c.y, active.y) > 0.0) side.x = 1.0;
-	if (seam.z && edge_pick(lo.y, lo.y + 0.5, c.y, c.x, active.z) < 0.0) side.y = -1.0;
-	else if (seam.w && edge_pick(hi.y, hi.y + 0.5, c.y, c.x, active.w) > 0.0) side.y = 1.0;
-	// Rounded corners: where both edges at this pixel's nearest tile corner
-	// are borders (an outer corner of this ground), the corner is cut along
-	// a quarter circle of CORNER_PX and the cut goes to the ground across
-	// it. Inner corners round themselves - they are the diagonal tile's
-	// outer corners, cut the same way from its side.
-	vec2 q = vec2(c.x - lo.x < tile_px * 0.5 ? -1.0 : 1.0, c.y - lo.y < tile_px * 0.5 ? -1.0 : 1.0);
-	if ((q.x < 0.0 ? active.x : active.y) && (q.y < 0.0 ? active.z : active.w)) {
-		vec2 corner = vec2(q.x < 0.0 ? lo.x : hi.x, q.y < 0.0 ? lo.y : hi.y);
-		vec2 inward = (corner - c) * q;  // pixels in from the corner, per axis
-		if (inward.x < CORNER_PX && inward.y < CORNER_PX && length(vec2(CORNER_PX) - inward) > CORNER_PX)
-			side = q;
-	}
-	return side;
+// The splotch on the tile edge segment `segment` of edge line `key` (see
+// BLOB_CHANCE), if any, and whether pixel centre `across` / `along` is in
+// it: 0 = not, else the side of the line (-1 / +1, `across` growing) the
+// splotch sits on - it shows the ground from the other side. Keyed to the
+// edge alone, so the tiles on both sides draw it the same.
+float edge_blob(float line, float key, float segment, float across, float along) {
+	vec2 id = vec2(key, segment + 91.7);
+	if (hash(id) >= BLOB_CHANCE)
+		return 0.0;
+	float r = mix(BLOB_RADIUS.x, BLOB_RADIUS.y, hash(id + 1.3));
+	float b_along = (segment + 0.5 + (hash(id + 2.9) - 0.5) * 0.3) * tile_px;
+	float dir = hash(id + 4.1) < 0.5 ? -1.0 : 1.0;
+	float b_across = line + edge_offset(key, b_along) + dir * (r + 1.0);
+	vec2 d = vec2(across - b_across, (along - b_along) / 1.2);  // a little longer along the edge
+	return dot(d, d) <= r * r ? dir : 0.0;
 }
 
 // Subtle ground texture: per-pixel grain and a soft mottle.
@@ -303,36 +260,71 @@ void fragment() {
 	vec2 p = floor(world_px);
 	vec4 c = texture(TEXTURE, UV);
 	float code = code_of(c);
-	// The ground this pixel shows (colour, grass tint, grain): past a wavy
-	// border it is the neighbour's - washed shore ground included. What
-	// happens on top (swash, waves, foam) stays its own tile's, so the surf
-	// follows the real shoreline.
+	// The ground this pixel shows (colour, grass tint, grain) may be a
+	// neighbouring tile's, across a wobbling edge; what happens on top
+	// (swash, waves, foam) stays its own tile's, so the surf follows the
+	// shoreline.
 	vec4 g = c;
 	if (ground_detail && is_ground(code)) {
-		// Take the ground neighbour the pixel's border puts it in (TEXTURE
-		// can only be sampled here, not in a helper); diagonal first, else
-		// along one axis. Only edges to a different ground have a border.
+		// The corner of this pixel's tile it is nearest (direction q), and
+		// the four tiles round it: [own, across x, across y, diagonal].
+		// TEXTURE can only be sampled here, not in a helper.
 		vec2 px = TEXTURE_PIXEL_SIZE;
-		vec4 w = texture(TEXTURE, UV - vec2(px.x, 0.0));
-		vec4 e = texture(TEXTURE, UV + vec2(px.x, 0.0));
-		vec4 n = texture(TEXTURE, UV - vec2(0.0, px.y));
-		vec4 s = texture(TEXTURE, UV + vec2(0.0, px.y));
-		bvec4 seam = bvec4(is_ground(code_of(w)) && w != c, is_ground(code_of(e)) && e != c,
-			is_ground(code_of(n)) && n != c, is_ground(code_of(s)) && s != c);
-		bvec4 active = bvec4(seam.x && ground_differs(w, c), seam.y && ground_differs(e, c),
-			seam.z && ground_differs(n, c), seam.w && ground_differs(s, c));
-		vec2 side = any(seam) ? edge_side(p, seam, active) : vec2(0.0);
-		if (side != vec2(0.0)) {
-			vec4 nd = texture(TEXTURE, UV + side * TEXTURE_PIXEL_SIZE);
-			vec4 nx = texture(TEXTURE, UV + vec2(side.x, 0.0) * TEXTURE_PIXEL_SIZE);
-			vec4 ny = texture(TEXTURE, UV + vec2(0.0, side.y) * TEXTURE_PIXEL_SIZE);
-			if (is_ground(code_of(nd)))
-				g = nd;
-			else if (side.x != 0.0 && is_ground(code_of(nx)))
-				g = nx;
-			else if (side.y != 0.0 && is_ground(code_of(ny)))
-				g = ny;
+		vec2 cp = p + 0.5;  // pixel centre
+		vec2 lo = floor(p / tile_px) * tile_px;
+		vec2 q = vec2(cp.x - lo.x < tile_px * 0.5 ? -1.0 : 1.0, cp.y - lo.y < tile_px * 0.5 ? -1.0 : 1.0);
+		vec2 corner = lo + max(q, vec2(0.0)) * tile_px;
+		vec4 quad[4] = vec4[4](c, texture(TEXTURE, UV + vec2(q.x, 0.0) * px),
+			texture(TEXTURE, UV + vec2(0.0, q.y) * px), texture(TEXTURE, UV + q * px));
+		// Which of them owns this pixel: the side of each wobbling edge
+		// line through the corner it is on (1 = across, towards q).
+		// Distance past each wobbling line, towards q (the lines where they
+		// pass this pixel's row / column).
+		vec2 past = vec2(cp.x - corner.x - edge_offset(corner.x, cp.y), cp.y - corner.y - edge_offset(corner.y + 0.5, cp.x)) * q;
+		int ox = past.x > 0.0 ? 1 : 0;
+		int oy = past.y > 0.0 ? 1 : 0;
+		vec4 owner = quad[ox + 2 * oy];
+		// Rounded corner: if the owner's ground differs from both tiles
+		// beside it round this corner, its corner is cut along a quarter
+		// circle, measured from the wobbling lines themselves (so the curve
+		// meets them cleanly). The cut shows the ground round the corner:
+		// the beside tile matching the other one or the diagonal. Where two
+		// tiles of one ground touch only at the corner (a saddle), only the
+		// darker pair is cut, so it parts cleanly and the other stays whole.
+		vec4 beside_x = quad[(1 - ox) + 2 * oy];
+		vec4 beside_y = quad[ox + 2 * (1 - oy)];
+		vec4 diagonal = quad[(1 - ox) + 2 * (1 - oy)];
+		bool saddle = !ground_differs(owner, diagonal) && !ground_differs(beside_x, beside_y);
+		if (ground_differs(owner, beside_x) && ground_differs(owner, beside_y)
+				&& (!saddle || dot(owner.rgb, vec3(0.3, 0.59, 0.11)) < dot(beside_x.rgb, vec3(0.3, 0.59, 0.11)))) {
+			// Pixels in from each line, into the owner's quarter.
+			vec2 inward = vec2(ox == 1 ? past.x : -past.x, oy == 1 ? past.y : -past.y);
+			if (inward.x < CORNER_PX && inward.y < CORNER_PX && length(vec2(CORNER_PX) - inward) > CORNER_PX) {
+				vec4 cut = (!ground_differs(beside_x, beside_y) || !ground_differs(beside_x, diagonal)) ? beside_x
+					: (!ground_differs(beside_y, diagonal) ? beside_y : beside_x);
+				if (is_ground(code_of(cut)))
+					owner = cut;
+			}
 		}
+		// Splotches on the two edge lines through this corner, each on this
+		// pixel's own tile row / column, between two different grounds.
+		// A splotch on the far (q) side shows this side's tile, and back.
+		vec4 row_near = quad[0];
+		vec4 row_far = quad[1];
+		if (ground_differs(row_near, row_far) && is_ground(code_of(row_far))) {
+			float b = edge_blob(corner.x, corner.x, floor(cp.y / tile_px), cp.x, cp.y);
+			if (b != 0.0)
+				owner = b * q.x > 0.0 ? row_near : row_far;
+		}
+		vec4 col_far = quad[2];
+		if (ground_differs(row_near, col_far) && is_ground(code_of(col_far))) {
+			float b = edge_blob(corner.y, corner.y + 0.5, floor(cp.x / tile_px), cp.y, cp.x);
+			if (b != 0.0)
+				owner = b * q.y > 0.0 ? row_near : col_far;
+		}
+		// Land never takes a water tile's colour.
+		if (is_ground(code_of(owner)))
+			g = owner;
 	}
 	float ground = code_of(g);
 	vec3 rgb = g.rgb;
