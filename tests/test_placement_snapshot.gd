@@ -29,6 +29,13 @@ const GOLDEN := "res://tests/placement_snapshot.txt"
 const AREAS := [Vector2i(0, 0), Vector2i(18000, 8820), Vector2i(-540, -2060), Vector2i(1760, -870), Vector2i(8000, -12000), Vector2i(19946, 20042), Vector2i(-1920, -2280)]
 const AREA_CHUNKS := 3
 const ORDER_AREAS := [Vector2i(-1052, -1212)]
+## Added later (review T2), in layers of their own so the lines recorded
+## before stay as they were: a hot desert and a Barrens area, where the
+## desert_plants guild grows (no area above reaches it; "dry/" layers), and
+## one site of each landmark type (camp, standing stones, ruins) for the
+## structure parts, which are hashed over every area ("structure_parts").
+const DRY_AREAS := [Vector2i(512, -512), Vector2i(640, 224)]
+const SITE_AREAS := [Vector2i(32, 43), Vector2i(56, 215), Vector2i(276, -730)]
 
 
 func _init() -> void:
@@ -53,6 +60,12 @@ func _init() -> void:
 				for guild in world.CONTENT.guilds:
 					_add(lines, guild.id, stack[guild])
 				_add(lines, "oak_placement", world._ctx.place_definition_chunk(ViewModes.OAK_RESOURCE, base))
+	for chunk in _area_chunks(world, DRY_AREAS):
+		var stack: Dictionary = world._ctx.place_stack_chunk(chunk * world.CHUNK_SIZE)
+		for guild in world.CONTENT.guilds:
+			_add(lines, "dry/" + guild.id, stack[guild])
+	for chunk in _area_chunks(world, AREAS + DRY_AREAS + SITE_AREAS):
+		_add_parts(lines, world, chunk)
 	var t_place := Time.get_ticks_msec() - t0
 
 	t0 = Time.get_ticks_msec()
@@ -89,11 +102,7 @@ func _init() -> void:
 	# Order pass: the golden areas and ORDER_AREAS, chunk by chunk, here and
 	# in reverse order from a fresh world with no worker.
 	var order_chunks: Array[Vector2i] = []
-	for area in AREAS + ORDER_AREAS:
-		var center: Vector2i = world._streamer.chunk_of(Vector2(area) * world.TILE_SIZE)
-		for dy in AREA_CHUNKS:
-			for dx in AREA_CHUNKS:
-				order_chunks.append(center + Vector2i(dx - AREA_CHUNKS / 2, dy - AREA_CHUNKS / 2))
+	order_chunks.append_array(_area_chunks(world, AREAS + ORDER_AREAS + DRY_AREAS + SITE_AREAS))
 	t0 = Time.get_ticks_msec()
 	var forward := {}
 	for chunk in order_chunks:
@@ -167,6 +176,7 @@ func _chunk_results(world: Node2D, chunk: Vector2i) -> Dictionary:
 	for guild in world.CONTENT.guilds:
 		_add(lines, guild.id, stack[guild])
 	_add(lines, "oak_placement", world._ctx.place_definition_chunk(ViewModes.OAK_RESOURCE, base))
+	_add_parts(lines, world, chunk)
 	var view: int = world._view_mode
 	world._view_mode = world.get_script().ViewMode.MATERIAL
 	_append(lines, "image_material", world._builder.build_chunk_image(chunk, 1).get_data().hex_encode())
@@ -175,6 +185,23 @@ func _chunk_results(world: Node2D, chunk: Vector2i) -> Dictionary:
 	for name in lines:
 		result[name] = "\n".join(PackedStringArray(lines[name])).md5_text()
 	return result
+
+
+## The AREA_CHUNKS x AREA_CHUNKS chunks around each area's centre tile.
+func _area_chunks(world: Node2D, areas: Array) -> Array[Vector2i]:
+	var chunks: Array[Vector2i] = []
+	for area in areas:
+		var center: Vector2i = world._streamer.chunk_of(Vector2(area) * world.TILE_SIZE)
+		for dy in AREA_CHUNKS:
+			for dx in AREA_CHUNKS:
+				chunks.append(center + Vector2i(dx - AREA_CHUNKS / 2, dy - AREA_CHUNKS / 2))
+	return chunks
+
+
+## A chunk's landmark structure parts (the stamps ChunkBuilder draws).
+func _add_parts(lines: Dictionary, world: Node2D, chunk: Vector2i) -> void:
+	for part in world._ctx.structures.parts_in_rect(Rect2i(chunk * world.CHUNK_SIZE, Vector2i(world.CHUNK_SIZE, world.CHUNK_SIZE))):
+		_append(lines, "structure_parts", "%s|%s|%s|%s|%s" % [part["site"], part["id"], Vector2i(part["position"].floor()), part["kind"], part["fill"].to_html()])
 
 
 func _append(lines: Dictionary, name: String, line: String) -> void:
