@@ -31,11 +31,10 @@ const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.
 const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
 const StructureSitesScript := preload("res://scripts/structure_sites.gd")
 const ResourceInstanceScript := preload("res://scripts/resource_instance.gd")
-const WorldChangesScript := preload("res://scripts/world_changes.gd")
-const GameClockScript := preload("res://scripts/game_clock.gd")
 const WindScript := preload("res://scripts/wind.gd")
 const HarvestEffectScript := preload("res://scripts/harvest_effect.gd")
 const TentSleepEffectScript := preload("res://scripts/tent_sleep_effect.gd")
+const WorldSessionScript := preload("res://scripts/world/world_session.gd")
 const NavigationScript := preload("res://scripts/world/navigation.gd")
 ## One material for every marker node: resource sprites sway in the wind by
 ## their sway value (see _marker_colors()); other draws are unaffected.
@@ -234,10 +233,8 @@ var _world_gen: WorldGen
 ## Landmark layer: sites for the current seed (StructureSites, which caches
 ## them per cell; used under _gen_mutex like _world_gen).
 var _structures: StructureSites
-## Sleeping in a camp tent (enter_tent()): the tent's tile while the player
-## is inside (null otherwise), and the bouncing tent standing in for its
-## marker, which _marker_node() leaves out.
-var _tent_tile: Variant = null
+## Sleeping in a camp tent (enter_tent()): the bouncing tent standing in
+## for its marker (session.tent_tile), which _marker_node() leaves out.
 var _tent_effect: Node2D
 var _seed_text: String = ""  # raw seed text in effect, shown in _seed_input
 var _loaded_chunks: Dictionary = {}   # Vector2i chunk -> Sprite2D
@@ -246,14 +243,17 @@ var _loaded_placements: Dictionary = {} # Vector2i chunk -> Node2D (resource mar
 var _raw_guild_chunks: Dictionary = {} # [guild id, chunk] -> that guild's raw placement in the chunk (see _raw_guild_in_rect)
 var _env_chunks: Dictionary = {} # chunk -> [states, classifications], per tile (see _tile_env)
 var _density_chunks: Dictionary = {} # guild/resource id -> {chunk -> PackedFloat64Array per tile} (see _density_memo)
-## Phase 16: the player's changes to generated objects (harvested ones),
-## for the current seed - written on the main thread under _gen_mutex, read
-## by generation under it and by marker building on the main thread.
-var _changes = WorldChangesScript.new()
-## In-game time (GameClock), advanced every frame, saved with _changes;
-## DayNight tints the world by it and the clock label shows it.
-var clock = GameClockScript.new()
-const CLOCK_SAVE_MSEC := 10000
+## The player's session: clock, saved changes, tent (WorldSession). Its
+## changes are written on the main thread under _gen_mutex, read by
+## generation under it and by marker building on the main thread.
+var session = WorldSessionScript.new()
+## In-game time (session.clock): DayNight tints the world by it and the
+## clock label shows it.
+var clock:
+	get: return session.clock
+## Forwarded for the tests until §4.1 step 9.
+var _changes:
+	get: return session.changes
 var wind = WindScript.new()
 var sway_material := ShaderMaterial.new()
 var shadow_material := ShaderMaterial.new()
@@ -261,7 +261,6 @@ var terrain_material := ShaderMaterial.new()
 ## Polish pass 2: the in-game day the sprites' season colours were last
 ## drawn for; markers are redrawn when it changes (_update_seasons()).
 var _season_day: int = -1
-var _last_clock_save_msec: int = -CLOCK_SAVE_MSEC
 var _chunk_placements: Dictionary = {} # Vector2i chunk -> its shown _placement_chunk() data, to redraw markers after a change
 ## Phase 18: the resource the Debug views show (a guild member; read by
 ## generation under _gen_mutex).
@@ -602,9 +601,8 @@ func set_view_mode(mode: ViewMode) -> void:
 ## Without a target (target_path unset) the area around the origin stays
 ## loaded, as the initial load always did.
 func _process(delta: float) -> void:
-	var hour_before := floori(clock.minutes / 60.0)
-	clock.advance(delta)
-	if _tent_tile != null and not clock.sleeping:
+	var save_clock: bool = session.advance(delta)
+	if session.woke_in_tent():
 		_leave_tent()
 	wind.advance(delta, clock.rate())
 	wind.apply(sway_material, clock.minutes)
@@ -616,10 +614,7 @@ func _process(delta: float) -> void:
 	var grass: Color = SeasonsScript.tint("grass", SeasonsScript.year_fraction(clock))
 	terrain_material.set_shader_parameter("grass_tint", Vector4(grass.r, grass.g, grass.b, grass.a))
 	_update_seasons()
-	# Save the clock when an in-game hour passes (about once a real minute at
-	# normal speed), at most every CLOCK_SAVE_MSEC when fast-forwarding.
-	if floori(clock.minutes / 60.0) != hour_before and Time.get_ticks_msec() - _last_clock_save_msec >= CLOCK_SAVE_MSEC:
-		_last_clock_save_msec = Time.get_ticks_msec()
+	if save_clock:
 		_save_gameplay_state()
 	if _finder_thread != null and not _finder_thread.is_alive():
 		_finder_thread.wait_to_finish()
@@ -1551,7 +1546,7 @@ func get_resource_instance(inst: Dictionary):
 	if definition == null:
 		return null
 	var record = ResourceInstanceScript.create(inst, definition, _instance_quality(inst))
-	_changes.apply(record)
+	session.changes.apply(record)
 	return record
 
 
@@ -1600,8 +1595,8 @@ func _marker_node(base: Vector2i, placements: Array) -> Node2D:
 			for inst in entry[1]:
 				sprites[inst["id"]] = {"tile": inst["sheet"], "size": 1.0}
 			var parts: Array = entry[1]
-			if _tent_tile != null:  # the occupied tent is drawn by _tent_effect
-				parts = parts.filter(func(p): return Vector2i((p["position"] as Vector2).floor()) != _tent_tile)
+			if session.tent_tile != null:  # the occupied tent is drawn by _tent_effect
+				parts = parts.filter(func(p): return Vector2i((p["position"] as Vector2).floor()) != session.tent_tile)
 			# Structures stay on the grid: each part stands on its tile's
 			# bottom middle rather than a jittered pivot.
 			parts = parts.map(func(p):
@@ -1689,7 +1684,7 @@ func _pick(point: Vector2, candidates: Array, include_harvested: bool) -> Dictio
 	for layer in candidates:
 		var reach := maxf(layer[0].minimum_spacing * 0.35, 0.5)
 		for inst in layer[1]:
-			if not include_harvested and _changes.is_instance_harvested(inst):
+			if not include_harvested and session.is_harvested(inst):
 				continue
 			var pos: Vector2 = inst["position"]
 			var in_tile := Vector2i(pos.floor()) == tile
@@ -1881,9 +1876,7 @@ func _sprite_tiles(source: Resource) -> Dictionary:
 
 ## Phase 16: the instances of a placement list the player hasn't harvested.
 func _unchanged(instances: Array) -> Array:
-	if _changes.is_empty():
-		return instances
-	return instances.filter(func(inst): return not _changes.is_instance_harvested(inst))
+	return session.unchanged(instances)
 
 
 ## Phase 16: the file this seed's gameplay changes are saved to, or "" when
@@ -1908,13 +1901,12 @@ func _on_harvest_clicked(world_pos: Vector2):
 ## happens if it was harvested meanwhile.
 ## Returns the harvested ResourceInstance, or null if there was none.
 func _harvest(inst: Dictionary):
-	if inst.is_empty() or _changes.is_instance_harvested(inst):
+	if inst.is_empty() or session.is_harvested(inst):
 		return null
 	_gen_mutex.lock()  # the worker may be generating a chunk
 	var entity = get_resource_instance(inst)
 	if entity != null:
-		_changes.harvest(entity.key, entity.resource_id)
-		_changes.apply(entity)
+		session.harvest(entity)
 		_save_gameplay_state()
 	_gen_mutex.unlock()
 	if entity != null:
@@ -2037,22 +2029,16 @@ func debug_breakdown(wx: int, wy: int) -> Array[String]:
 
 ## This seed's saved changes and time (a new world: none, START_MINUTES).
 func _load_gameplay_state() -> void:
-	clock.wake()
 	_leave_tent()
-	_changes.load_file(changes_path(), world_seed)
-	clock.minutes = _changes.time_minutes if _changes.time_minutes >= 0.0 else GameClockScript.START_MINUTES
+	var position: Variant = session.load_seed(changes_path(), world_seed)
 	if _player:
-		_player.teleport(_changes.player_position if _changes.has_player_position else _nearest_walkable(Vector2i.ZERO))
+		_player.teleport(position if position != null else _nearest_walkable(Vector2i.ZERO))
 
 
 ## Saves the changes and the current time for this seed (nothing under a
 ## test harness with the default dir - see changes_path()).
 func _save_gameplay_state() -> void:
-	_changes.time_minutes = clock.minutes
-	if _player:
-		_changes.player_position = _player.position
-		_changes.has_player_position = true
-	_changes.save(changes_path(), world_seed)
+	session.save(_player.position if _player else null)
 
 
 ## Saves on quit, and whenever the game loses focus or is paused (a browser
@@ -2081,8 +2067,8 @@ func _on_map_tapped(world_pos: Vector2) -> Array[Vector2i]:
 		_on_harvest_clicked(world_pos)
 		return []
 	var goal := Vector2i((world_pos / TILE_SIZE).floor())
-	if _tent_tile != null:
-		var was_in: Vector2i = _tent_tile
+	if session.tent_tile != null:
+		var was_in: Vector2i = session.tent_tile
 		clock.wake()
 		_leave_tent()
 		if goal == was_in:  # tapping the tent they're in just wakes them
@@ -2182,7 +2168,7 @@ func enter_tent(tile: Vector2i) -> void:
 	if site.is_empty():
 		return
 	_leave_tent()
-	_tent_tile = tile
+	session.tent_tile = tile
 	_player.visible = false
 	var chunk := Vector2i((Vector2(tile) / CHUNK_SIZE).floor())
 	_redraw_markers(chunk)
@@ -2205,16 +2191,16 @@ func enter_tent(tile: Vector2i) -> void:
 
 ## Whether the player is asleep in a tent.
 func is_in_tent() -> bool:
-	return _tent_tile != null
+	return session.tent_tile != null
 
 
 ## The player comes out of the tent (shown again where they went in) and
 ## the tent's own marker returns. Leaves the clock alone.
 func _leave_tent() -> void:
-	if _tent_tile == null:
+	if session.tent_tile == null:
 		return
-	var tile: Vector2i = _tent_tile
-	_tent_tile = null
+	var tile: Vector2i = session.tent_tile
+	session.tent_tile = null
 	if is_instance_valid(_tent_effect):
 		_tent_effect.name = "TentSleepFading"  # frees itself once its Zs fade
 		_tent_effect.wake()
