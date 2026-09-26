@@ -25,7 +25,8 @@
 // curve up to EDGE_PX
 // off the grid (edge_curve(), the same for the tiles on both sides), and a
 // pixel past the curve takes the neighbour's ground - one clean border,
-// no dithering, islands or notches - and ground (and swashed
+// no dithering, islands or notches; outer corners are rounded off
+// (CORNER_PX) - and ground (and swashed
 // ground) gets a subtle grain and mottle. The chunk image has a 1-texel
 // border holding the neighbouring chunks' edge tiles
 // (ChunkManager._share_borders()), so edges cross chunk borders. The output is always opaque. Other views bake plain opaque RGB images, which pass
@@ -58,6 +59,13 @@ uniform bool ground_detail = false;
 // wiggle along an edge.
 const float EDGE_PX = 2.0;
 const float EDGE_WAVE = 26.0;
+// Radius (pixels) of the rounded outer corners of ground areas (at most
+// half a tile).
+const float CORNER_PX = 8.0;
+// Different ground (ground_differs()): a hue gap (colour proportions) or a
+// brightness ratio beyond what one material's per-tile jitter gives.
+const float GROUND_HUE = 0.025;
+const float GROUND_BRIGHTNESS = 1.15;
 // Splotches along ground borders (edge_pick()): one per BLOB_SLOT px of
 // edge at most, with this chance; radius range (px); and how far from the
 // edge line they can reach (EDGE_PX + largest radius + gap), which must
@@ -196,6 +204,20 @@ bool is_grass(float code) {
 	return code == GRASS_CODE || (code > WASH_GRASS_CODE && code <= WASH_GRASS_CODE + 46.0);
 }
 
+// Whether two ground tiles are different ground (a border between them),
+// not the same material's per-tile variation: grass on one side only, a
+// different hue (colour proportions - the brightness jitter,
+// SurfaceMaterial.jitter up to 6%, leaves them alone), or a brightness gap
+// beyond GROUND_BRIGHTNESS.
+bool ground_differs(vec4 a, vec4 b) {
+	if (is_grass(code_of(a)) != is_grass(code_of(b)))
+		return true;
+	float sa = a.r + a.g + a.b + 0.0001;
+	float sb = b.r + b.g + b.b + 0.0001;
+	float ratio = sa / sb;
+	return distance(a.rgb / sa, b.rgb / sb) > GROUND_HUE || ratio > GROUND_BRIGHTNESS || ratio < 1.0 / GROUND_BRIGHTNESS;
+}
+
 // How far (pixels, either way) the ground border along the tile edge line
 // at world coordinate `line` sits off it, `along` pixels along the line: a
 // sine whose phase drifts with slow noise, so it always wiggles (never
@@ -214,9 +236,9 @@ float edge_curve(float line, float along) {
 // (BLOB_CHANCE per BLOB_SLOT px of edge) a small round blob sits just off
 // the curve on one side and shows the other side's ground. Everything
 // depends only on the line, so the tiles on both sides agree.
-float edge_pick(float line, float key, float across, float along) {
+float edge_pick(float line, float key, float across, float along, bool blobs) {
 	float pick = across > line + edge_curve(key, along) ? 1.0 : -1.0;
-	if (abs(across - line) > BLOB_REACH)
+	if (!blobs || abs(across - line) > BLOB_REACH)
 		return pick;
 	float slot = floor(along / BLOB_SLOT);
 	for (float k = -1.0; k <= 1.0; k += 1.0) {
@@ -236,17 +258,32 @@ float edge_pick(float line, float key, float across, float along) {
 }
 
 // Which tile's ground pixel `p` shows, relative to its own (-1..1 each
-// axis), by the borders (edge_pick()) of its tile's edges whose neighbour
-// is a different ground (`active`: -x, +x, -y, +y) - the rest are skipped.
-vec2 edge_side(vec2 p, bvec4 active) {
+// axis), by the wavy seams (edge_pick()) of its tile's edges to a ground
+// neighbour of another colour (`seam`: -x, +x, -y, +y) - the rest are
+// skipped. Only borders to a different ground (`active`, ground_differs())
+// get splotches and rounded corners; seams within one ground just wave, so
+// its per-tile colour jitter doesn't line up on the grid.
+vec2 edge_side(vec2 p, bvec4 seam, bvec4 active) {
 	vec2 c = p + 0.5;  // pixel centre
 	vec2 lo = floor(p / tile_px) * tile_px;  // this tile's top-left edge lines
 	vec2 hi = lo + tile_px;
 	vec2 side = vec2(0.0);
-	if (active.x && edge_pick(lo.x, lo.x, c.x, c.y) < 0.0) side.x = -1.0;
-	else if (active.y && edge_pick(hi.x, hi.x, c.x, c.y) > 0.0) side.x = 1.0;
-	if (active.z && edge_pick(lo.y, lo.y + 0.5, c.y, c.x) < 0.0) side.y = -1.0;
-	else if (active.w && edge_pick(hi.y, hi.y + 0.5, c.y, c.x) > 0.0) side.y = 1.0;
+	if (seam.x && edge_pick(lo.x, lo.x, c.x, c.y, active.x) < 0.0) side.x = -1.0;
+	else if (seam.y && edge_pick(hi.x, hi.x, c.x, c.y, active.y) > 0.0) side.x = 1.0;
+	if (seam.z && edge_pick(lo.y, lo.y + 0.5, c.y, c.x, active.z) < 0.0) side.y = -1.0;
+	else if (seam.w && edge_pick(hi.y, hi.y + 0.5, c.y, c.x, active.w) > 0.0) side.y = 1.0;
+	// Rounded corners: where both edges at this pixel's nearest tile corner
+	// are borders (an outer corner of this ground), the corner is cut along
+	// a quarter circle of CORNER_PX and the cut goes to the ground across
+	// it. Inner corners round themselves - they are the diagonal tile's
+	// outer corners, cut the same way from its side.
+	vec2 q = vec2(c.x - lo.x < tile_px * 0.5 ? -1.0 : 1.0, c.y - lo.y < tile_px * 0.5 ? -1.0 : 1.0);
+	if ((q.x < 0.0 ? active.x : active.y) && (q.y < 0.0 ? active.z : active.w)) {
+		vec2 corner = vec2(q.x < 0.0 ? lo.x : hi.x, q.y < 0.0 ? lo.y : hi.y);
+		vec2 inward = (corner - c) * q;  // pixels in from the corner, per axis
+		if (inward.x < CORNER_PX && inward.y < CORNER_PX && length(vec2(CORNER_PX) - inward) > CORNER_PX)
+			side = q;
+	}
 	return side;
 }
 
@@ -280,9 +317,11 @@ void fragment() {
 		vec4 e = texture(TEXTURE, UV + vec2(px.x, 0.0));
 		vec4 n = texture(TEXTURE, UV - vec2(0.0, px.y));
 		vec4 s = texture(TEXTURE, UV + vec2(0.0, px.y));
-		bvec4 active = bvec4(is_ground(code_of(w)) && w != c, is_ground(code_of(e)) && e != c,
+		bvec4 seam = bvec4(is_ground(code_of(w)) && w != c, is_ground(code_of(e)) && e != c,
 			is_ground(code_of(n)) && n != c, is_ground(code_of(s)) && s != c);
-		vec2 side = any(active) ? edge_side(p, active) : vec2(0.0);
+		bvec4 active = bvec4(seam.x && ground_differs(w, c), seam.y && ground_differs(e, c),
+			seam.z && ground_differs(n, c), seam.w && ground_differs(s, c));
+		vec2 side = any(seam) ? edge_side(p, seam, active) : vec2(0.0);
 		if (side != vec2(0.0)) {
 			vec4 nd = texture(TEXTURE, UV + side * TEXTURE_PIXEL_SIZE);
 			vec4 nx = texture(TEXTURE, UV + vec2(side.x, 0.0) * TEXTURE_PIXEL_SIZE);
