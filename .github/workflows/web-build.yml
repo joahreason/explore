@@ -22,6 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # PROJECT_STATE.md is a snapshot a new session reads in one go (X2).
+      - name: Check PROJECT_STATE.md size
+        run: |
+          test "$(wc -c < PROJECT_STATE.md)" -lt 10240 || { echo "PROJECT_STATE.md is over 10 KB: move history to CHANGELOG_DEV.md"; exit 1; }
+
       - name: Cache Godot
         uses: actions/cache@v4
         with:
