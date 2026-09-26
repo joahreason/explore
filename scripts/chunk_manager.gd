@@ -119,6 +119,8 @@ const MAX_PLACEMENT_LOD_STEP := 2
 ## Without a worker thread: time per frame spent on chunk job steps on the
 ## main thread (at least one step per frame while any are queued).
 const INLINE_BUDGET_USEC := 5000
+## Review W1: main-thread time per frame for a "Go to" search without threads.
+const TRAVEL_BUDGET_USEC := 4000
 ## Pixel rows a chunk job bakes per step (see _chunk_job_steps). 2 since
 ## Phase 13.5: choosing each tile's ground costs ~50 us, so a 4-row band was
 ## ~4.5 ms on desktop - too big a step for the web fallback.
@@ -320,6 +322,7 @@ var _finder_thread: Thread
 var _finder_biome: String = ""
 var _finder_seed: int = 0
 var _finder_result: Variant = null  # written by the search thread, read after it finishes
+var _finder_search: RefCounted  # a search stepped from _process() where there's no thread (web)
 var _finder_cancel: bool = false
 var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
 var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
@@ -444,9 +447,11 @@ func _threads_available() -> bool:
 ## Biome travel dropdown: moves the camera to the nearest tile of `biome`
 ## (a BiomeClassifier base biome name) - or, if the camera already stands in
 ## that biome, to the nearest other patch of it; repeated trips to the same
-## biome hop onward (see BiomeFinder). The search takes up to a few seconds,
-## so it runs on a thread (inline where threads are unavailable) and
-## biome_travel_finished reports the outcome. Ignored while a search runs.
+## biome hop onward (see BiomeFinder). The search can take seconds, so it
+## runs on a thread, or without threads (web, threaded_generation off) a
+## slice per frame from _process() (TRAVEL_BUDGET_USEC); either way
+## biome_travel_finished reports the outcome. Ignored while a search runs;
+## cancel_biome_travel() stops one.
 func travel_to_biome(biome: String) -> void:
 	if is_finding_biome():
 		return
@@ -459,30 +464,45 @@ func travel_to_biome(biome: String) -> void:
 	var pos: Vector2 = _player.tile_center(_player.tile()) if _player else (_target.global_position if _target else Vector2.ZERO)
 	var start := Vector2i(floori(pos.x / TILE_SIZE), floori(pos.y / TILE_SIZE))
 	var avoid: Array = _travel_visited.get(biome, []).duplicate()
-	if _threads_available():
+	_finder_result = null
+	var search := _new_search(biome, start, avoid)
+	if threaded_generation and _threads_available():
 		_finder_thread = Thread.new()
-		_finder_thread.start(_find_biome.bind(biome, start, avoid))
+		_finder_thread.start(_run_search.bind(search))
 	else:
-		_find_biome(biome, start, avoid)
-		_finish_biome_travel()
+		_finder_search = search
 
 
 func is_finding_biome() -> bool:
-	return _finder_thread != null
+	return _finder_thread != null or _finder_search != null
 
 
-## Landmark layer: a structure's display name (StructureSites.DEFINITIONS)
-## searches sites directly - the nearest site of that type other than one
-## at the start or already visited - instead of scanning tiles.
-func _find_biome(biome: String, start: Vector2i, avoid: Array) -> void:
-	var cancel := func() -> bool: return _finder_cancel
+## Stops a running "Go to" search; biome_travel_finished then reports it
+## cancelled.
+func cancel_biome_travel() -> void:
+	if is_finding_biome():
+		_finder_cancel = true
+
+
+## The search for a travel target, not yet run: BiomeFinder, or for a
+## structure's display name (StructureSites.DEFINITIONS) a StructureSites
+## search - the nearest site of that type other than one at the start or
+## already visited - instead of scanning tiles. Both step() until done.
+func _new_search(biome: String, start: Vector2i, avoid: Array) -> RefCounted:
 	for def in StructureSitesScript.DEFINITIONS:
 		if def.display_name == biome:
 			if _finder_sites == null or _finder_sites.world_seed != _finder_seed:
 				_finder_sites = StructureSitesScript.new(_finder_gen, _finder_seed)
-			_finder_result = _finder_sites.find(def.id, start, avoid, cancel)
+			return _finder_sites.search(def.id, start, avoid)
+	return BiomeFinderScript.new(_finder_gen, biome, start, avoid)
+
+
+## The search thread: runs `search` to the end unless cancelled.
+func _run_search(search: RefCounted) -> void:
+	while not search.step(Time.get_ticks_usec() + 20000):
+		if _finder_cancel:
 			return
-	_finder_result = BiomeFinderScript.find(_finder_gen, biome, start, avoid, cancel)
+	_finder_result = search.result
 
 
 ## Main thread, once the search is done: moves the camera there (chunks
@@ -558,6 +578,11 @@ func _process(delta: float) -> void:
 	if _finder_thread != null and not _finder_thread.is_alive():
 		_finder_thread.wait_to_finish()
 		_finder_thread = null
+		_finish_biome_travel()
+	if _finder_search != null and (_finder_cancel or _finder_search.step(Time.get_ticks_usec() + TRAVEL_BUDGET_USEC)):
+		if not _finder_cancel:
+			_finder_result = _finder_search.result
+		_finder_search = null
 		_finish_biome_travel()
 	_refresh_streaming()
 	if _worker == null:
