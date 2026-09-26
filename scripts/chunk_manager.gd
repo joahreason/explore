@@ -334,6 +334,8 @@ var _finder_seed: int = 0
 var _finder_result: Variant = null  # written by the search thread, read after it finishes
 var _finder_search: RefCounted  # a search stepped from _process() where there's no thread (web)
 var _finder_cancel: bool = false
+var _longest_step_usec := 0  # debug overlay: since take_perf_counters(), under _queue_mutex
+var _chunks_shown := 0  # debug overlay: chunks applied so far
 var _finder_sites: StructureSites  # the search thread's own sites (on _finder_gen), kept while the seed stays
 var _travel_visited: Dictionary = {}  # biome -> tiles already traveled to (BiomeFinder's avoid list)
 
@@ -723,6 +725,17 @@ func flush_chunk_work() -> void:
 		OS.delay_usec(200)  # the worker is finishing a chunk
 
 
+## The debug overlay's counters (review W4): the longest job step since the
+## last call (then reset), chunks queued or being built, and chunks shown
+## so far.
+func take_perf_counters() -> Dictionary:
+	_queue_mutex.lock()
+	var counters := {"longest_step_usec": _longest_step_usec, "queued": _jobs.size() + _in_flight.size(), "shown": _chunks_shown}
+	_longest_step_usec = 0
+	_queue_mutex.unlock()
+	return counters
+
+
 func has_pending_chunks() -> bool:
 	_queue_mutex.lock()
 	var busy := not (_jobs.is_empty() and _in_flight.is_empty() and _results.is_empty())
@@ -914,8 +927,13 @@ func _step_job(state: Dictionary) -> bool:
 			state["planned"] = true
 		var steps: Array = state["steps"]
 		if state["next"] < steps.size():
+			var began := Time.get_ticks_usec()
 			(steps[state["next"]] as Callable).call()
 			state["next"] += 1
+			var took := Time.get_ticks_usec() - began
+			_queue_mutex.lock()
+			_longest_step_usec = maxi(_longest_step_usec, took)
+			_queue_mutex.unlock()
 		_gen_mutex.unlock()
 		if state["next"] < steps.size():
 			return false
@@ -964,6 +982,7 @@ func _apply_results(budget_usec: int) -> void:
 		if data["epoch"] != _epoch or Vector2(chunk_coord - _last_center).length() > _last_load_radius + UNLOAD_BUFFER:
 			continue
 		_apply_chunk_data(data)
+		_chunks_shown += 1
 		if budget_usec >= 0 and Time.get_ticks_usec() >= deadline:
 			break
 	_ready_results = _ready_results.slice(i)

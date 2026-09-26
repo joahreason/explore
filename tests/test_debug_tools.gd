@@ -9,7 +9,8 @@ extends SceneTree
 ## resource rebuilds them, species densities add up to the guild's, the
 ## inspector shows the breakdown only in Debug views, and the resource
 ## dropdown lists every resource and only shows in Debug views. F5 reloads
-## the content data from disk (review X3).
+## the content data from disk (review X3); F3 shows the debug overlay
+## (review W4).
 ## Run via tests/run_tests.sh.
 
 const SEED := 4242
@@ -182,6 +183,32 @@ func _init() -> void:
 	check(pine.base_density == file_density and pine.temperature_curve == curve and points_back
 		and pine.curve_plan != null and not ResourceManager._patch_noise_cache.has("stale") and files > 60,
 		"F5 re-reads all %d content files into the loaded instances (curves in place) and drops curve plans and noise caches" % files)
+
+	# Debug overlay (review W4): hidden until F3 (or ?debug=1 on the web),
+	# then reports frames, job steps, the queue, chunks per second and nodes.
+	var perf: Label = world.get_node("UI/PerfOverlay")
+	var hidden_at_start := not perf.visible
+	var f3 := InputEventKey.new()
+	f3.keycode = KEY_F3
+	f3.pressed = true
+	perf._unhandled_input(f3)
+	world._invalidate_chunks()  # something to stream
+	var until := Time.get_ticks_msec() + 2000
+	while Time.get_ticks_msec() < until:
+		await process_frame
+	var lines: PackedStringArray = perf.text.split("\n")
+	var longest := 0
+	for c in perf._counters:
+		longest = maxi(longest, c[1])
+	var shown: int = perf._counters.back()[2] - perf._counters[0][2]
+	check(hidden_at_start and perf.visible and lines.size() == 4 and lines[0].begins_with("Frame p50") and lines[1].begins_with("Longest job step")
+		and lines[2].begins_with("Queued chunks") and lines[3].begins_with("Nodes") and longest > 0 and shown > 0 and perf._frames.size() > 5,
+		"F3 shows the debug overlay: %s" % " | ".join(lines))
+	world.flush_chunk_work()
+	world.take_perf_counters()
+	var idle: Dictionary = world.take_perf_counters()
+	perf._unhandled_input(f3)
+	check(idle["longest_step_usec"] == 0 and idle["queued"] == 0 and not perf.visible, "the longest step resets once read; F3 hides the overlay again")
 
 	print("RESULT %d passed, %d failed" % [_passes, _fails])
 	quit(1 if _fails > 0 else 0)
