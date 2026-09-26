@@ -12,7 +12,7 @@ extends SceneTree
 ## is placed on a footprint, the World view draws the parts, the inspector
 ## names the site and the Go to menu finds sites. Run via tests/run_tests.sh.
 
-const StructureSitesScript := preload("res://scripts/structure_sites.gd")
+const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
 const SEED := 4242
 const CELL := StructureSites.CELL_SIZE
 

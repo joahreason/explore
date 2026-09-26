@@ -7,11 +7,11 @@ extends SceneTree
 ## species follow bare -> pioneer grass/herbs -> shrubs -> young trees ->
 ## mature trees, with deadwood on young scars. Run via tests/run_tests.sh.
 
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const DEADWOOD := preload("res://resources/deadwood.tres")
-const PIONEERS := preload("res://resources/pioneer_plants.tres")
-const DEAD_TREE := preload("res://resources/dead_tree.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const DEADWOOD := preload("res://resources/guilds/deadwood.tres")
+const PIONEERS := preload("res://resources/guilds/pioneer_plants.tres")
+const DEAD_TREE := preload("res://resources/species/dead_tree.tres")
 const SEED := 4242
 const REGIONS := [Vector2i(0, 0), Vector2i(12000, -7000), Vector2i(-9000, 15000), Vector2i(18000, 9000)]
 

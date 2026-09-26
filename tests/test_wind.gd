@@ -3,7 +3,7 @@ extends SceneTree
 ## Wind sway: resource sprites bend in the wind by their data `sway` (grass
 ## most, shrubs less, trees a little, rocks / ore / logs not at all); the
 ## sway reaches the shader (shaders/sway.gdshader) through the sprite draw
-## colour's alpha; Wind (scripts/wind.gd) drives direction, strength and
+## colour's alpha; Wind (scripts/render/wind.gd) drives direction, strength and
 ## the animation from the in-game clock (paused = still, fast-forward capped,
 ## rewind backwards). The shader itself is checked on a real renderer by
 ## hand (headless has none). Run via tests/run_tests.sh.

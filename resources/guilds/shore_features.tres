@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resources/resource_definition.gd" id="2_def"]
+[ext_resource type="Resource" path="res://resources/species/shells.tres" id="3_shells"]
+[ext_resource type="Resource" path="res://resources/species/beach_grass.tres" id="4_grass"]
+[ext_resource type="Resource" path="res://resources/species/mud.tres" id="5_mud"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.02, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 3
+
+[resource]
+script = ExtResource("1_guild")
+id = "shore_features"
+members = Array[ExtResource("2_def")]([ExtResource("3_shells"), ExtResource("4_grass"), ExtResource("5_mud")])
+cover_field = "shore_proximity"
+cover_curve = SubResource("Curve_cover")
+base_density = 0.6
+species_sharpness = 4.0
+cluster_scale = 24.0
+cluster_strength = 0.5
+minimum_spacing = 1.5
+footprint_radius = 0.35

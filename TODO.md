@@ -16,7 +16,7 @@ Works through `docs/reviews/2026-09-26-code-review.md`, one batch per session. E
 - [x] 2. Web stalls: W2, W1 - PR #42 (merged into review-followup)
 - [x] 3. Small fixes: D2, W6, W5, C1, C2, C5, X4, W3, unused PNG from O1 - merged into review-followup
 - [x] 4. Before feature work: C3, C4, X3, W4 - merged into review-followup
-- [ ] 5. chunk_manager.gd split, §4.1 steps 1-9, one per session (A2 in view modes, A3 in content, A4 and T4 throughout, O1 folders in step 9). Steps done: none
+- [x] 5. chunk_manager.gd split, §4.1 steps 1-9 (A2 in view modes, A3 in content, A4 and T4 throughout, O1 folders in step 9) - PRs #45-#52 and step 9's (merged into review-followup)
 - [ ] 6. Docs restructure: X2, per §4.2
 - [ ] 7. Remaining: P1, P3, P4, then P2 (using W4's numbers); Q1-Q6, T2's coverage additions, T6, D3, D4
 

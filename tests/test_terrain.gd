@@ -8,7 +8,7 @@ extends SceneTree
 ## tests/run_tests.sh.
 
 const SEED := 4242
-const TS := preload("res://scripts/terrain_surface.gd")
+const TS := preload("res://scripts/gen/terrain_surface.gd")
 
 var _fails := 0
 var _passes := 0

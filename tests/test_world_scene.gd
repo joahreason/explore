@@ -2,7 +2,7 @@ extends SceneTree
 
 const ViewModes := preload("res://scripts/world/view_modes.gd")
 const ChunkStreamer := preload("res://scripts/world/chunk_streamer.gd")
-const ResourceMarkerChunk := preload("res://scripts/resource_marker_chunk.gd")
+const ResourceMarkerChunk := preload("res://scripts/render/resource_marker_chunk.gd")
 
 ## Loads the real world.tscn, switches to Oak Placement, and checks the
 ## marker layer follows view/LOD/chunk streaming, then that the guild views
@@ -112,7 +112,7 @@ func _init() -> void:
 		for c in m._fills:
 			fills[c] = fills.get(c, 0) + 1
 	var oak_c: Color = ViewModes.OAK_RESOURCE.debug_color
-	var pine_c: Color = load("res://resources/pine.tres").debug_color
+	var pine_c: Color = load("res://resources/species/pine.tres").debug_color
 	var member_colors := {}
 	for member in ViewModes.CANOPY_TREES.members:
 		member_colors[member.debug_color] = true

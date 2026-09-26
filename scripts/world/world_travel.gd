@@ -8,8 +8,8 @@ extends RefCounted
 ## generation - or, without threads, a slice per frame from poll() (review
 ## W1). ChunkManager starts searches and moves the player to the result.
 
-const BiomeFinderScript := preload("res://scripts/biome_finder.gd")
-const StructureSitesScript := preload("res://scripts/structure_sites.gd")
+const BiomeFinderScript := preload("res://scripts/gen/biome_finder.gd")
+const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
 
 ## Review W1: main-thread time per frame for a search without threads.
 const TRAVEL_BUDGET_USEC := 4000

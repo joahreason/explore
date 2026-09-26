@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resources/resource_definition.gd" id="2_def"]
+[ext_resource type="Resource" path="res://resources/species/granite.tres" id="3_granite"]
+[ext_resource type="Resource" path="res://resources/species/sandstone.tres" id="4_sandstone"]
+[ext_resource type="Resource" path="res://resources/species/basalt.tres" id="5_basalt"]
+[ext_resource type="Resource" path="res://resources/species/limestone.tres" id="6_limestone"]
+[ext_resource type="Resource" path="res://resources/species/shale.tres" id="7_shale"]
+[ext_resource type="Resource" path="res://resources/species/gravel.tres" id="8_gravel"]
+[ext_resource type="Resource" path="res://resources/species/exposed_stone.tres" id="9_exposed"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 0.7), 0.0, 0.0, 0, 0, Vector2(0.2, 0.45), 0.0, 0.0, 0, 0, Vector2(0.35, 0.18), 0.0, 0.0, 0, 0, Vector2(0.5, 0.06), 0.0, 0.0, 0, 0, Vector2(1, 0.03), 0.0, 0.0, 0, 0]
+point_count = 5
+
+[resource]
+script = ExtResource("1_guild")
+id = "surface_rocks"
+members = Array[ExtResource("2_def")]([ExtResource("3_granite"), ExtResource("4_sandstone"), ExtResource("5_basalt"), ExtResource("6_limestone"), ExtResource("7_shale"), ExtResource("8_gravel"), ExtResource("9_exposed")])
+cover_curve = SubResource("Curve_cover")
+base_density = 0.8
+species_sharpness = 4.0
+cluster_scale = 16.0
+minimum_spacing = 1.2
+footprint_radius = 0.5
+cover_sets_area = true
+stand_edge = 0.05

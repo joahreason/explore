@@ -278,7 +278,7 @@ func _init() -> void:
 
 
 func AmbientParticles_weights(env: Dictionary) -> Dictionary:
-	return load("res://scripts/ambient_particles.gd").weights(env)
+	return load("res://scripts/render/ambient_particles.gd").weights(env)
 
 
 func _with(env: Dictionary, changes: Dictionary) -> Dictionary:

@@ -7,8 +7,8 @@ extends RefCounted
 ## Main thread; generation reads `changes` under ChunkManager's _gen_mutex,
 ## so harvest() is called with it held.
 
-const WorldChangesScript := preload("res://scripts/world_changes.gd")
-const GameClockScript := preload("res://scripts/game_clock.gd")
+const WorldChangesScript := preload("res://scripts/world/world_changes.gd")
+const GameClockScript := preload("res://scripts/world/game_clock.gd")
 ## Fast-forwarding saves the clock at most this often (real time).
 const CLOCK_SAVE_MSEC := 10000
 

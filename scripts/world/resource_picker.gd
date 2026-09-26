@@ -12,7 +12,7 @@ const GenerationContextScript := preload("res://scripts/world/generation_context
 const ChunkBuilderScript := preload("res://scripts/world/chunk_builder.gd")
 const ChunkPresenterScript := preload("res://scripts/world/chunk_presenter.gd")
 const ViewModesScript := preload("res://scripts/world/view_modes.gd")
-const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
+const ResourceMarkerChunkScript := preload("res://scripts/render/resource_marker_chunk.gd")
 const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 const ViewMode := ViewModesScript.ViewMode
 

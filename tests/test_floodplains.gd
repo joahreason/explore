@@ -7,9 +7,9 @@ extends SceneTree
 ## "river"), while bedrock ores keep rock_exposure. Run via tests/run_tests.sh.
 
 const FARMLAND := preload("res://resources/farmland.tres")
-const CLAY := preload("res://resources/clay.tres")
-const IRON := preload("res://resources/iron.tres")
-const OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const CLAY := preload("res://resources/deposits/clay.tres")
+const IRON := preload("res://resources/deposits/iron.tres")
+const OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const SEED := 4242
 
 var _fails := 0

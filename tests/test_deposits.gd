@@ -9,11 +9,11 @@ extends SceneTree
 ## outcrops (the ore_outcrops guild) stand only where their own ore is
 ## exposed, never on water or buried rock. Run via tests/run_tests.sh.
 
-const IRON := preload("res://resources/iron.tres")
-const COPPER := preload("res://resources/copper.tres")
-const COAL := preload("res://resources/coal.tres")
-const OAK := preload("res://resources/oak.tres")
-const OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const IRON := preload("res://resources/deposits/iron.tres")
+const COPPER := preload("res://resources/deposits/copper.tres")
+const COAL := preload("res://resources/deposits/coal.tres")
+const OAK := preload("res://resources/species/oak.tres")
+const OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const ORES := [IRON, COPPER, COAL]
 const SEED := 4242
 

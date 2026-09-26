@@ -12,9 +12,9 @@ const GameConstants := preload("res://scripts/game_constants.gd")
 const GenerationContextScript := preload("res://scripts/world/generation_context.gd")
 const ChunkBuilderScript := preload("res://scripts/world/chunk_builder.gd")
 const ViewModesScript := preload("res://scripts/world/view_modes.gd")
-const BiomeOverlayChunkScript := preload("res://scripts/biome_overlay_chunk.gd")
-const ResourceMarkerChunkScript := preload("res://scripts/resource_marker_chunk.gd")
-const SeasonsScript := preload("res://scripts/seasons.gd")
+const BiomeOverlayChunkScript := preload("res://scripts/render/biome_overlay_chunk.gd")
+const ResourceMarkerChunkScript := preload("res://scripts/render/resource_marker_chunk.gd")
+const SeasonsScript := preload("res://scripts/render/seasons.gd")
 const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 
 const TILE_SIZE := GameConstants.TILE_SIZE

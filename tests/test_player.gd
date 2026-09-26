@@ -8,7 +8,7 @@ extends SceneTree
 ## seed; biome travel and teleports land it on dry land with the camera
 ## centred on it. Run via tests/run_tests.sh.
 
-const MarkerChunk := preload("res://scripts/resource_marker_chunk.gd")
+const MarkerChunk := preload("res://scripts/render/resource_marker_chunk.gd")
 const SEED := 4242
 const DIR := "user://test_player"
 

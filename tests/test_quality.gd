@@ -10,9 +10,9 @@ extends SceneTree
 ## dense, fertile, undisturbed stands; abundant berries on fertile, moist,
 ## sunny ground; rich ore on deposit-rich seams). Run via tests/run_tests.sh.
 
-const CANOPY := preload("res://resources/canopy_trees.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const ORE_OUTCROPS := preload("res://resources/ore_outcrops.tres")
+const CANOPY := preload("res://resources/guilds/canopy_trees.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const ORE_OUTCROPS := preload("res://resources/guilds/ore_outcrops.tres")
 const TREE_AGE := preload("res://resources/quality/tree_age.tres")
 const BERRY_YIELD := preload("res://resources/quality/berry_yield.tres")
 const ORE_RICHNESS := preload("res://resources/quality/ore_richness.tres")

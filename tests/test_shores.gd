@@ -7,10 +7,10 @@ extends SceneTree
 ## their species can live; mud sits only at river mouths; coastal swamps get
 ## salt marsh where cattails (freshwater) stop. Run via tests/run_tests.sh.
 
-const SHORE := preload("res://resources/shore_features.tres")
-const WETLAND := preload("res://resources/wetland_plants.tres")
-const TREES := preload("res://resources/canopy_trees.tres")
-const SALT := preload("res://resources/salt.tres")
+const SHORE := preload("res://resources/guilds/shore_features.tres")
+const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
+const TREES := preload("res://resources/guilds/canopy_trees.tres")
+const SALT := preload("res://resources/deposits/salt.tres")
 const SEA_ONLY := ["shells", "salt", "mangrove", "saltmarsh_grass"]
 const SEED := 4242
 ## The last one holds a lake (its shores and a river running into it).

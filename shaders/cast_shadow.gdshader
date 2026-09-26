@@ -1,7 +1,7 @@
 // Cast shadows under resource sprites (ResourceMarkerChunk's Shadows
 // layer): each shadow is the sprite's own silhouette, flattened onto the
 // ground from the sprite's base and thrown away from the sun or moon -
-// SunShadow (scripts/sun_shadow.gd) sets `cast_dir` (shadow offset per pixel of
+// SunShadow (scripts/render/sun_shadow.gd) sets `cast_dir` (shadow offset per pixel of
 // height: x sideways, y towards the viewer) and `darkness` from the in-game
 // time. It sways with the plant it belongs to (the same wind bend, via the
 // same colour-alpha sway encoding as sway.gdshader). Offsets snap to whole

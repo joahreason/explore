@@ -4,7 +4,7 @@ extends SceneTree
 ## minimum spacing, density response, seed/id decorrelation, and (with the
 ## real oak + WorldGen) no instances on water. Run via tests/run_tests.sh.
 
-const OAK := preload("res://resources/oak.tres")
+const OAK := preload("res://resources/species/oak.tres")
 const CHUNK := 16
 
 var _fails := 0

@@ -18,7 +18,7 @@ const BIOME_STRIDE := 3   # biome area is estimated on this sample grid
 
 func _init() -> void:
 	var path := OS.get_environment("RESOURCE")
-	var res: Resource = load(path if path != "" else "res://resources/canopy_trees.tres")
+	var res: Resource = load(path if path != "" else "res://resources/guilds/canopy_trees.tres")
 	for warning in res.get_curve_domain_warnings():
 		print("WARN ", warning)
 	var guild := res as ResourceGuild

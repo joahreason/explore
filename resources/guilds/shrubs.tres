@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="ResourceGuild" format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/resource_guild.gd" id="1_guild"]
+[ext_resource type="Script" path="res://scripts/resources/resource_definition.gd" id="2_def"]
+[ext_resource type="Resource" path="res://resources/species/berry_bush.tres" id="3_berry"]
+
+[sub_resource type="Curve" id="Curve_cover"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.15, 0), 0.0, 0.0, 0, 0, Vector2(0.25, 0.4), 0.0, 0.0, 0, 0, Vector2(0.35, 0.85), 0.0, 0.0, 0, 0, Vector2(0.45, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 6
+
+[sub_resource type="Curve" id="Curve_cluster"]
+_data = [Vector2(0, 0), 0.0, 0.0, 0, 0, Vector2(0.5, 0), 0.0, 0.0, 0, 0, Vector2(0.65, 1), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 4
+
+[resource]
+script = ExtResource("1_guild")
+id = "shrubs"
+members = Array[ExtResource("2_def")]([ExtResource("3_berry")])
+cover_field = "vegetation_potential"
+cover_curve = SubResource("Curve_cover")
+base_density = 0.75
+species_sharpness = 4.0
+cluster_scale = 20.0
+cluster_strength = 1.0
+cluster_curve = SubResource("Curve_cluster")
+minimum_spacing = 1.5
+footprint_radius = 0.5

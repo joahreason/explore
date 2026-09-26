@@ -9,10 +9,10 @@ extends SceneTree
 ## (per-chunk safe), and the Phase 10 water-edge species: reeds and willows
 ## only on river banks, cattails only on flat, wet ground, mostly in marshes. Run via tests/run_tests.sh.
 
-const TREES := preload("res://resources/canopy_trees.tres")
-const ROCKS := preload("res://resources/surface_rocks.tres")
-const SHRUBS := preload("res://resources/shrubs.tres")
-const WETLAND := preload("res://resources/wetland_plants.tres")
+const TREES := preload("res://resources/guilds/canopy_trees.tres")
+const ROCKS := preload("res://resources/guilds/surface_rocks.tres")
+const SHRUBS := preload("res://resources/guilds/shrubs.tres")
+const WETLAND := preload("res://resources/guilds/wetland_plants.tres")
 const CHUNK := 16
 
 var _fails := 0

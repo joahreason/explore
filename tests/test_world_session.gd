@@ -8,7 +8,7 @@ extends SceneTree
 ## woken sleeper is noticed. Run via tests/run_tests.sh.
 
 const Session := preload("res://scripts/world/world_session.gd")
-const GameClockScript := preload("res://scripts/game_clock.gd")
+const GameClockScript := preload("res://scripts/world/game_clock.gd")
 const DIR := "user://test_world_session"
 const SEED := 77
 

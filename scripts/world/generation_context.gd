@@ -11,12 +11,12 @@ extends RefCounted
 ## chunk job step does); the private ones expect it held. World_gen and
 ## structures are only used under it too.
 
-const StructureSitesScript := preload("res://scripts/structure_sites.gd")
-const ResourceManagerScript := preload("res://scripts/resource_manager.gd")
-const ResourcePlacementScript := preload("res://scripts/resource_placement.gd")
-const EnvironmentalStateScript := preload("res://scripts/environmental_state.gd")
-const BiomeClassifierScript := preload("res://scripts/biome_classifier.gd")
-const TerrainSurfaceScript := preload("res://scripts/terrain_surface.gd")
+const StructureSitesScript := preload("res://scripts/gen/structure_sites.gd")
+const ResourceManagerScript := preload("res://scripts/resources/resource_manager.gd")
+const ResourcePlacementScript := preload("res://scripts/resources/resource_placement.gd")
+const EnvironmentalStateScript := preload("res://scripts/gen/environmental_state.gd")
+const BiomeClassifierScript := preload("res://scripts/gen/biome_classifier.gd")
+const TerrainSurfaceScript := preload("res://scripts/gen/terrain_surface.gd")
 const CONTENT: WorldContent = preload("res://resources/world_content.tres")
 const CHUNK_SIZE := 16  # tiles per chunk edge (ChunkManager.CHUNK_SIZE)
 
